@@ -1,0 +1,89 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-linkedin_intelligence}
+      POSTGRES_USER: ${POSTGRES_USER:-linkedin_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-linkedin_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-linkedin_user}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-linkedin_intelligence}
+      REDIS_URL: redis://redis:6379
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-linkedin_user}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-linkedin_intelligence}
+      REDIS_URL: redis://redis:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: redis://redis:6379
+    command: celery -A app.worker beat --loglevel=info
+
+  flower:
+    image: mher/flower:2.0
+    depends_on:
+      - redis
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379
+    ports:
+      - "5555:5555"
+
+volumes:
+  postgres_data:
