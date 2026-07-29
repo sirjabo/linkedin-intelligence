@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.crawler.jobs.indeed import IndeedCrawler, content_hash
 
-
 SAMPLE_HTML = """
 <html><body>
 <div class="job_seen_beacon" data-jk="abc123">

@@ -79,18 +79,27 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export const api = {
   analyze: {
     async cv(input: AnalyzeCVInput): Promise<CVAnalysisResponse> {
-      const form = new FormData();
-      form.append("target_role", input.targetRole);
       if (input.file) {
+        const form = new FormData();
+        form.append("target_role", input.targetRole);
         form.append("file", input.file);
-      }
-      if (input.cvText) {
-        form.append("cv_text", input.cvText);
+        if (input.cvText) {
+          form.append("cv_text", input.cvText);
+        }
+        const res = await fetch(`${API_BASE}/analyze/cv`, {
+          method: "POST",
+          body: form,
+        });
+        return handleResponse<CVAnalysisResponse>(res);
       }
 
       const res = await fetch(`${API_BASE}/analyze/cv`, {
         method: "POST",
-        body: form,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cv_text: input.cvText,
+          target_role: input.targetRole,
+        }),
       });
       return handleResponse<CVAnalysisResponse>(res);
     },

@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     )
 
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
-    SECRET_KEY: str = Field(min_length=16)
+    SECRET_KEY: str = Field(
+        default="dev-secret-change-in-production-min-16",
+        min_length=16,
+    )
     DEBUG: bool = True
     APP_VERSION: str = "0.1.0"
 
@@ -34,11 +37,8 @@ class Settings(BaseSettings):
         ]
     )
 
-    # Rate limits (req/min) — Sprint B-017
     RATE_LIMIT_ANONYMOUS: str = "30/minute"
     RATE_LIMIT_AUTHENTICATED: str = "60/minute"
-
-    # Data freshness threshold for health checks (hours)
     DATA_FRESHNESS_HOURS: int = 24
 
     @property

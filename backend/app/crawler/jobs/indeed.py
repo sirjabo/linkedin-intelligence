@@ -7,7 +7,7 @@ import re
 import time
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
 from sqlalchemy import select
@@ -31,7 +31,9 @@ def content_hash(title: str, company: str, description: str) -> str:
 class IndeedCrawler(BaseCrawler):
     """Crawl public Indeed search results for target roles in AR/MX/ES."""
 
-    def __init__(self, max_pages: int = 50, session_factory: async_sessionmaker | None = None) -> None:
+    def __init__(
+        self, max_pages: int = 50, session_factory: async_sessionmaker | None = None
+    ) -> None:
         super().__init__(rate_limit_rps=RATE_LIMITS["indeed"])
         self.max_pages = max_pages
         self._session_factory = session_factory

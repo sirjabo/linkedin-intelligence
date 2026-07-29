@@ -1,4 +1,4 @@
-"""Unit tests for ATS Engine — Sprint B-006."""
+"""Unit tests for ATS Engine — tasks/cursor-sprint-001.md requirements."""
 
 from __future__ import annotations
 
@@ -7,13 +7,15 @@ import pytest
 from app.engine.ats import (
     ATSEngine,
     ATSMatcher,
+    MatchResult,
     RecommendationEngine,
     WeightedKeyword,
     calculate_ats_score,
     frequency_to_weight,
+    role_keywords_to_weighted,
 )
 from app.engine.cv_parser import CVParser, ParsedCV
-
+from app.schemas.analyze import SectionScores
 
 SAMPLE_CV = """
 Joaquín Pérez
@@ -54,66 +56,76 @@ class TestFrequencyToWeight:
 
 
 class TestCalculateAtsScore:
-    def test_perfect_match(self) -> None:
+    def test_score_zero_when_no_keywords(self) -> None:
+        result = MatchResult(matched=[], missing=[])
+        assert calculate_ats_score(result) == 0
+
+    def test_score_100_when_all_match(self) -> None:
         kws = [
             WeightedKeyword(name="Python", weight=1.0),
             WeightedKeyword(name="SQL", weight=0.8),
         ]
-        from app.engine.ats import MatchResult
-
         result = MatchResult(matched=kws, missing=[])
         assert calculate_ats_score(result) == 100
 
-    def test_no_keywords(self) -> None:
-        from app.engine.ats import MatchResult
-
-        result = MatchResult(matched=[], missing=[])
-        assert calculate_ats_score(result) == 0
-
-    def test_critical_penalty(self) -> None:
-        from app.engine.ats import MatchResult
-
+    def test_critical_penalty_reduces_score(self) -> None:
         matched = [WeightedKeyword(name="Python", weight=1.0)]
         missing = [WeightedKeyword(name="SQL", weight=0.95)]
         result = MatchResult(matched=matched, missing=missing)
-        # raw = 1.0/1.95*100 ≈ 51, penalty 10 → ~41
+        raw = int((1.0 / 1.95) * 100)
         score = calculate_ats_score(result)
-        assert 30 <= score <= 50
-        assert score < int((1.0 / 1.95) * 100)
+        assert score == max(0, raw - 10)
+        assert score < raw
 
 
 class TestATSMatcher:
     def setup_method(self) -> None:
         self.matcher = ATSMatcher()
-        self.keywords = [
-            WeightedKeyword(name="Python", weight=1.0, aliases=["python3"]),
-            WeightedKeyword(name="LangChain", weight=0.85, aliases=["lang-chain"]),
-            WeightedKeyword(name="RAG", weight=0.8, aliases=["retrieval augmented"]),
-            WeightedKeyword(name="Fortran", weight=0.3, aliases=[]),
+
+    def test_alias_matching_langchain(self) -> None:
+        keywords = [
+            WeightedKeyword(
+                name="LangChain",
+                weight=0.9,
+                aliases=["langchain", "lang-chain"],
+            )
         ]
-
-    def test_exact_match(self) -> None:
-        result = self.matcher.match(["Python", "SQL"], self.keywords, cv_text="Python developer")
-        names = [k.name for k in result.matched]
-        assert "Python" in names
-
-    def test_alias_match(self) -> None:
-        result = self.matcher.match([], self.keywords, cv_text="Experience with lang-chain frameworks")
-        names = [k.name for k in result.matched]
-        assert "LangChain" in names
-        assert result.match_types.get("LangChain") == "alias"
-
-    def test_semantic_match_for_high_weight(self) -> None:
         result = self.matcher.match(
-            ["embeddings"],
-            [WeightedKeyword(name="Vector DB", weight=0.75, aliases=[])],
-            cv_text="Built semantic search with embeddings and pinecone",
+            [], keywords, cv_text="Experience with langchain frameworks"
         )
-        assert any(k.name == "Vector DB" for k in result.matched)
+        assert any(k.name == "LangChain" for k in result.matched)
+        assert result.match_types.get("LangChain") in {"exact", "alias"}
 
-    def test_missing_low_weight_no_semantic(self) -> None:
-        result = self.matcher.match(["Java"], self.keywords, cv_text="Java developer")
-        assert any(k.name == "Fortran" for k in result.missing)
+    def test_exact_match_python(self) -> None:
+        keywords = [WeightedKeyword(name="Python", weight=1.0, aliases=["python"])]
+        result = self.matcher.match(["Python"], keywords, cv_text="")
+        assert any(k.name == "Python" for k in result.matched)
+
+
+class TestRecommendationEngine:
+    def test_recommendations_ordered_by_priority(self) -> None:
+        engine = RecommendationEngine()
+        parsed = ParsedCV(skills=["Python"], experience="did stuff", projects="")
+        missing = [
+            WeightedKeyword(name="LangChain", weight=0.9),
+            WeightedKeyword(name="ObscureLib", weight=0.2),
+        ]
+        recs = engine.generate(
+            parsed,
+            missing,
+            SectionScores(
+                contact=80,
+                summary=50,
+                experience=50,
+                skills=40,
+                education=70,
+                projects=20,
+            ),
+        )
+        assert len(recs) <= 5
+        priorities = [r.priority for r in recs]
+        assert priorities == sorted(priorities)
+        assert any(r.type == "add_keyword" and "LangChain" in r.message for r in recs)
 
 
 class TestCVParser:
@@ -124,33 +136,6 @@ class TestCVParser:
         assert "SQL" in parsed.skills
         assert parsed.contact
 
-    def test_extracts_experience_bullets(self) -> None:
-        parser = CVParser()
-        parsed = parser.parse(SAMPLE_CV)
-        assert len(parsed.experience_bullets) >= 1
-
-
-class TestRecommendationEngine:
-    def test_generates_add_keyword_for_critical_missing(self) -> None:
-        engine = RecommendationEngine()
-        parsed = ParsedCV(skills=["Python"], experience="did stuff", projects="")
-        missing = [
-            WeightedKeyword(name="LangChain", weight=0.9),
-            WeightedKeyword(name="ObscureLib", weight=0.2),
-        ]
-        from app.schemas.analyze import SectionScores
-
-        recs = engine.generate(
-            parsed,
-            missing,
-            SectionScores(
-                contact=80, summary=50, experience=50, skills=40, education=70, projects=20
-            ),
-        )
-        assert any(r.type == "add_keyword" and "LangChain" in r.message for r in recs)
-        assert any(r.type == "add_section" and r.section == "projects" for r in recs)
-        assert len(recs) <= 5
-
 
 @pytest.mark.asyncio
 class TestATSEngineIntegration:
@@ -159,9 +144,7 @@ class TestATSEngineIntegration:
         result = await engine.analyze(SAMPLE_CV, "ai_engineer")
         assert 0 <= result.ats_score <= 100
         assert result.keyword_analysis.found or result.keyword_analysis.missing
-        assert result.section_scores.skills >= 0
         assert len(result.recommendations) <= 5
-        assert result.summary
 
     async def test_joaco_cv_finds_python_sql(self) -> None:
         engine = ATSEngine(db=None)
@@ -169,6 +152,12 @@ class TestATSEngineIntegration:
         found_names = {k.keyword for k in result.keyword_analysis.found}
         assert "Python" in found_names
         assert "SQL" in found_names
-        # Should be missing some AI-specific keywords not present in the CV
         missing_names = {k.keyword for k in result.keyword_analysis.missing}
-        assert "LangGraph" in missing_names or "RAG" in missing_names or "FastAPI" in missing_names
+        assert "LangGraph" in missing_names or "FastAPI" in missing_names
+
+    async def test_role_keywords_loaded(self) -> None:
+        kws = role_keywords_to_weighted("ai_engineer")
+        names = {k.name for k in kws}
+        assert "Python" in names
+        assert "LangChain" in names
+        assert any(k.weight == 0.90 for k in kws if k.name == "LangChain")

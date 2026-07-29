@@ -1,37 +1,47 @@
-"""POST /analyze/cv — CV ATS analysis endpoint."""
+"""POST /analyze/cv — accepts JSON (MVP) or multipart (API spec)."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 import uuid
-from typing import Annotated
+from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DbSession
+from app.api.deps import get_db
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models.cv_analysis import CVAnalysis
 from app.engine.ats import ATSEngine
 from app.engine.pdf import PDFParseError, extract_text_from_pdf
-from app.schemas.analyze import CVAnalysisResponse
+from app.schemas.analyze import CVAnalysisRequest, CVAnalysisResponse
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 logger = get_logger(__name__)
 
 SUPPORTED_ROLES = frozenset({"ai_engineer", "data_engineer", "analytics_engineer"})
 
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=settings.REDIS_URL,
+    default_limits=[],
+)
+
 
 @router.post("/cv", response_model=CVAnalysisResponse)
+@limiter.limit("30/minute")
 async def analyze_cv(
-    db: DbSession,
-    target_role: Annotated[str, Form(...)],
-    cv_text: Annotated[str | None, Form()] = None,
-    target_job_id: Annotated[str | None, Form()] = None,
-    file: UploadFile | None = File(None),
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ) -> CVAnalysisResponse:
-    """Analyze a CV (PDF or plain text) and return ATS Score + recommendations."""
+    """Analyze a CV and return ATS Score + recommendations."""
     started = time.perf_counter()
+    target_role, text, target_job_id = await _parse_request(request)
 
     if target_role not in SUPPORTED_ROLES:
         raise HTTPException(
@@ -46,7 +56,6 @@ async def analyze_cv(
             },
         )
 
-    text = await _resolve_cv_text(cv_text, file)
     if len(text) < 100:
         raise HTTPException(
             status_code=422,
@@ -65,7 +74,7 @@ async def analyze_cv(
     job_uuid = None
     if target_job_id:
         try:
-            job_uuid = uuid.UUID(target_job_id)
+            job_uuid = uuid.UUID(str(target_job_id))
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
@@ -112,28 +121,85 @@ async def analyze_cv(
     )
 
 
-async def _resolve_cv_text(cv_text: str | None, file: UploadFile | None) -> str:
-    if file is not None and file.filename:
-        content_type = (file.content_type or "").lower()
-        raw = await file.read()
-        if "pdf" in content_type or (file.filename or "").lower().endswith(".pdf"):
-            try:
-                return extract_text_from_pdf(raw)
-            except PDFParseError as exc:
-                raise HTTPException(
-                    status_code=422,
-                    detail={"code": "PDF_PARSE_ERROR", "message": str(exc)},
-                ) from exc
-        # Treat as plain text upload
-        return raw.decode("utf-8", errors="replace")
+async def _parse_request(request: Request) -> tuple[str, str, str | None]:
+    content_type = (request.headers.get("content-type") or "").lower()
 
-    if cv_text and cv_text.strip():
-        return cv_text.strip()
+    if "application/json" in content_type:
+        try:
+            payload: dict[str, Any] = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_JSON", "message": "JSON inválido"},
+            ) from exc
+
+        target_role = str(payload.get("target_role") or "")
+        if target_role not in SUPPORTED_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "INVALID_ROLE",
+                    "message": (
+                        f"El rol '{target_role}' no es válido. Roles soportados: "
+                        f"{', '.join(sorted(SUPPORTED_ROLES))}"
+                    ),
+                    "docs_url": "https://docs.linkedin-intelligence.com/errors/INVALID_ROLE",
+                },
+            )
+
+        try:
+            body = CVAnalysisRequest.model_validate(payload)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "VALIDATION_ERROR", "message": str(exc)},
+            ) from exc
+        return (
+            body.target_role,
+            body.cv_text,
+            str(body.target_job_id) if body.target_job_id else None,
+        )
+
+    if "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+        form = await request.form()
+        target_role = str(form.get("target_role") or "")
+        cv_text_raw = form.get("cv_text")
+        cv_text = str(cv_text_raw) if cv_text_raw else None
+        target_job_id = form.get("target_job_id")
+        upload = form.get("file")
+
+        text = ""
+        if upload is not None and hasattr(upload, "read"):
+            raw = await upload.read()  # type: ignore[union-attr]
+            filename = getattr(upload, "filename", "") or ""
+            content = getattr(upload, "content_type", "") or ""
+            if "pdf" in content.lower() or filename.lower().endswith(".pdf"):
+                try:
+                    text = extract_text_from_pdf(raw)
+                except PDFParseError as exc:
+                    raise HTTPException(
+                        status_code=422,
+                        detail={"code": "PDF_PARSE_ERROR", "message": str(exc)},
+                    ) from exc
+            else:
+                text = raw.decode("utf-8", errors="replace")
+        elif cv_text:
+            text = cv_text.strip()
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "MISSING_CV",
+                    "message": "Debés enviar 'cv_text' o un archivo PDF en 'file'",
+                },
+            )
+        job_id = str(target_job_id) if target_job_id else None
+        return target_role, text, job_id
 
     raise HTTPException(
-        status_code=400,
+        status_code=415,
         detail={
-            "code": "MISSING_CV",
-            "message": "Debés enviar 'cv_text' o un archivo PDF en 'file'",
+            "code": "UNSUPPORTED_MEDIA_TYPE",
+            "message": "Usá application/json o multipart/form-data",
         },
     )

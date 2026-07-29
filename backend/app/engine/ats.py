@@ -1,4 +1,4 @@
-"""ATS Score Engine — docs/09-ATS_ENGINE.md."""
+"""ATS Score Engine — docs/09-ATS_ENGINE.md + tasks/cursor-sprint-001.md."""
 
 from __future__ import annotations
 
@@ -23,68 +23,84 @@ from app.schemas.analyze import (
 
 logger = get_logger(__name__)
 
-# Fallback keywords when DB has no skill_demand data yet (MVP bootstrap)
-FALLBACK_KEYWORDS: dict[str, list[tuple[str, float, list[str]]]] = {
+# Hardcoded role keywords for MVP — tasks/cursor-sprint-001.md
+ROLE_KEYWORDS: dict[str, list[dict[str, float | str]]] = {
     "ai_engineer": [
-        ("Python", 1.0, ["python"]),
-        ("LangChain", 0.85, ["langchain", "lang-chain"]),
-        ("LangGraph", 0.8, ["langgraph"]),
-        ("RAG", 0.8, ["rag", "retrieval augmented"]),
-        ("LLM", 0.85, ["llm", "llms", "large language model"]),
-        ("FastAPI", 0.75, ["fastapi"]),
-        ("SQL", 0.8, ["sql"]),
-        ("Vector DB", 0.7, ["pgvector", "pinecone", "weaviate", "chroma", "qdrant", "vector db"]),
-        ("Docker", 0.6, ["docker"]),
-        ("AWS", 0.55, ["aws", "amazon web services"]),
-        ("Embeddings", 0.65, ["embeddings", "embedding"]),
-        ("Prompt Engineering", 0.6, ["prompt engineering", "prompting"]),
-        ("PyTorch", 0.5, ["pytorch", "torch"]),
-        ("OpenAI", 0.55, ["openai", "gpt"]),
-        ("Git", 0.5, ["git", "github"]),
+        {"name": "Python", "weight": 1.0},
+        {"name": "LangChain", "weight": 0.90},
+        {"name": "LangGraph", "weight": 0.85},
+        {"name": "FastAPI", "weight": 0.80},
+        {"name": "RAG", "weight": 0.80},
+        {"name": "SQL", "weight": 0.75},
+        {"name": "Docker", "weight": 0.70},
+        {"name": "OpenAI API", "weight": 0.70},
+        {"name": "Embeddings", "weight": 0.65},
+        {"name": "Vector Database", "weight": 0.65},
+        {"name": "Prompt Engineering", "weight": 0.60},
+        {"name": "REST API", "weight": 0.60},
+        {"name": "Git", "weight": 0.55},
+        {"name": "AWS", "weight": 0.50},
+        {"name": "PostgreSQL", "weight": 0.50},
     ],
     "data_engineer": [
-        ("Python", 1.0, ["python"]),
-        ("SQL", 1.0, ["sql"]),
-        ("Spark", 0.85, ["spark", "pyspark"]),
-        ("Airflow", 0.8, ["airflow"]),
-        ("Kafka", 0.75, ["kafka"]),
-        ("AWS", 0.7, ["aws"]),
-        ("dbt", 0.65, ["dbt"]),
-        ("Docker", 0.6, ["docker"]),
-        ("PostgreSQL", 0.7, ["postgresql", "postgres"]),
-        ("ETL", 0.75, ["etl", "elt"]),
-        ("Snowflake", 0.55, ["snowflake"]),
-        ("BigQuery", 0.5, ["bigquery"]),
-        ("Kubernetes", 0.45, ["kubernetes", "k8s"]),
-        ("Terraform", 0.4, ["terraform"]),
-        ("Git", 0.5, ["git"]),
+        {"name": "Python", "weight": 1.0},
+        {"name": "SQL", "weight": 0.95},
+        {"name": "Spark", "weight": 0.85},
+        {"name": "Airflow", "weight": 0.80},
+        {"name": "dbt", "weight": 0.75},
+        {"name": "AWS", "weight": 0.75},
+        {"name": "Kafka", "weight": 0.70},
+        {"name": "Docker", "weight": 0.65},
+        {"name": "PostgreSQL", "weight": 0.60},
+        {"name": "Git", "weight": 0.55},
     ],
     "analytics_engineer": [
-        ("SQL", 1.0, ["sql"]),
-        ("dbt", 0.9, ["dbt"]),
-        ("Python", 0.85, ["python"]),
-        ("Looker", 0.6, ["looker", "lookml"]),
-        ("Tableau", 0.55, ["tableau"]),
-        ("Power BI", 0.55, ["power bi", "powerbi"]),
-        ("Snowflake", 0.7, ["snowflake"]),
-        ("BigQuery", 0.65, ["bigquery"]),
-        ("Airflow", 0.5, ["airflow"]),
-        ("Git", 0.55, ["git"]),
-        ("Data Modeling", 0.7, ["data modeling", "dimensional modeling", "star schema"]),
-        ("ETL", 0.6, ["etl", "elt"]),
-        ("pandas", 0.65, ["pandas"]),
-        ("PostgreSQL", 0.5, ["postgresql", "postgres"]),
-        ("n8n", 0.4, ["n8n"]),
+        {"name": "SQL", "weight": 1.0},
+        {"name": "dbt", "weight": 0.90},
+        {"name": "Python", "weight": 0.85},
+        {"name": "Looker", "weight": 0.70},
+        {"name": "BigQuery", "weight": 0.70},
+        {"name": "Snowflake", "weight": 0.65},
+        {"name": "Git", "weight": 0.60},
+        {"name": "Airflow", "weight": 0.55},
+        {"name": "Tableau", "weight": 0.50},
     ],
 }
 
-SECTION_WEIGHTS = {
-    "skills": 0.30,
-    "experience": 0.30,
-    "projects": 0.20,
-    "summary": 0.10,
-    "education": 0.05,
-    "contact": 0.05,
+# Alias map for MVP matching (case-insensitive)
+KEYWORD_ALIASES: dict[str, list[str]] = {
+    "Python": ["python", "python3"],
+    "LangChain": ["langchain", "lang-chain"],
+    "LangGraph": ["langgraph", "lang-graph"],
+    "FastAPI": ["fastapi", "fast-api"],
+    "RAG": ["rag", "retrieval augmented", "retrieval-augmented generation"],
+    "SQL": ["sql", "t-sql", "plsql"],
+    "Docker": ["docker", "containers"],
+    "OpenAI API": ["openai", "openai api", "gpt", "gpt-4", "gpt4"],
+    "Embeddings": ["embeddings", "embedding"],
+    "Vector Database": [
+        "vector database",
+        "vector db",
+        "vectordb",
+        "pgvector",
+        "pinecone",
+        "weaviate",
+        "chroma",
+        "qdrant",
+    ],
+    "Prompt Engineering": ["prompt engineering", "prompting"],
+    "REST API": ["rest api", "rest", "restful", "apis rest"],
+    "Git": ["git", "github", "gitlab"],
+    "AWS": ["aws", "amazon web services"],
+    "PostgreSQL": ["postgresql", "postgres", "psql"],
+    "Spark": ["spark", "pyspark", "apache spark"],
+    "Airflow": ["airflow", "apache airflow"],
+    "dbt": ["dbt", "data build tool"],
+    "Kafka": ["kafka", "apache kafka"],
+    "Looker": ["looker", "lookml"],
+    "BigQuery": ["bigquery", "big query", "bq"],
+    "Snowflake": ["snowflake"],
+    "Tableau": ["tableau"],
 }
 
 CRITICAL_WEIGHT_THRESHOLD = 0.9
@@ -92,16 +108,15 @@ CRITICAL_PENALTY_POINTS = 10
 SEMANTIC_WEIGHT_THRESHOLD = 0.7
 SEMANTIC_SIMILARITY_THRESHOLD = 0.85
 
-# Simple synonym groups for semantic-ish matching without embeddings (MVP)
 SEMANTIC_GROUPS: list[frozenset[str]] = [
-    frozenset({"llm", "llms", "gpt", "claude", "large language model", "generative ai", "genai"}),
+    frozenset({"llm", "llms", "gpt", "claude", "openai", "openai api", "large language model"}),
     frozenset({"rag", "retrieval augmented generation", "retrieval-augmented"}),
-    frozenset({"vector db", "pgvector", "pinecone", "weaviate", "chroma", "qdrant", "embeddings"}),
-    frozenset({"fastapi", "flask", "django", "rest api", "api"}),
-    frozenset({"kubernetes", "k8s", "container orchestration"}),
-    frozenset({"aws", "amazon web services", "cloud"}),
-    frozenset({"etl", "elt", "data pipeline", "pipelines"}),
-    frozenset({"langchain", "langgraph", "llamaindex", "llm framework"}),
+    frozenset(
+        {"vector database", "vector db", "pgvector", "pinecone", "weaviate", "chroma", "embeddings"}
+    ),
+    frozenset({"aws", "amazon web services"}),
+    frozenset({"langchain", "langgraph", "llamaindex"}),
+    frozenset({"rest api", "rest", "restful"}),
 ]
 
 
@@ -135,7 +150,7 @@ class ATSAnalysisResult:
 
 def best_section_for_keyword(kw: WeightedKeyword, parsed_cv: ParsedCV) -> str:
     name = kw.name.lower()
-    if any(x in name for x in ("project", "rag", "demo", "portfolio")):
+    if any(x in name for x in ("project", "rag", "demo", "portfolio", "vector")):
         return "projects"
     if not parsed_cv.skills:
         return "skills"
@@ -168,6 +183,17 @@ def calculate_ats_score(match_result: MatchResult) -> int:
     penalty = len(critical_missing) * CRITICAL_PENALTY_POINTS
 
     return max(0, min(100, int(raw_score - penalty)))
+
+
+def role_keywords_to_weighted(role: str) -> list[WeightedKeyword]:
+    raw = ROLE_KEYWORDS.get(role, ROLE_KEYWORDS["ai_engineer"])
+    keywords: list[WeightedKeyword] = []
+    for item in raw:
+        name = str(item["name"])
+        weight = float(item["weight"])
+        aliases = list(KEYWORD_ALIASES.get(name, [name.lower()]))
+        keywords.append(WeightedKeyword(name=name, weight=weight, aliases=aliases))
+    return keywords
 
 
 class ATSMatcher:
@@ -291,10 +317,9 @@ class RecommendationEngine:
                 )
             )
 
-        # Deduplicate by message, keep top 5
         seen: set[str] = set()
         unique: list[Recommendation] = []
-        for rec in sorted(recommendations, key=lambda r: r.priority):
+        for rec in sorted(recommendations, key=lambda r: (r.priority, r.message)):
             if rec.message in seen:
                 continue
             seen.add(rec.message)
@@ -322,9 +347,7 @@ class RecommendationEngine:
         self, bullet: str, missing: list[WeightedKeyword]
     ) -> str:
         top = [k.name for k in missing[:2]]
-        suffix = ""
-        if top:
-            suffix = f", aplicando {', '.join(top)}"
+        suffix = f", aplicando {', '.join(top)}" if top else ""
         cleaned = bullet.rstrip(".")
         if re.search(r"\d", cleaned):
             return f"{cleaned}{suffix}."
@@ -368,11 +391,8 @@ class ATSEngine:
         )
 
     async def get_role_keywords(self, role: str) -> list[WeightedKeyword]:
-        if self.db is not None:
-            db_keywords = await self._load_keywords_from_db(role)
-            if db_keywords:
-                return db_keywords
-        return self._fallback_keywords(role)
+        """MVP uses hardcoded ROLE_KEYWORDS from cursor-sprint-001.md."""
+        return role_keywords_to_weighted(role)
 
     async def _load_keywords_from_db(self, role: str) -> list[WeightedKeyword]:
         assert self.db is not None
@@ -407,13 +427,6 @@ class ATSEngine:
             )
         return keywords
 
-    def _fallback_keywords(self, role: str) -> list[WeightedKeyword]:
-        raw = FALLBACK_KEYWORDS.get(role, FALLBACK_KEYWORDS["ai_engineer"])
-        return [
-            WeightedKeyword(name=name, weight=weight, aliases=aliases)
-            for name, weight, aliases in raw
-        ]
-
     def _score_sections(self, parsed: ParsedCV, match: MatchResult) -> SectionScores:
         text_parts = {
             "skills": " ".join(parsed.skills),
@@ -432,11 +445,12 @@ class ATSEngine:
             if not content.strip():
                 scores[section] = 20
                 continue
-            section_match = self.matcher.match(parsed.skills, match.all_keywords, cv_text=content)
+            section_match = self.matcher.match(
+                parsed.skills, match.all_keywords, cv_text=content
+            )
             if section == "skills":
                 scores[section] = calculate_ats_score(section_match)
             else:
-                # Presence + keyword density heuristic
                 base = 50 if content.strip() else 20
                 bonus = min(50, len(section_match.matched) * 8)
                 scores[section] = min(100, base + bonus)
@@ -466,7 +480,9 @@ class ATSEngine:
                             text_lower,
                         )
                     )
-            found.append(KeywordFound(keyword=kw.name, count=max(1, count), weight=kw.weight))
+            found.append(
+                KeywordFound(keyword=kw.name, count=max(1, count), weight=kw.weight)
+            )
 
         missing = [
             KeywordMissing(

@@ -16,31 +16,57 @@ from app.db.models.job_posting import JobPosting
 from app.db.models.skill_demand import SkillDemand
 from app.db.models.skills_catalog import SkillsCatalog
 from app.db.session import AsyncSessionLocal
-from app.engine.ats import FALLBACK_KEYWORDS
+from app.engine.ats import ROLE_KEYWORDS
 
 configure_logging()
 logger = get_logger(__name__)
 
 SAMPLE_DESCRIPTIONS = {
     "ai_engineer": [
-        "We are hiring an AI Engineer with strong Python, LangChain, RAG, FastAPI and LLM experience. "
-        "You will build agents with LangGraph, use pgvector for embeddings, and deploy on AWS with Docker.",
-        "AI Engineer role: experience with OpenAI, Claude, Prompt Engineering, Vector DB, Python, SQL, "
-        "and production ML systems using PyTorch. Git and CI/CD required.",
-        "Looking for AI Engineers skilled in RAG pipelines, embeddings, FastAPI microservices, "
-        "LangChain, Docker, and cloud (AWS/GCP).",
+        (
+            "We are hiring an AI Engineer with strong Python, LangChain, RAG, "
+            "FastAPI and LLM experience. You will build agents with LangGraph, "
+            "use pgvector for embeddings, and deploy on AWS with Docker."
+        ),
+        (
+            "AI Engineer role: experience with OpenAI, Claude, Prompt Engineering, "
+            "Vector DB, Python, SQL, and production ML systems using PyTorch. "
+            "Git and CI/CD required."
+        ),
+        (
+            "Looking for AI Engineers skilled in RAG pipelines, embeddings, "
+            "FastAPI microservices, LangChain, Docker, and cloud (AWS/GCP)."
+        ),
     ],
     "data_engineer": [
-        "Data Engineer: Python, SQL, Spark, Airflow, Kafka, AWS. Build ETL pipelines and data lakes. "
-        "Experience with PostgreSQL, dbt and Docker preferred.",
-        "Senior Data Engineer with Spark, Airflow, Kafka, Terraform, Kubernetes and BigQuery.",
-        "We need a Data Engineer proficient in Python, SQL, ETL, Snowflake, Airflow and Git.",
+        (
+            "Data Engineer: Python, SQL, Spark, Airflow, Kafka, AWS. "
+            "Build ETL pipelines and data lakes. Experience with PostgreSQL, "
+            "dbt and Docker preferred."
+        ),
+        (
+            "Senior Data Engineer with Spark, Airflow, Kafka, Terraform, "
+            "Kubernetes and BigQuery."
+        ),
+        (
+            "We need a Data Engineer proficient in Python, SQL, ETL, Snowflake, "
+            "Airflow and Git."
+        ),
     ],
     "analytics_engineer": [
-        "Analytics Engineer: SQL, dbt, Python, Looker, Snowflake. Strong data modeling skills. "
-        "Experience with Power BI and Airflow is a plus.",
-        "Join our analytics team: dbt, BigQuery, SQL, pandas, Tableau, Git and ETL.",
-        "Analytics Engineer with SQL, dbt, Snowflake, Power BI, n8n and Python for data pipelines.",
+        (
+            "Analytics Engineer: SQL, dbt, Python, Looker, Snowflake. "
+            "Strong data modeling skills. Experience with Power BI and Airflow "
+            "is a plus."
+        ),
+        (
+            "Join our analytics team: dbt, BigQuery, SQL, pandas, Tableau, "
+            "Git and ETL."
+        ),
+        (
+            "Analytics Engineer with SQL, dbt, Snowflake, Power BI, n8n and "
+            "Python for data pipelines."
+        ),
     ],
 }
 
@@ -70,8 +96,9 @@ def _slugify(name: str) -> str:
 
 async def seed_skills(session: AsyncSession) -> dict[str, uuid.UUID]:
     skill_ids: dict[str, uuid.UUID] = {}
-    for role, keywords in FALLBACK_KEYWORDS.items():
-        for name, _weight, aliases in keywords:
+    for _role, keywords in ROLE_KEYWORDS.items():
+        for item in keywords:
+            name = str(item["name"])
             existing = await session.execute(
                 select(SkillsCatalog).where(SkillsCatalog.slug == _slugify(name))
             )
@@ -83,7 +110,7 @@ async def seed_skills(session: AsyncSession) -> dict[str, uuid.UUID]:
                     slug=_slugify(name),
                     display_name=name,
                     category=_guess_category(name),
-                    aliases=aliases,
+                    aliases=[name.lower()],
                     is_active=True,
                 )
                 session.add(skill)
@@ -137,11 +164,12 @@ async def seed_skill_demand(
     period_end = date.today()
     period_start = period_end - timedelta(days=7)
 
-    for role, keywords in FALLBACK_KEYWORDS.items():
-        for name, weight, _aliases in keywords:
+    for role, keywords in ROLE_KEYWORDS.items():
+        for item in keywords:
+            name = str(item["name"])
+            weight = float(item["weight"])
             skill_id = skill_ids[name]
             # Map algorithm weight → approximate market frequency for DB storage
-            # weight 1.0 → ~90%, 0.85 → ~70%, 0.5 → ~35%, 0.3 → ~20%
             approx_freq = min(95.0, max(10.0, weight * 85.0))
             freq = Decimal(str(round(approx_freq, 2)))
             job_count = int(float(freq) / 100 * total_jobs)

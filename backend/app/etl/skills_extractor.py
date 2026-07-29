@@ -100,9 +100,9 @@ class SkillsExtractor:
 
         llm = ChatAnthropic(
             model="claude-haiku-4-5",
-            api_key=settings.ANTHROPIC_API_KEY,
+            api_key=settings.ANTHROPIC_API_KEY or None,  # type: ignore[arg-type,call-arg]
             temperature=0,
-            max_tokens=1024,
+            max_tokens=1024,  # type: ignore[call-arg]
         )
         system = (
             "Extract technical skills from a job description. "

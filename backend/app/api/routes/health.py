@@ -1,41 +1,34 @@
-"""Health check endpoint."""
+"""Health check endpoint — brief verification: {"status": "ok"}."""
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from redis.asyncio import Redis
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DbSession, get_redis
+from app.api.deps import get_db, get_redis
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models.job_posting import JobPosting
-from app.schemas.health import HealthResponse, ServiceStatus
 
 router = APIRouter(tags=["health"])
 logger = get_logger(__name__)
 
 
-@router.get("/health", response_model=HealthResponse)
-async def health_check(db: DbSession) -> HealthResponse:
-    """Liveness + readiness: DB, Redis, and data freshness."""
+@router.get("/health")
+async def health_check(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+    """Return {"status": "ok"} when DB and Redis are reachable."""
     db_ok = await _check_db(db)
     redis_ok = await _check_redis()
-    fresh = await _check_data_freshness(db) if db_ok else False
 
-    status = "ok" if db_ok and redis_ok else "error"
+    if db_ok and redis_ok:
+        # Touch data freshness for observability (non-blocking for status)
+        await _check_data_freshness(db)
+        return {"status": "ok"}
 
-    return HealthResponse(
-        status=status,
-        version=settings.APP_VERSION,
-        services=ServiceStatus(
-            database="ok" if db_ok else "error",
-            redis="ok" if redis_ok else "error",
-            data_freshness="ok" if fresh else "stale",
-        ),
-        checked_at=datetime.now(UTC),
-    )
+    logger.warning("health_degraded", database=db_ok, redis=redis_ok)
+    return {"status": "error"}
 
 
 async def _check_db(db: AsyncSession) -> bool:
