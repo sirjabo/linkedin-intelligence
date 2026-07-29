@@ -11,8 +11,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import Response
 
-from app.api.routes import analyze, health
-from app.api.routes.analyze import limiter
+from app.api.middleware.rate_limit import limiter
+from app.api.routes import analyze, auth, health, market
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 
@@ -56,6 +56,8 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(analyze.router, prefix="/api/v1")
+app.include_router(market.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

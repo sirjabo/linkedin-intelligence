@@ -1,36 +1,35 @@
-"""POST /analyze/cv — accepts JSON (MVP) or multipart (API spec)."""
-
-from __future__ import annotations
+"""POST /analyze/cv and /analyze/linkedin."""
 
 import hashlib
 import json
 import time
 import uuid
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.core.config import settings
+from app.api.middleware.rate_limit import limiter
 from app.core.logging import get_logger
 from app.db.models.cv_analysis import CVAnalysis
 from app.engine.ats import ATSEngine
+from app.engine.linkedin import ProfileParser, ProfileScorer
 from app.engine.pdf import PDFParseError, extract_text_from_pdf
 from app.schemas.analyze import CVAnalysisRequest, CVAnalysisResponse
+from app.schemas.linkedin import (
+    LinkedInAnalysisRequest,
+    LinkedInAnalysisResponse,
+    RecommendationResponse,
+    SectionScoresResponse,
+    TitleAnalysis,
+)
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 logger = get_logger(__name__)
 
 SUPPORTED_ROLES = frozenset({"ai_engineer", "data_engineer", "analytics_engineer"})
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=settings.REDIS_URL,
-    default_limits=[],
-)
 
 
 @router.post("/cv", response_model=CVAnalysisResponse)
@@ -117,6 +116,59 @@ async def analyze_cv(
         keyword_analysis=result.keyword_analysis,
         section_scores=result.section_scores,
         recommendations=result.recommendations,
+        processing_time_ms=elapsed_ms,
+    )
+
+
+@router.post("/linkedin", response_model=LinkedInAnalysisResponse)
+@limiter.limit("30/minute")
+async def analyze_linkedin(
+    request: Request,
+    body: LinkedInAnalysisRequest,
+) -> LinkedInAnalysisResponse:
+    """Analyze a pasted LinkedIn profile and return Profile Score + recommendations."""
+    start = time.monotonic()
+
+    parser = ProfileParser()
+    scorer = ProfileScorer()
+
+    parsed = parser.parse(body.profile_text)
+    result = scorer.score(parsed, body.target_role)
+
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    logger.info(
+        "linkedin_analyzed",
+        overall_score=result.overall_score,
+        target_role=body.target_role,
+        processing_time_ms=elapsed_ms,
+    )
+
+    return LinkedInAnalysisResponse(
+        analysis_id=str(uuid4()),
+        overall_score=result.overall_score,
+        target_role=body.target_role,
+        section_scores=SectionScoresResponse(
+            title=result.section_scores.title,
+            about=result.section_scores.about,
+            experience=result.section_scores.experience,
+            skills=result.section_scores.skills,
+            projects=result.section_scores.projects,
+            education=result.section_scores.education,
+        ),
+        title_analysis=TitleAnalysis(
+            current=result.title_analysis.current,
+            issues=result.title_analysis.issues,
+            suggested_variants=result.title_analysis.suggested_variants,
+        ),
+        recommendations=[
+            RecommendationResponse(
+                priority=r.priority,
+                section=r.section,
+                message=r.message,
+                impact=r.impact,
+            )
+            for r in result.recommendations
+        ],
         processing_time_ms=elapsed_ms,
     )
 

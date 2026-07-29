@@ -16,6 +16,7 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
+    hashed_password: Mapped[str | None] = mapped_column(String(255))
     target_role: Mapped[str | None] = mapped_column(String(100))
 
     plan: Mapped[str] = mapped_column(String(50), default="free")

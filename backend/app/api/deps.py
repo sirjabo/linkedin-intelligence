@@ -1,16 +1,20 @@
 """FastAPI dependencies."""
 
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import decode_token
 from app.db.session import AsyncSessionLocal
 
 _redis: Redis | None = None
+bearer = HTTPBearer(auto_error=False)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -43,19 +47,22 @@ async def get_optional_auth(
 
 
 async def get_current_user(
-    authorization: Annotated[str | None, Header()] = None,
-) -> dict[str, str]:
-    """Stub auth dependency — JWT validation lands in a later sprint."""
-    token = await get_optional_auth(authorization)
-    if not token:
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+) -> dict[str, Any]:
+    """Validate Bearer JWT and return token payload."""
+    if not credentials:
         raise HTTPException(
-            status_code=401,
-            detail={
-                "code": "UNAUTHORIZED",
-                "message": "Se requiere autenticación Bearer",
-            },
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
         )
-    return {"token": token, "plan": "free"}
+    try:
+        payload = decode_token(credentials.credentials)
+        return payload
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        ) from exc
 
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
