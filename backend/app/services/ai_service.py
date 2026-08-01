@@ -4,8 +4,8 @@ import httpx
 from app.core.config import settings
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-PARSE_MODEL = "google/gemini-2.0-flash-exp:free"
-CHAT_MODEL = "deepseek/deepseek-chat-v3-0324:free"
+PARSE_MODEL = "mistralai/mistral-7b-instruct:free"
+CHAT_MODEL = "mistralai/mistral-7b-instruct:free"
 
 PARSE_SYSTEM = """Extract CV/resume data from the provided text and return ONLY a valid JSON object with this exact structure. No explanations, just JSON.
 
