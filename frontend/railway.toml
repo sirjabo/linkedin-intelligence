@@ -1,5 +1,5 @@
 [build]
-builder = "railpack"
+builder = "dockerfile"
 
 [deploy]
-startCommand = "npm run start"
+startCommand = "node .next/standalone/server.js"
