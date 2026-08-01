@@ -4,8 +4,8 @@ import httpx
 from app.core.config import settings
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-PARSE_MODEL = "anthropic/claude-haiku-4-5-20251001"
-CHAT_MODEL = "anthropic/claude-sonnet-4-5"
+PARSE_MODEL = "anthropic/claude-3-5-haiku-20241022"
+CHAT_MODEL = "anthropic/claude-3-5-sonnet-20241022"
 
 PARSE_SYSTEM = """Extract CV/resume data from the provided text and return ONLY a valid JSON object with this exact structure. No explanations, just JSON.
 
@@ -141,7 +141,8 @@ async def parse_cv_text(raw_text: str) -> dict:
                 ],
             },
         )
-        response.raise_for_status()
+        if not response.is_success:
+            raise ValueError(f"OpenRouter error {response.status_code}: {response.text}")
         content = response.json()["choices"][0]["message"]["content"].strip()
     if content.startswith("```"):
         content = content.split("```")[1]
