@@ -4,8 +4,8 @@ import httpx
 from app.core.config import settings
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-PARSE_MODEL = "anthropic/claude-3-5-haiku-20241022"
-CHAT_MODEL = "anthropic/claude-3-5-sonnet-20241022"
+PARSE_MODEL = "anthropic/claude-3-haiku-20240307"
+CHAT_MODEL = "anthropic/claude-3-sonnet-20240229"
 
 PARSE_SYSTEM = """Extract CV/resume data from the provided text and return ONLY a valid JSON object with this exact structure. No explanations, just JSON.
 
