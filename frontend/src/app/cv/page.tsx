@@ -68,7 +68,12 @@ export default function CVPage() {
   };
 
   if (!sessionId || !cvData) {
-    return <CVUpload onReady={handleReady} />;
+    return (
+      <>
+        <Navbar />
+        <CVUpload onReady={handleReady} />
+      </>
+    );
   }
 
   return (
