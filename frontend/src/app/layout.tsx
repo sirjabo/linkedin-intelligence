@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CV Intelligence — Coach de CV con IA",
-  description: "Optimizá tu CV para ATS y reclutadores con inteligencia artificial",
+  title: "LinkedIn Intelligence — Optimizá tu perfil tech con IA",
+  description: "Analizamos miles de ofertas para darte recomendaciones exactas: qué skills agregar, cómo reescribir tu CV y dónde estás parado vs. los mejores.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
