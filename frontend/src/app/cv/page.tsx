@@ -6,6 +6,7 @@ import CVPreview from "@/components/CVPreview";
 import { CVData, SSEEvent } from "@/types/cv";
 import { RotateCcw, Zap } from "lucide-react";
 import Link from "next/link";
+import Navbar from "@/components/Navbar";
 
 export default function CVPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
