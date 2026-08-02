@@ -8,7 +8,7 @@ import { CVData, SSEEvent } from "@/types/cv";
 import { RotateCcw, Zap, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export default function CVPage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function CVPage() {
   const [updatedSections, setUpdatedSections] = useState<string[]>([]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    getSupabase().auth.getSession().then(({ data: { session } }) => {
       if (!session) {
         router.replace("/auth");
       } else {

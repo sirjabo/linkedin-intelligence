@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -16,7 +16,7 @@ export default function AuthPage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    getSupabase().auth.getSession().then(({ data: { session } }) => {
       if (session) router.replace("/cv");
       else setChecking(false);
     });
@@ -30,12 +30,12 @@ export default function AuthPage() {
 
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await getSupabase().auth.signUp({ email, password });
         if (error) throw error;
         setInfo("¡Cuenta creada! Revisá tu email para confirmar y luego iniciá sesión.");
         setMode("signin");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await getSupabase().auth.signInWithPassword({ email, password });
         if (error) throw error;
         router.replace("/cv");
       }
