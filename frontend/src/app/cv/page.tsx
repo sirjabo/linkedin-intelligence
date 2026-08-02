@@ -1,19 +1,32 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import CVUpload from "@/components/CVUpload";
 import ChatInterface from "@/components/ChatInterface";
 import CVPreview from "@/components/CVPreview";
 import { CVData, SSEEvent } from "@/types/cv";
-import { RotateCcw, Zap } from "lucide-react";
+import { RotateCcw, Zap, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { supabase } from "@/lib/supabase";
 
 export default function CVPage() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [cvData, setCVData] = useState<CVData | null>(null);
   const [updatedSections, setUpdatedSections] = useState<string[]>([]);
 
-  // Clear updated section highlight after 3 seconds
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.replace("/auth");
+      } else {
+        setAuthChecked(true);
+      }
+    });
+  }, [router]);
+
   useEffect(() => {
     if (updatedSections.length === 0) return;
     const t = setTimeout(() => setUpdatedSections([]), 3000);
@@ -67,6 +80,14 @@ export default function CVPage() {
     setCVData(null);
     setUpdatedSections([]);
   };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+      </div>
+    );
+  }
 
   if (!sessionId || !cvData) {
     return (

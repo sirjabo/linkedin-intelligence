@@ -54,7 +54,7 @@ export default function ChatInterface({ sessionId, cvData, onCVUpdate }: Props) 
     ]);
 
     try {
-      const stream = chatStream(sessionId, msg);
+      const stream = await chatStream(sessionId, msg);
       const reader = stream.getReader();
       let buffer = "";
       let assistantText = "";

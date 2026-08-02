@@ -13,6 +13,7 @@ from app.services.pdf_extractor import extract_pdf_text
 from app.services.pdf_generator import generate_cv_pdf
 from app.services.ai_service import parse_cv_text
 from app.core.config import settings
+from app.core.auth import get_current_user_id
 
 router = APIRouter(prefix="/cv", tags=["cv"])
 
@@ -23,31 +24,29 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 async def upload_cv(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
-    # Save file temporarily
     tmp_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4()}.pdf")
     try:
         async with aiofiles.open(tmp_path, "wb") as f:
             content = await file.read()
             await f.write(content)
 
-        # Extract text
         raw_text = await extract_pdf_text(tmp_path)
         if not raw_text.strip():
             raise HTTPException(status_code=422, detail="Could not extract text from PDF")
 
-        # Parse into structured CV data via AI
         cv_dict = await parse_cv_text(raw_text)
 
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-    # Store in DB
     session = CVSession(
+        user_id=user_id,
         original_filename=file.filename,
         original_text=raw_text,
         cv_data=cv_dict,
@@ -67,6 +66,7 @@ async def upload_cv(
 async def create_cv_from_text(
     payload: dict,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     raw_text = payload.get("text", "").strip()
     if not raw_text:
@@ -75,6 +75,7 @@ async def create_cv_from_text(
     cv_dict = await parse_cv_text(raw_text)
 
     session = CVSession(
+        user_id=user_id,
         original_text=raw_text,
         cv_data=cv_dict,
     )
@@ -93,8 +94,11 @@ async def create_cv_from_text(
 async def get_cv_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    result = await db.execute(select(CVSession).where(CVSession.id == session_id))
+    result = await db.execute(
+        select(CVSession).where(CVSession.id == session_id, CVSession.user_id == user_id)
+    )
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -110,8 +114,11 @@ async def get_cv_session(
 async def download_cv_pdf(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    result = await db.execute(select(CVSession).where(CVSession.id == session_id))
+    result = await db.execute(
+        select(CVSession).where(CVSession.id == session_id, CVSession.user_id == user_id)
+    )
     session = result.scalar_one_or_none()
     if not session or not session.cv_data:
         raise HTTPException(status_code=404, detail="Session not found")

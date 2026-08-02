@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.db.models import CVSession, ChatMessage
 from app.schemas.cv_chat import ChatRequest, ChatMessageResponse
 from app.services.ai_service import stream_cv_chat
+from app.core.auth import get_current_user_id
 
 router = APIRouter(prefix="/cv", tags=["chat"])
 
@@ -51,8 +52,11 @@ def _apply_cv_update(cv_data: dict, update: dict) -> dict:
 async def get_messages(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    result = await db.execute(select(CVSession).where(CVSession.id == session_id))
+    result = await db.execute(
+        select(CVSession).where(CVSession.id == session_id, CVSession.user_id == user_id)
+    )
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -71,13 +75,15 @@ async def chat(
     session_id: str,
     request: ChatRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    result = await db.execute(select(CVSession).where(CVSession.id == session_id))
+    result = await db.execute(
+        select(CVSession).where(CVSession.id == session_id, CVSession.user_id == user_id)
+    )
     session = result.scalar_one_or_none()
     if not session or not session.cv_data:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Load chat history
     history_result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
@@ -88,12 +94,10 @@ async def chat(
         for m in history_result.scalars().all()
     ]
 
-    # Save user message
     user_msg = ChatMessage(session_id=session.id, role="user", content=request.message)
     db.add(user_msg)
     await db.commit()
 
-    # Current CV state
     cv_data = dict(session.cv_data)
     cv_updates_collected = []
     assistant_text_parts = []
