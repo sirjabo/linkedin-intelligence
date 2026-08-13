@@ -109,6 +109,76 @@ def mock_match_agent():
 
 
 @pytest.fixture
+def mock_application_agents():
+    """Mock all three application generation agents (strategy, CV, communication)."""
+    from app.services.agents.application_agent import ApplicationStrategy, CVChangeGuidance
+    from app.services.agents.cv_agent import PersonalizedCV, CVChange
+    from app.services.agents.communication_agent import CoverLetterResult, AnswerResult
+
+    strategy = ApplicationStrategy(
+        overall_approach="Position as a strong Python data engineer with pipeline experience.",
+        cv_changes=[
+            CVChangeGuidance(
+                section="summary",
+                action="rewrite",
+                rationale="Emphasize data pipeline experience",
+                specific_guidance="Lead with pipeline expertise and Python skills",
+            )
+        ],
+        cover_letter_key_points=["Python expertise", "Data pipeline experience"],
+        strengths_to_emphasize=["Python", "SQL", "data pipelines"],
+        risks_to_address=["Limited Spark experience"],
+        recommendation="apply_with_tailoring",
+    )
+
+    cv_result = PersonalizedCV(
+        summary_adapted="Experienced Senior Data Engineer with 5+ years building Python data pipelines.",
+        headline_adapted="Senior Data Engineer | Python | dbt | Kafka",
+        skills_ordered=["Python", "SQL", "dbt", "Kafka"],
+        ats_keywords_added=["data pipeline", "data infrastructure"],
+        changes=[
+            CVChange(
+                section="summary",
+                original="Experienced data professional",
+                adapted="Experienced Senior Data Engineer with 5+ years building Python data pipelines.",
+                rationale="Aligns with JD seniority and Python requirements",
+                evidence_ref="5+ years Python experience",
+            )
+        ],
+        evidence_refs=["Python experience", "SQL experience"],
+    )
+
+    cover_letter = CoverLetterResult(
+        content="Dear Hiring Manager,\n\nI am applying for the Senior Data Engineer role at TechCorp...",
+        key_points_addressed=["Python expertise", "Data pipeline experience"],
+        evidence_refs=["Python experience"],
+    )
+
+    answers = [
+        AnswerResult(
+            question="Why do you want to work at TechCorp?",
+            answer="TechCorp's focus on large-scale data infrastructure aligns with my 5+ years building...",
+            evidence_refs=["Data engineering experience"],
+        )
+    ]
+
+    with patch("app.api.routes.applications.generate_strategy", new_callable=AsyncMock) as s_mock, \
+         patch("app.api.routes.applications.personalize_cv", new_callable=AsyncMock) as cv_mock, \
+         patch("app.api.routes.applications.generate_cover_letter", new_callable=AsyncMock) as cl_mock, \
+         patch("app.api.routes.applications.generate_application_answers", new_callable=AsyncMock) as ans_mock:
+        s_mock.return_value = strategy
+        cv_mock.return_value = cv_result
+        cl_mock.return_value = cover_letter
+        ans_mock.return_value = answers
+        yield {
+            "strategy": s_mock,
+            "cv": cv_mock,
+            "cover_letter": cl_mock,
+            "answers": ans_mock,
+        }
+
+
+@pytest.fixture
 def mock_job_agent():
     """Mock the job agent to return predictable data without LLM calls."""
     from app.services.agents.job_agent import ParsedJob, RequirementItem
