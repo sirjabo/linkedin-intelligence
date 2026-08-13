@@ -2,6 +2,8 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { ArrowRight, FileText, BarChart2, TrendingUp, Zap, Sparkles } from "lucide-react";
 
+// Dashboard link for authenticated users shown in hero section
+
 const features = [
   {
     icon: FileText,
