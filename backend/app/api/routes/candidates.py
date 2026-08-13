@@ -228,6 +228,41 @@ async def rebuild_profile(
                 source_text=ev.get("source_text"),
                 strength=ev.get("strength"),
             ))
+    for exp in consolidated.experience:
+        title = exp.get("title") or exp.get("role") or ""
+        company = exp.get("company", "")
+        claim = f"{title} at {company}".strip(" at ")
+        if claim:
+            db.add(EvidenceRecord(
+                candidate_id=candidate.id,
+                claim=claim,
+                evidence_type="experience",
+                source_ref=company or title,
+                source_text=exp.get("description"),
+                strength=1.0,
+            ))
+    for proj in consolidated.projects:
+        name = proj.get("name") or proj.get("title") or ""
+        if name:
+            db.add(EvidenceRecord(
+                candidate_id=candidate.id,
+                claim=name,
+                evidence_type="project",
+                source_ref=name,
+                source_text=proj.get("description"),
+                strength=0.8,
+            ))
+    for ach in consolidated.achievements:
+        text = ach if isinstance(ach, str) else ach.get("text") or ach.get("description") or ""
+        if text:
+            db.add(EvidenceRecord(
+                candidate_id=candidate.id,
+                claim=text[:200],
+                evidence_type="achievement",
+                source_ref=None,
+                source_text=text if len(text) > 200 else None,
+                strength=0.9,
+            ))
 
     await db.commit()
     await db.refresh(profile)

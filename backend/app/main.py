@@ -15,6 +15,8 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.SECRET_KEY == "dev-secret-change-in-production" and settings.ENVIRONMENT != "development":
+        logger.warning("insecure_secret_key", message="SECRET_KEY is still the default value — set a strong key in production")
     logger.info("startup", environment=settings.ENVIRONMENT)
     yield
     logger.info("shutdown")

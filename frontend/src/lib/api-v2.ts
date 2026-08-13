@@ -18,6 +18,9 @@ async function req<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:token-expired"));
+    }
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`${res.status}: ${text}`);
   }
@@ -26,14 +29,20 @@ async function req<T>(
 
 // Auth
 export function register(email: string, password: string) {
-  return req<{ access_token: string; token_type: string }>(
+  return req<{ access_token: string; refresh_token: string; token_type: string }>(
     "POST", "/auth/register", undefined, { email, password }
   );
 }
 
 export function login(email: string, password: string) {
-  return req<{ access_token: string; token_type: string }>(
+  return req<{ access_token: string; refresh_token: string; token_type: string }>(
     "POST", "/auth/login", undefined, { email, password }
+  );
+}
+
+export function refreshTokens(refresh_token: string) {
+  return req<{ access_token: string; refresh_token: string; token_type: string }>(
+    "POST", "/auth/refresh", undefined, { refresh_token }
   );
 }
 

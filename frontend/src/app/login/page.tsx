@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { login as apiLogin } from "@/lib/api-v2";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { setTokens } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +19,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const data = await apiLogin(email, password);
-      login(data.access_token);
+      setTokens(data.access_token, data.refresh_token);
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al iniciar sesión");

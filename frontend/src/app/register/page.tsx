@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { register as apiRegister } from "@/lib/api-v2";
 
 export default function RegisterPage() {
-  const { login } = useAuth();
+  const { setTokens } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +19,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const data = await apiRegister(email, password);
-      login(data.access_token);
+      setTokens(data.access_token, data.refresh_token);
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al registrarse");
