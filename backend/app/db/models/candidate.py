@@ -30,6 +30,9 @@ class Candidate(Base):
     evidence_records: Mapped[list["EvidenceRecord"]] = relationship(
         "EvidenceRecord", back_populates="candidate", cascade="all, delete-orphan"
     )
+    jobs: Mapped[list["Job"]] = relationship(  # type: ignore[name-defined]
+        "Job", back_populates="candidate", cascade="all, delete-orphan"
+    )
 
 
 class CandidateSource(Base):

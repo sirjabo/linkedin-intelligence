@@ -7,7 +7,7 @@ import structlog
 
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
-from app.api.routes import cv, chat, auth, candidates
+from app.api.routes import cv, chat, auth, candidates, jobs
 
 configure_logging()
 logger = get_logger(__name__)
@@ -56,6 +56,7 @@ app.include_router(chat.router, prefix="/api/v1")
 # v2 routes
 app.include_router(auth.router, prefix="/api/v2")
 app.include_router(candidates.router, prefix="/api/v2")
+app.include_router(jobs.router, prefix="/api/v2")
 
 
 @app.get("/health")

@@ -1,1 +1,1 @@
-from app.api.routes import cv, chat, auth, candidates  # noqa: F401
+from app.api.routes import cv, chat, auth, candidates, jobs  # noqa: F401

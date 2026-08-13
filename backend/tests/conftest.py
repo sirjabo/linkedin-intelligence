@@ -90,3 +90,39 @@ def mock_profile_agent():
                 professional_identity={"name": "Test User", "email": "test@example.com"},
             )
             yield mock
+
+
+@pytest.fixture
+def mock_job_agent():
+    """Mock the job agent to return predictable data without LLM calls."""
+    from app.services.agents.job_agent import ParsedJob, RequirementItem
+    sample = ParsedJob(
+        title="Senior Data Engineer",
+        company="TechCorp",
+        location="Buenos Aires, Argentina",
+        remote_type="hybrid",
+        seniority="senior",
+        employment_type="full-time",
+        tech_stack=["Python", "Spark", "dbt", "Kafka"],
+        requirements=[
+            RequirementItem(
+                description="5+ years of data engineering experience",
+                requirement_type="must_have",
+                category="experience",
+                is_required=True,
+                seniority_signal="5+ years",
+            ),
+            RequirementItem(
+                description="Strong Python and SQL skills",
+                requirement_type="must_have",
+                category="technical",
+                is_required=True,
+            ),
+        ],
+        key_responsibilities=["Design and build data pipelines", "Maintain data warehouse"],
+        company_description="TechCorp is a leading data company",
+        parsing_confidence=0.9,
+    )
+    with patch("app.api.routes.jobs.parse_job_description", new_callable=AsyncMock) as mock:
+        mock.return_value = sample
+        yield mock
