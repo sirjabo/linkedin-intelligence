@@ -41,6 +41,9 @@ class Application(Base):
         "ApplicationEvent", back_populates="application", cascade="all, delete-orphan",
         order_by="ApplicationEvent.occurred_at"
     )
+    interview_prep: Mapped["InterviewPrep | None"] = relationship(  # type: ignore[name-defined]
+        "InterviewPrep", back_populates="application", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class CVVersion(Base):

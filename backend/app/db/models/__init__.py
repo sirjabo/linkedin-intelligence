@@ -3,6 +3,7 @@ from app.db.models.candidate import Candidate, CandidateSource, CandidateProfile
 from app.db.models.job import Job, JobRequirement
 from app.db.models.match import MatchAnalysis
 from app.db.models.application import Application, CVVersion, CoverLetter, ApplicationAnswer, ApplicationEvent
+from app.db.models.interview import InterviewPrep
 from app.db.models.cv_session import CVSession, ChatMessage
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "CoverLetter",
     "ApplicationAnswer",
     "ApplicationEvent",
+    "InterviewPrep",
     "CVSession",
     "ChatMessage",
 ]

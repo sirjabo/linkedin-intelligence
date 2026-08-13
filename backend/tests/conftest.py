@@ -212,3 +212,134 @@ def mock_job_agent():
     with patch("app.api.routes.jobs.parse_job_description", new_callable=AsyncMock) as mock:
         mock.return_value = sample
         yield mock
+
+
+@pytest.fixture
+def mock_interview_agent():
+    """Mock the interview prep agent."""
+    from app.services.agents.interview_agent import (
+        InterviewPrepResult, TechnicalQuestion, BehavioralQuestion, STARStory
+    )
+    result = InterviewPrepResult(
+        technical_questions=[
+            TechnicalQuestion(question="Explain your data pipeline architecture.", rationale="Core JD requirement"),
+            TechnicalQuestion(question="How do you handle data quality in dbt?", rationale="dbt mentioned in JD"),
+            TechnicalQuestion(question="Describe your Kafka experience.", rationale="Kafka required"),
+            TechnicalQuestion(question="How do you optimize Spark jobs?", rationale="Spark required"),
+            TechnicalQuestion(question="Explain SQL window functions.", rationale="SQL proficiency"),
+        ],
+        behavioral_questions=[
+            BehavioralQuestion(question="Tell me about a time you led a data migration.", competency="leadership"),
+            BehavioralQuestion(question="Describe a complex technical problem you solved.", competency="problem_solving"),
+            BehavioralQuestion(question="How do you handle ambiguous requirements?", competency="adaptability"),
+            BehavioralQuestion(question="Tell me about a failed project.", competency="resilience"),
+            BehavioralQuestion(question="How do you collaborate with data scientists?", competency="collaboration"),
+        ],
+        star_stories=[
+            STARStory(
+                competency="technical_leadership",
+                situation="Our team needed to migrate a 10TB data warehouse.",
+                task="I was responsible for designing the migration strategy.",
+                action="I designed a phased migration with zero downtime.",
+                result="Successfully migrated with 99.9% data integrity.",
+            ),
+            STARStory(
+                competency="problem_solving",
+                situation="Pipeline failures were causing data quality issues.",
+                task="Diagnose and fix the root cause.",
+                action="Implemented comprehensive monitoring and alerting.",
+                result="Reduced pipeline failures by 85%.",
+            ),
+            STARStory(
+                competency="collaboration",
+                situation="Cross-team project with conflicting priorities.",
+                task="Align stakeholders on a shared approach.",
+                action="Facilitated workshops and created shared documentation.",
+                result="Delivered project on time with all stakeholders satisfied.",
+            ),
+        ],
+        questions_to_ask=[
+            "What does the data team's typical sprint look like?",
+            "What are the biggest data quality challenges you face?",
+            "How do you measure success for this role?",
+            "What is the team's approach to technical debt?",
+            "What opportunities exist for growth?",
+        ],
+        company_research={
+            "culture": "Data-driven, collaborative engineering culture.",
+            "mission": "Empowering businesses through data insights.",
+            "values": "Innovation, integrity, and continuous improvement.",
+        },
+    )
+    with patch("app.api.routes.interview.generate_interview_prep", new_callable=AsyncMock) as mock:
+        mock.return_value = result
+        yield mock
+
+
+REMOTIVE_SAMPLE = {
+    "jobs": [
+        {
+            "id": 101,
+            "title": "Senior Data Engineer",
+            "company_name": "TechCorp",
+            "candidate_required_location": "Worldwide",
+            "job_type": "full_time",
+            "url": "https://remotive.com/remote-jobs/data/101",
+            "description": "Python SQL data pipelines dbt kafka spark",
+            "tags": [{"name": "python"}, {"name": "sql"}, {"name": "dbt"}],
+            "salary": "$120k-$150k",
+            "publication_date": "2026-08-01",
+        },
+        {
+            "id": 102,
+            "title": "Frontend React Developer",
+            "company_name": "WebCo",
+            "candidate_required_location": "USA",
+            "job_type": "full_time",
+            "url": "https://remotive.com/remote-jobs/frontend/102",
+            "description": "React TypeScript CSS",
+            "tags": [{"name": "react"}, {"name": "typescript"}],
+            "salary": None,
+            "publication_date": "2026-08-02",
+        },
+    ]
+}
+
+
+@pytest.fixture
+def mock_remotive():
+    """Mock RemotiveSource.fetch to avoid real HTTP calls in tests."""
+    from app.services.job_sources.base import JobRaw
+
+    jobs = [
+        JobRaw(
+            external_id="101",
+            title="Senior Data Engineer",
+            company="TechCorp",
+            location="Worldwide",
+            remote_type="remote",
+            url="https://remotive.com/remote-jobs/data/101",
+            description="Python SQL data pipelines dbt kafka spark",
+            tech_tags=["python", "sql", "dbt"],
+            salary_range="$120k-$150k",
+            published_at="2026-08-01",
+        ),
+        JobRaw(
+            external_id="102",
+            title="Frontend React Developer",
+            company="WebCo",
+            location="USA",
+            remote_type="remote",
+            url="https://remotive.com/remote-jobs/frontend/102",
+            description="React TypeScript CSS",
+            tech_tags=["react", "typescript"],
+            salary_range=None,
+            published_at="2026-08-02",
+        ),
+    ]
+    with patch(
+        "app.api.routes.recommendations.RemotiveSource.fetch",
+        new_callable=AsyncMock,
+    ) as mock:
+        mock.return_value = jobs
+        yield mock
