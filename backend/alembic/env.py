@@ -18,6 +18,7 @@ from app.db.base import Base  # noqa: F401, E402
 import app.db.models.user  # noqa: F401, E402
 import app.db.models.candidate  # noqa: F401, E402
 import app.db.models.job  # noqa: F401, E402
+import app.db.models.match  # noqa: F401, E402
 import app.db.models.cv_session  # noqa: F401, E402
 
 target_metadata = Base.metadata

@@ -37,6 +37,9 @@ class Job(Base):
     requirements: Mapped[list["JobRequirement"]] = relationship(
         "JobRequirement", back_populates="job", cascade="all, delete-orphan"
     )
+    match_analyses: Mapped[list["MatchAnalysis"]] = relationship(  # type: ignore[name-defined]
+        "MatchAnalysis", back_populates="job", cascade="all, delete-orphan"
+    )
 
 
 class JobRequirement(Base):

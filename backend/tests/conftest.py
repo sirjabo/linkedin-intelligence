@@ -93,6 +93,22 @@ def mock_profile_agent():
 
 
 @pytest.fixture
+def mock_match_agent():
+    """Mock the match agent LLM call; deterministic engine still runs for real."""
+    from app.services.agents.match_agent import LLMMatchResult
+    sample = LLMMatchResult(
+        score=0.80,
+        reasoning="Strong Python and data engineering background aligns well with requirements.",
+        strengths=["Python expertise", "Data pipeline experience"],
+        gaps=["No explicit Spark experience listed"],
+        recommendation="apply_with_tailoring",
+    )
+    with patch("app.api.routes.match.reason_about_match", new_callable=AsyncMock) as mock:
+        mock.return_value = sample
+        yield mock
+
+
+@pytest.fixture
 def mock_job_agent():
     """Mock the job agent to return predictable data without LLM calls."""
     from app.services.agents.job_agent import ParsedJob, RequirementItem

@@ -1,6 +1,7 @@
 from app.db.models.user import User
 from app.db.models.candidate import Candidate, CandidateSource, CandidateProfile, EvidenceRecord
 from app.db.models.job import Job, JobRequirement
+from app.db.models.match import MatchAnalysis
 from app.db.models.cv_session import CVSession, ChatMessage
 
 __all__ = [
@@ -11,6 +12,7 @@ __all__ = [
     "EvidenceRecord",
     "Job",
     "JobRequirement",
+    "MatchAnalysis",
     "CVSession",
     "ChatMessage",
 ]
