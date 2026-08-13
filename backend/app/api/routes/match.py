@@ -83,6 +83,9 @@ async def run_match(
     # location lives on Candidate, not CandidateProfile
     candidate_location: str | None = candidate.location
 
+    candidate_salary_pref = (
+        candidate.preferences.get("salary_min") if candidate.preferences else None
+    )
     det_result = compute_deterministic(
         profile_skills=profile_skills,
         profile_career_level=profile_career_level,
@@ -93,6 +96,8 @@ async def run_match(
         job_remote_type=job.remote_type,
         job_tech_stack=job.tech_stack or [],
         requirements=job.requirements,
+        job_salary_max=job.salary_max,
+        candidate_salary_pref_min=int(candidate_salary_pref) if candidate_salary_pref is not None else None,
     )
 
     # ── LLM reasoning ─────────────────────────────────────────────────────────

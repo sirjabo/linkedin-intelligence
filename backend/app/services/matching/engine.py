@@ -39,6 +39,7 @@ class DeterministicResult:
     experience_score: float
     location_score: float
     education_score: float
+    salary_score: float | None  # None when salary data is unavailable
     overall_score: float
     matched_skills: list[str] = field(default_factory=list)
     missing_skills: list[str] = field(default_factory=list)
@@ -144,6 +145,29 @@ def _score_education(profile_education: list | None, requirements: list) -> floa
     return 0.85 if profile_education else 0.50
 
 
+def _score_salary(
+    job_salary_max: int | None,
+    candidate_salary_pref_min: int | None,
+) -> float | None:
+    """Return a salary compatibility score or None when data is unavailable.
+
+    1.0  — salary max meets or exceeds candidate's minimum
+    0.75 — salary max is 0–10% below candidate minimum (close enough)
+    0.50 — salary max is 10–30% below (worth discussing)
+    0.20 — salary max is >30% below (likely dealbreaker)
+    """
+    if job_salary_max is None or candidate_salary_pref_min is None:
+        return None
+    if job_salary_max >= candidate_salary_pref_min:
+        return 1.0
+    ratio = job_salary_max / candidate_salary_pref_min
+    if ratio >= 0.90:
+        return 0.75
+    if ratio >= 0.70:
+        return 0.50
+    return 0.20
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def tier_from_score(score: float) -> str:
@@ -151,6 +175,16 @@ def tier_from_score(score: float) -> str:
         if score >= threshold:
             return tier
     return "poor"
+
+
+SALARY_WEIGHT = 0.10
+BASE_WEIGHTS_WITH_SALARY = {
+    "skill_overlap": 0.36,
+    "experience": 0.27,
+    "location": 0.18,
+    "education": 0.09,
+    "salary": SALARY_WEIGHT,
+}
 
 
 def compute_deterministic(
@@ -163,10 +197,13 @@ def compute_deterministic(
     job_remote_type: str | None,
     job_tech_stack: list[str] | None,
     requirements: list,
+    job_salary_max: int | None = None,
+    candidate_salary_pref_min: int | None = None,
 ) -> DeterministicResult:
     """Compute deterministic match scores from structured profile + job data.
 
     Accepts plain Python values so it can be unit-tested without ORM objects.
+    When salary data is available, incorporates a 5th salary component.
     """
     skill_score, matched, missing = _score_skill_overlap(
         profile_skills, requirements, job_tech_stack
@@ -174,19 +211,31 @@ def compute_deterministic(
     exp_score = _score_experience(profile_career_level, job_seniority)
     loc_score = _score_location(candidate_location, job_location, job_remote_type)
     edu_score = _score_education(profile_education, requirements)
+    sal_score = _score_salary(job_salary_max, candidate_salary_pref_min)
 
-    overall = (
-        skill_score * WEIGHTS["skill_overlap"]
-        + exp_score * WEIGHTS["experience"]
-        + loc_score * WEIGHTS["location"]
-        + edu_score * WEIGHTS["education"]
-    )
+    if sal_score is not None:
+        w = BASE_WEIGHTS_WITH_SALARY
+        overall = (
+            skill_score * w["skill_overlap"]
+            + exp_score * w["experience"]
+            + loc_score * w["location"]
+            + edu_score * w["education"]
+            + sal_score * w["salary"]
+        )
+    else:
+        overall = (
+            skill_score * WEIGHTS["skill_overlap"]
+            + exp_score * WEIGHTS["experience"]
+            + loc_score * WEIGHTS["location"]
+            + edu_score * WEIGHTS["education"]
+        )
 
     return DeterministicResult(
         skill_overlap_score=round(skill_score, 3),
         experience_score=round(exp_score, 3),
         location_score=round(loc_score, 3),
         education_score=round(edu_score, 3),
+        salary_score=round(sal_score, 3) if sal_score is not None else None,
         overall_score=round(overall, 3),
         matched_skills=matched,
         missing_skills=missing,
