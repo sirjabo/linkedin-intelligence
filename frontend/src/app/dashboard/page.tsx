@@ -68,6 +68,12 @@ export default function DashboardPage() {
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-lg font-bold text-white">LinkedIn Intelligence</h1>
           <div className="flex items-center gap-4">
+            <Link href="/profile" className="text-sm text-slate-400 hover:text-white transition-colors">
+              Mi Perfil
+            </Link>
+            <Link href="/recommendations" className="text-sm text-slate-400 hover:text-white transition-colors">
+              Recomendados
+            </Link>
             <Link href="/applications" className="text-sm text-slate-400 hover:text-white transition-colors">
               Postulaciones
             </Link>

@@ -84,10 +84,15 @@ export default function ApplicationsPage() {
                 href={`/applications/${app.id}`}
                 className="block bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Job ID: {app.job_id.slice(0, 8)}…</p>
-                    <div className="flex items-center gap-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-white truncate">
+                      {app.job_title ?? "Trabajo sin título"}
+                    </h3>
+                    {app.job_company && (
+                      <p className="text-sm text-slate-400 mt-0.5">{app.job_company}</p>
+                    )}
+                    <div className="flex items-center gap-3 mt-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[app.status] ?? STATUS_COLOR.draft}`}>
                         {STATUS_LABEL[app.status] ?? app.status}
                       </span>
@@ -95,12 +100,12 @@ export default function ApplicationsPage() {
                         <span className="text-xs text-slate-500">CV v{app.cv_versions.length}</span>
                       )}
                       {app.cover_letters.length > 0 && (
-                        <span className="text-xs text-slate-500">Carta de presentación</span>
+                        <span className="text-xs text-slate-500">Carta</span>
                       )}
                     </div>
                   </div>
                   {app.applied_at && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 flex-shrink-0">
                       {new Date(app.applied_at).toLocaleDateString("es-AR")}
                     </p>
                   )}

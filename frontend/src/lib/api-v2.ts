@@ -67,14 +67,23 @@ export interface MatchResult {
   id: string;
   job_id: string;
   overall_score: number;
-  tier: string;
+  match_tier: string;
   deterministic_score: number;
   llm_score: number | null;
-  reasoning: string | null;
-  strengths: string[];
-  gaps: string[];
+  skill_overlap_score: number | null;
+  experience_score: number | null;
+  location_score: number | null;
+  education_score: number | null;
+  llm_reasoning: string | null;
+  llm_strengths: string[];
+  llm_gaps: string[];
   recommendation: string | null;
   created_at: string;
+  // legacy aliases (kept for backwards compat)
+  tier?: string;
+  reasoning?: string | null;
+  strengths?: string[];
+  gaps?: string[];
 }
 
 export function runMatch(token: string, jobId: string) {
@@ -89,6 +98,8 @@ export function getMatch(token: string, jobId: string) {
 export interface Application {
   id: string;
   job_id: string;
+  job_title?: string | null;
+  job_company?: string | null;
   status: string;
   notes: string | null;
   applied_at: string | null;
@@ -144,6 +155,43 @@ export function addEvent(token: string, appId: string, event_type: string, notes
   return req<AppEvent>("POST", `/applications/${appId}/events`, token, { event_type, notes });
 }
 
+export interface ApplicationAnswer {
+  id: string;
+  question: string;
+  answer: string;
+  evidence_refs: unknown[] | null;
+  created_at: string;
+}
+
+export function generateAnswers(token: string, appId: string, questions: string[]) {
+  return req<ApplicationAnswer[]>("POST", `/applications/${appId}/answers`, token, { questions });
+}
+
+export interface TechnicalQuestion { question: string; rationale: string }
+export interface BehavioralQuestion { question: string; competency: string }
+export interface STARStory { competency: string; situation: string; task: string; action: string; result: string }
+export interface CompanyResearch { culture: string; mission: string; values: string }
+
+export interface InterviewPrep {
+  id: string;
+  application_id: string;
+  technical_questions: TechnicalQuestion[];
+  behavioral_questions: BehavioralQuestion[];
+  star_stories: STARStory[];
+  questions_to_ask: string[];
+  company_research: CompanyResearch;
+  created_at: string;
+  updated_at: string;
+}
+
+export function generateInterviewPrep(token: string, appId: string) {
+  return req<InterviewPrep>("POST", `/applications/${appId}/interview-prep`, token);
+}
+
+export function getInterviewPrep(token: string, appId: string) {
+  return req<InterviewPrep>("GET", `/applications/${appId}/interview-prep`, token);
+}
+
 // Recommendations
 export interface Recommendation {
   external_id: string;
@@ -160,4 +208,70 @@ export interface Recommendation {
 
 export function getRecommendations(token: string, query?: string) {
   return req<Recommendation[]>("POST", "/recommendations", token, { query: query ?? "", limit: 20 });
+}
+
+// Candidates
+export interface Candidate {
+  id: string;
+  user_id: string;
+  name: string | null;
+  email: string | null;
+  location: string | null;
+  target_roles: string[] | null;
+  preferences: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CandidateSource {
+  id: string;
+  candidate_id: string;
+  source_type: string;
+  source_url: string | null;
+  extracted_content: Record<string, unknown> | null;
+  extraction_confidence: number | null;
+  created_at: string;
+}
+
+export interface CandidateProfile {
+  id: string;
+  candidate_id: string;
+  summary: string | null;
+  professional_identity: Record<string, unknown> | null;
+  career_level: string | null;
+  industries: unknown[] | null;
+  competencies: unknown[] | null;
+  skills: unknown[] | null;
+  experience: unknown[] | null;
+  education: unknown[] | null;
+  projects: unknown[] | null;
+  certifications: unknown[] | null;
+  achievements: unknown[] | null;
+  conflicts: unknown[] | null;
+  version: number;
+  rebuilt_at: string;
+}
+
+export function getCandidate(token: string) {
+  return req<Candidate>("GET", "/candidates/me", token);
+}
+
+export function updateCandidate(token: string, data: Partial<Pick<Candidate, "name" | "email" | "location" | "target_roles">>) {
+  return req<Candidate>("PUT", "/candidates/me", token, data);
+}
+
+export function ingestTextSource(token: string, source_type: string, raw_text: string) {
+  return req<CandidateSource>("POST", "/candidates/me/sources/text", token, { source_type, raw_text });
+}
+
+export function listSources(token: string) {
+  return req<CandidateSource[]>("GET", "/candidates/me/sources", token);
+}
+
+export function rebuildProfile(token: string) {
+  return req<CandidateProfile>("POST", "/candidates/me/profile/rebuild", token);
+}
+
+export function getProfile(token: string) {
+  return req<CandidateProfile>("GET", "/candidates/me/profile", token);
 }

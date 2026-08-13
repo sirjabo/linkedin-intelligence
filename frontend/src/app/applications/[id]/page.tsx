@@ -8,11 +8,13 @@ import {
   generateCV,
   generateCoverLetter,
   addEvent,
+  generateAnswers,
   type Application,
   type CVVersion,
   type CoverLetter,
+  type ApplicationAnswer,
 } from "@/lib/api-v2";
-import { ArrowLeftIcon, FileTextIcon, MailIcon, ZapIcon, CheckIcon } from "lucide-react";
+import { ArrowLeftIcon, FileTextIcon, MailIcon, ZapIcon, CheckIcon, MessageSquareIcon, BrainIcon } from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -35,6 +37,9 @@ export default function ApplicationDetailPage() {
   const [genCV, setGenCV] = useState(false);
   const [genCL, setGenCL] = useState(false);
   const [markApplied, setMarkApplied] = useState(false);
+  const [questions, setQuestions] = useState("");
+  const [answers, setAnswers] = useState<ApplicationAnswer[]>([]);
+  const [genAnswers, setGenAnswers] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !token) router.replace("/login");
@@ -77,6 +82,22 @@ export default function ApplicationDetailPage() {
       setError(err instanceof Error ? err.message : "Error al generar carta");
     } finally {
       setGenCL(false);
+    }
+  }
+
+  async function handleGenerateAnswers() {
+    if (!token || !id) return;
+    const qs = questions.split("\n").map((q) => q.trim()).filter(Boolean);
+    if (qs.length === 0) return;
+    setGenAnswers(true);
+    setError("");
+    try {
+      const result = await generateAnswers(token, id, qs);
+      setAnswers(result);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al generar respuestas");
+    } finally {
+      setGenAnswers(false);
     }
   }
 
@@ -168,6 +189,14 @@ export default function ApplicationDetailPage() {
             <MailIcon size={15} />
             {genCL ? "Generando carta…" : "Generar carta de presentación"}
           </button>
+
+          <Link
+            href={`/applications/${id}/interview-prep`}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+          >
+            <BrainIcon size={15} />
+            Preparación entrevista
+          </Link>
         </div>
 
         {/* Strategy */}
@@ -216,6 +245,40 @@ export default function ApplicationDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Application answers */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+            <MessageSquareIcon size={16} className="text-blue-400" />
+            Preguntas de la empresa
+          </h3>
+          <p className="text-xs text-slate-500 mb-3">Pegá las preguntas del formulario, una por línea.</p>
+          <textarea
+            value={questions}
+            onChange={(e) => setQuestions(e.target.value)}
+            rows={4}
+            placeholder={"¿Por qué querés trabajar en esta empresa?\n¿Cuál es tu mayor fortaleza?\n…"}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none mb-3"
+          />
+          <button
+            onClick={handleGenerateAnswers}
+            disabled={genAnswers || !questions.trim()}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+          >
+            <ZapIcon size={14} />
+            {genAnswers ? "Generando…" : "Generar respuestas"}
+          </button>
+          {answers.length > 0 && (
+            <div className="mt-5 space-y-5">
+              {answers.map((a, i) => (
+                <div key={a.id ?? i}>
+                  <p className="text-sm font-medium text-slate-300 mb-1">{i + 1}. {a.question}</p>
+                  <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-line border-l-2 border-blue-600/40 pl-3">{a.answer}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Events timeline */}
         {app.events.length > 0 && (
