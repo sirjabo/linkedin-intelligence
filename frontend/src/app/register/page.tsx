@@ -20,7 +20,7 @@ export default function RegisterPage() {
     try {
       const data = await apiRegister(email, password);
       setTokens(data.access_token, data.refresh_token);
-      router.push("/dashboard");
+      router.push("/onboarding");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al registrarse");
     } finally {
