@@ -12,7 +12,7 @@ from app.db.models.job import Job
 from app.db.models.match import MatchAnalysis
 from app.api.deps import get_current_user
 from app.db.models.user import User
-from app.schemas.match import MatchResponse
+from app.schemas.match import MatchResponse, MatchFeedback
 from app.services.matching.engine import compute_deterministic, tier_from_score, DET_WEIGHT
 from app.services.agents.match_agent import reason_about_match
 from app.core.logging import get_logger
@@ -230,4 +230,45 @@ async def get_match(
     analysis = result.scalar_one_or_none()
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No match analysis found")
+    return analysis
+
+
+@router.post("/{job_id}/match/feedback", response_model=MatchResponse)
+async def record_match_outcome(
+    job_id: uuid.UUID,
+    payload: MatchFeedback,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Record the real-world outcome of an application for learning loop."""
+    await _get_job_for_user(job_id, user, db)
+
+    cand_result = await db.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    )
+    candidate = cand_result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No match analysis found")
+
+    result = await db.execute(
+        select(MatchAnalysis).where(
+            MatchAnalysis.job_id == job_id,
+            MatchAnalysis.candidate_id == candidate.id,
+        )
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No match analysis found")
+
+    analysis.outcome = payload.outcome
+    analysis.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(analysis)
+
+    logger.info(
+        "match.outcome_recorded",
+        job_id=str(job_id),
+        candidate_id=str(candidate.id),
+        outcome=payload.outcome,
+    )
     return analysis

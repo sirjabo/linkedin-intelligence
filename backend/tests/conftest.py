@@ -218,7 +218,7 @@ def mock_job_agent():
 def mock_interview_agent():
     """Mock the interview prep agent."""
     from app.services.agents.interview_agent import (
-        InterviewPrepResult, TechnicalQuestion, BehavioralQuestion, STARStory
+        InterviewPrepResult, TechnicalQuestion, BehavioralQuestion, STARStory, CompanyResearch
     )
     result = InterviewPrepResult(
         technical_questions=[
@@ -265,11 +265,11 @@ def mock_interview_agent():
             "What is the team's approach to technical debt?",
             "What opportunities exist for growth?",
         ],
-        company_research={
-            "culture": "Data-driven, collaborative engineering culture.",
-            "mission": "Empowering businesses through data insights.",
-            "values": "Innovation, integrity, and continuous improvement.",
-        },
+        company_research=CompanyResearch(
+            culture="Data-driven, collaborative engineering culture.",
+            mission="Empowering businesses through data insights.",
+            values="Innovation, integrity, and continuous improvement.",
+        ),
     )
     with patch("app.api.routes.interview.generate_interview_prep", new_callable=AsyncMock) as mock:
         mock.return_value = result

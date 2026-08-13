@@ -10,9 +10,11 @@ import {
   listSources,
   rebuildProfile,
   getProfile,
+  getProfileHealth,
   type Candidate,
   type CandidateSource,
   type CandidateProfile,
+  type ProfileHealth,
 } from "@/lib/api-v2";
 import {
   ArrowLeftIcon, UserIcon, PlusIcon, RefreshCwIcon,
@@ -45,6 +47,7 @@ export default function ProfilePage() {
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [sources, setSources] = useState<CandidateSource[]>([]);
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
+  const [health, setHealth] = useState<ProfileHealth | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -73,12 +76,14 @@ export default function ProfilePage() {
     setPageLoading(true);
     setError("");
     try {
-      const [cand, srcs] = await Promise.all([
+      const [cand, srcs, h] = await Promise.all([
         getCandidate(token).catch(() => null),
         listSources(token).catch(() => [] as CandidateSource[]),
+        getProfileHealth(token).catch(() => null),
       ]);
       setCandidate(cand);
       setSources(srcs);
+      setHealth(h);
       if (cand) {
         const prof = await getProfile(token).catch(() => null);
         setProfile(prof);
@@ -143,6 +148,8 @@ export default function ProfilePage() {
     try {
       const prof = await rebuildProfile(token);
       setProfile(prof);
+      const h = await getProfileHealth(token).catch(() => null);
+      setHealth(h);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al reconstruir perfil");
     } finally {
@@ -203,6 +210,37 @@ export default function ProfilePage() {
         {error && (
           <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
+          </div>
+        )}
+
+        {/* Profile health score */}
+        {health && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                <CheckCircleIcon size={16} className="text-blue-400" />
+                Salud del perfil
+              </h3>
+              <span className={`text-sm font-bold ${health.score >= 0.8 ? "text-emerald-400" : health.score >= 0.5 ? "text-yellow-400" : "text-red-400"}`}>
+                {Math.round(health.score * 100)}%
+              </span>
+            </div>
+            <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-4">
+              <div
+                className={`h-full rounded-full transition-all ${health.score >= 0.8 ? "bg-emerald-500" : health.score >= 0.5 ? "bg-yellow-500" : "bg-red-500"}`}
+                style={{ width: `${Math.round(health.score * 100)}%` }}
+              />
+            </div>
+            {health.tips.length > 0 && (
+              <ul className="space-y-1.5">
+                {health.tips.map((tip, i) => (
+                  <li key={i} className="text-xs text-slate-400 flex items-start gap-2">
+                    <AlertCircleIcon size={12} className="text-yellow-500 mt-0.5 flex-shrink-0" />
+                    {tip}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

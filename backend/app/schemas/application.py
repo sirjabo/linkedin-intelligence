@@ -91,6 +91,8 @@ class ApplicationListResponse(BaseModel):
     id: uuid.UUID
     candidate_id: uuid.UUID
     job_id: uuid.UUID
+    job_title: str | None = None
+    job_company: str | None = None
     status: str
     notes: str | None
     follow_up_date: date | None

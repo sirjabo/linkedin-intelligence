@@ -77,6 +77,9 @@ export default function DashboardPage() {
             <Link href="/applications" className="text-sm text-slate-400 hover:text-white transition-colors">
               Postulaciones
             </Link>
+            <Link href="/analytics" className="text-sm text-slate-400 hover:text-white transition-colors">
+              Analytics
+            </Link>
             <button
               onClick={() => { logout(); router.push("/login"); }}
               className="text-slate-400 hover:text-white transition-colors"

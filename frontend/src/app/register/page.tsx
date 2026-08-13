@@ -64,7 +64,7 @@ export default function RegisterPage() {
               required
               minLength={8}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
-              placeholder="Mínimo 8 caracteres"
+              placeholder="Mínimo 8 caracteres, mayúscula y número"
             />
           </div>
 

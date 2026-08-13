@@ -47,13 +47,69 @@ class DeterministicResult:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Skill synonym groups — any term within a group is treated as equivalent.
+# Each inner list is a family of aliases for the same technology/concept.
+SKILL_SYNONYMS: list[list[str]] = [
+    ["javascript", "js", "ecmascript", "node.js", "nodejs", "node"],
+    ["typescript", "ts"],
+    ["python", "py"],
+    ["machine learning", "ml"],
+    ["artificial intelligence", "ai"],
+    ["natural language processing", "nlp"],
+    ["deep learning", "dl"],
+    ["large language model", "llm", "large language models"],
+    ["kubernetes", "k8s"],
+    ["postgresql", "postgres", "pg"],
+    ["amazon web services", "aws"],
+    ["google cloud", "gcp", "google cloud platform"],
+    ["microsoft azure", "azure"],
+    ["continuous integration", "ci/cd", "ci", "cd"],
+    ["react.js", "react", "reactjs"],
+    ["vue.js", "vue", "vuejs"],
+    ["next.js", "nextjs"],
+    ["fastapi", "fast api"],
+    ["spring boot", "spring"],
+    ["c++", "cpp"],
+    ["c#", "csharp", "c sharp"],
+    ["elastic search", "elasticsearch"],
+    ["redis", "redis cache"],
+    ["mongodb", "mongo"],
+    ["graphql", "graph ql"],
+    ["rest api", "rest", "restful", "restful api"],
+]
+
+# Build a lookup: normalized term → set of synonyms (including itself)
+_SYNONYM_MAP: dict[str, frozenset[str]] = {}
+for _group in SKILL_SYNONYMS:
+    _normed = frozenset(s.lower().strip() for s in _group)
+    for _term in _normed:
+        _SYNONYM_MAP[_term] = _normed
+
+
+def _expand_skill(skill: str) -> frozenset[str]:
+    """Return the synonym group for a skill, or a singleton if not found."""
+    n = skill.lower().strip()
+    return _SYNONYM_MAP.get(n, frozenset({n}))
+
+
 def _norm(s: str) -> str:
     return s.lower().strip()
 
 
 def _skill_in_text(candidate_skills: set[str], text: str) -> bool:
     text_lower = _norm(text)
-    return any(sk and (sk in text_lower or text_lower in sk) for sk in candidate_skills)
+    # Direct substring match
+    if any(sk and (sk in text_lower or text_lower in sk) for sk in candidate_skills):
+        return True
+    # Synonym expansion: expand the requirement text and check against expanded candidate skills
+    req_synonyms = _expand_skill(text_lower)
+    for sk in candidate_skills:
+        if not sk:
+            continue
+        sk_synonyms = _expand_skill(sk)
+        if req_synonyms & sk_synonyms:
+            return True
+    return False
 
 
 def _score_skill_overlap(

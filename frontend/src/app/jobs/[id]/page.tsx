@@ -3,9 +3,17 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { getJob, runMatch, getMatch, createApplication, type Job, type MatchResult } from "@/lib/api-v2";
+import { getJob, runMatch, getMatch, createApplication, recordMatchOutcome, type Job, type MatchResult } from "@/lib/api-v2";
 import MatchScoreCard from "@/components/MatchScoreCard";
-import { ArrowLeftIcon, ZapIcon, FileTextIcon } from "lucide-react";
+import { ArrowLeftIcon, ZapIcon, FileTextIcon, TrendingUpIcon } from "lucide-react";
+
+const OUTCOME_OPTIONS = [
+  { value: "offer", label: "Recibí oferta" },
+  { value: "interview", label: "Llegué a entrevista" },
+  { value: "phone_screen", label: "Entrevista inicial" },
+  { value: "rejected", label: "Rechazado" },
+  { value: "no_response", label: "Sin respuesta" },
+];
 
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +25,7 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [runningMatch, setRunningMatch] = useState(false);
   const [creatingApp, setCreatingApp] = useState(false);
+  const [recordingOutcome, setRecordingOutcome] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -62,6 +71,20 @@ export default function JobDetailPage() {
     }
   }
 
+  async function handleRecordOutcome(outcome: string) {
+    if (!token || !id || !match) return;
+    setRecordingOutcome(true);
+    setError("");
+    try {
+      const updated = await recordMatchOutcome(token, id, outcome);
+      setMatch(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al registrar resultado");
+    } finally {
+      setRecordingOutcome(false);
+    }
+  }
+
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -77,6 +100,8 @@ export default function JobDetailPage() {
       </div>
     );
   }
+
+  const currentOutcome = match?.outcome ?? null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -125,7 +150,7 @@ export default function JobDetailPage() {
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={handleRunMatch}
                 disabled={runningMatch}
@@ -144,6 +169,40 @@ export default function JobDetailPage() {
                 {creatingApp ? "Creando…" : "Crear postulación"}
               </button>
             </div>
+
+            {/* Learning loop: outcome feedback */}
+            {match && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                  <TrendingUpIcon size={16} className="text-blue-400" />
+                  ¿Cómo resultó esta postulación?
+                </h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Registrar el resultado real ayuda a mejorar el algoritmo de matching.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {OUTCOME_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleRecordOutcome(opt.value)}
+                      disabled={recordingOutcome}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        currentOutcome === opt.value
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {currentOutcome && (
+                  <p className="text-xs text-emerald-400 mt-3">
+                    Resultado registrado: {OUTCOME_OPTIONS.find(o => o.value === currentOutcome)?.label ?? currentOutcome}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Match score */}

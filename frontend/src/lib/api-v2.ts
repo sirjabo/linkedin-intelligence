@@ -103,6 +103,10 @@ export function getMatch(token: string, jobId: string) {
   return req<MatchResult>("GET", `/jobs/${jobId}/match`, token);
 }
 
+export function recordMatchOutcome(token: string, jobId: string, outcome: string) {
+  return req<MatchResult>("POST", `/jobs/${jobId}/match/feedback`, token, { outcome });
+}
+
 // Applications
 export interface Application {
   id: string;
@@ -111,6 +115,7 @@ export interface Application {
   job_company?: string | null;
   status: string;
   notes: string | null;
+  follow_up_date: string | null;
   applied_at: string | null;
   created_at: string;
   cv_versions: CVVersion[];
@@ -160,6 +165,14 @@ export function generateCoverLetter(token: string, appId: string) {
   return req<CoverLetter>("POST", `/applications/${appId}/cover-letter`, token);
 }
 
+export function updateApplication(
+  token: string,
+  id: string,
+  data: { status?: string; notes?: string | null; follow_up_date?: string | null; applied_at?: string | null }
+) {
+  return req<Application>("PATCH", `/applications/${id}`, token, data);
+}
+
 export function addEvent(token: string, appId: string, event_type: string, notes?: string) {
   return req<AppEvent>("POST", `/applications/${appId}/events`, token, { event_type, notes });
 }
@@ -191,6 +204,19 @@ export interface InterviewPrep {
   company_research: CompanyResearch;
   created_at: string;
   updated_at: string;
+}
+
+// Stats
+export interface ApplicationStats {
+  total: number;
+  funnel: Record<string, number>;
+  active: number;
+  offers: number;
+  rejected: number;
+}
+
+export function getApplicationStats(token: string) {
+  return req<ApplicationStats>("GET", "/applications/stats/summary", token);
 }
 
 export function generateInterviewPrep(token: string, appId: string) {
@@ -283,4 +309,16 @@ export function rebuildProfile(token: string) {
 
 export function getProfile(token: string) {
   return req<CandidateProfile>("GET", "/candidates/me/profile", token);
+}
+
+export interface ProfileHealth {
+  score: number;
+  passed: number;
+  total: number;
+  checks: Record<string, boolean>;
+  tips: string[];
+}
+
+export function getProfileHealth(token: string) {
+  return req<ProfileHealth>("GET", "/candidates/me/health", token);
 }

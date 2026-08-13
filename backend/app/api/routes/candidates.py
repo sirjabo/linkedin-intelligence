@@ -283,3 +283,63 @@ async def get_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found. Call /me/profile/rebuild first.")
     return profile
+
+
+@router.get("/me/health")
+async def profile_health(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a profile completeness/health score with per-section breakdown."""
+    candidate = await _get_candidate_or_404(current_user, db)
+
+    profile_result = await db.execute(
+        select(CandidateProfile).where(CandidateProfile.candidate_id == candidate.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+
+    sources_result = await db.execute(
+        select(CandidateSource).where(CandidateSource.candidate_id == candidate.id)
+    )
+    source_count = len(sources_result.scalars().all())
+
+    checks = {
+        "name": bool(candidate.name),
+        "location": bool(candidate.location),
+        "target_roles": bool(candidate.target_roles),
+        "source_uploaded": source_count > 0,
+        "profile_built": profile is not None,
+        "summary": bool(profile and profile.summary),
+        "skills": bool(profile and profile.skills),
+        "experience": bool(profile and profile.experience),
+        "education": bool(profile and profile.education),
+        "career_level": bool(profile and profile.career_level),
+    }
+
+    passed = sum(checks.values())
+    total = len(checks)
+    score = round(passed / total, 2)
+
+    tips = []
+    if not checks["name"]:
+        tips.append("Agregá tu nombre completo")
+    if not checks["location"]:
+        tips.append("Indicá tu ubicación para mejorar el matching de location")
+    if not checks["target_roles"]:
+        tips.append("Definí tus roles objetivo para recibir mejores recomendaciones")
+    if not checks["source_uploaded"]:
+        tips.append("Subí tu CV o perfil de LinkedIn")
+    elif not checks["profile_built"]:
+        tips.append("Reconstruí tu perfil consolidado después de subir fuentes")
+    if not checks["skills"]:
+        tips.append("Tu perfil no tiene skills identificados — revisá la fuente cargada")
+    if not checks["experience"]:
+        tips.append("No se encontró experiencia laboral en tu perfil")
+
+    return {
+        "score": score,
+        "passed": passed,
+        "total": total,
+        "checks": checks,
+        "tips": tips,
+    }

@@ -35,6 +35,9 @@ class MatchAnalysis(Base):
     llm_reasoning: Mapped[str | None] = mapped_column(Text)
     llm_strengths: Mapped[list | None] = mapped_column(JSON)
     llm_gaps: Mapped[list | None] = mapped_column(JSON)
+    # Learning loop: actual outcome recorded by the user after applying
+    # Values: "offer" | "interview" | "phone_screen" | "rejected" | "no_response" | None
+    outcome: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

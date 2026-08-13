@@ -22,5 +22,10 @@ class MatchResponse(BaseModel):
     llm_reasoning: str | None
     llm_strengths: list | None
     llm_gaps: list | None
+    outcome: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class MatchFeedback(BaseModel):
+    outcome: str  # offer | interview | phone_screen | rejected | no_response

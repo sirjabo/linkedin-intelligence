@@ -29,7 +29,7 @@ Full-time position.
 
 SAMPLE_PROFILE = {
     "email": "match_test@example.com",
-    "password": "secure1234",
+    "password": "Secure1234",
 }
 
 
@@ -160,7 +160,7 @@ def test_compute_deterministic_nice_to_have_bonus():
 # ── Integration tests ─────────────────────────────────────────────────────────
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
-    reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "secure1234"})
+    reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "Secure1234"})
     assert reg.status_code == 201
     return reg.json()["access_token"]
 

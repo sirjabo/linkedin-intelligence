@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -152,11 +152,19 @@ async def list_applications(
 ):
     candidate = await _get_candidate(user, db)
     result = await db.execute(
-        select(Application)
+        select(Application, Job.title, Job.company)
+        .join(Job, Application.job_id == Job.id, isouter=True)
         .where(Application.candidate_id == candidate.id)
         .order_by(Application.created_at.desc())
     )
-    return result.scalars().all()
+    rows = result.all()
+    apps = []
+    for app, job_title, job_company in rows:
+        d = {c.key: getattr(app, c.key) for c in app.__table__.columns}
+        d["job_title"] = job_title
+        d["job_company"] = job_company
+        apps.append(ApplicationListResponse.model_validate(d))
+    return apps
 
 
 @router.get("/{app_id}", response_model=ApplicationResponse)
@@ -423,3 +431,32 @@ async def add_event(
     await db.commit()
     await db.refresh(event)
     return event
+
+
+@router.get("/stats/summary")
+async def get_stats(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return application funnel counts and activity stats."""
+    candidate = await _get_candidate(user, db)
+
+    rows = await db.execute(
+        select(Application.status, func.count(Application.id).label("count"))
+        .where(Application.candidate_id == candidate.id)
+        .group_by(Application.status)
+    )
+    by_status: dict[str, int] = {r.status: r.count for r in rows}
+
+    total = sum(by_status.values())
+
+    funnel_stages = ["draft", "applied", "phone_screen", "interview", "offer", "rejected", "withdrawn"]
+    funnel = {stage: by_status.get(stage, 0) for stage in funnel_stages}
+
+    return {
+        "total": total,
+        "funnel": funnel,
+        "active": by_status.get("applied", 0) + by_status.get("phone_screen", 0) + by_status.get("interview", 0),
+        "offers": by_status.get("offer", 0),
+        "rejected": by_status.get("rejected", 0),
+    }

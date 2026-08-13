@@ -9,12 +9,25 @@ import {
   generateCoverLetter,
   addEvent,
   generateAnswers,
+  updateApplication,
   type Application,
   type CVVersion,
   type CoverLetter,
   type ApplicationAnswer,
 } from "@/lib/api-v2";
-import { ArrowLeftIcon, FileTextIcon, MailIcon, ZapIcon, CheckIcon, MessageSquareIcon, BrainIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  FileTextIcon,
+  MailIcon,
+  ZapIcon,
+  CheckIcon,
+  MessageSquareIcon,
+  BrainIcon,
+  ClipboardListIcon,
+  CalendarIcon,
+  StickyNoteIcon,
+  SaveIcon,
+} from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -25,6 +38,17 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: "Rechazado",
   withdrawn: "Retirado",
 };
+
+function ReadinessItem({ done, label }: { done: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${done ? "bg-emerald-600" : "bg-slate-700"}`}>
+        {done && <CheckIcon size={10} className="text-white" />}
+      </div>
+      <span className={done ? "text-slate-300" : "text-slate-500"}>{label}</span>
+    </div>
+  );
+}
 
 export default function ApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +65,16 @@ export default function ApplicationDetailPage() {
   const [answers, setAnswers] = useState<ApplicationAnswer[]>([]);
   const [genAnswers, setGenAnswers] = useState(false);
 
+  // Notes editing
+  const [notes, setNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
+
+  // Follow-up date
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [savingDate, setSavingDate] = useState(false);
+  const [dateSaved, setDateSaved] = useState(false);
+
   useEffect(() => {
     if (!isLoading && !token) router.replace("/login");
   }, [token, isLoading, router]);
@@ -48,7 +82,11 @@ export default function ApplicationDetailPage() {
   useEffect(() => {
     if (!token || !id) return;
     getApplication(token, id)
-      .then(setApp)
+      .then((data) => {
+        setApp(data);
+        setNotes(data.notes ?? "");
+        setFollowUpDate(data.follow_up_date ?? "");
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [token, id]);
@@ -116,6 +154,38 @@ export default function ApplicationDetailPage() {
     }
   }
 
+  async function handleSaveNotes() {
+    if (!token || !id) return;
+    setSavingNotes(true);
+    setError("");
+    try {
+      const updated = await updateApplication(token, id, { notes: notes || null });
+      setApp(updated);
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al guardar notas");
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
+  async function handleSaveFollowUp() {
+    if (!token || !id) return;
+    setSavingDate(true);
+    setError("");
+    try {
+      const updated = await updateApplication(token, id, { follow_up_date: followUpDate || null });
+      setApp(updated);
+      setDateSaved(true);
+      setTimeout(() => setDateSaved(false), 2000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al guardar fecha");
+    } finally {
+      setSavingDate(false);
+    }
+  }
+
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -135,6 +205,15 @@ export default function ApplicationDetailPage() {
   const latestCV = app.cv_versions[app.cv_versions.length - 1];
   const latestCL = app.cover_letters[app.cover_letters.length - 1];
   const hasStrategy = !!app.strategy;
+  const hasAppliedEvent = app.events.some((e) => e.event_type === "applied");
+
+  const readinessChecks = [
+    { done: app.cv_versions.length > 0, label: "CV personalizado generado" },
+    { done: app.cover_letters.length > 0, label: "Carta de presentación generada" },
+    { done: hasStrategy, label: "Estrategia de postulación lista" },
+    { done: hasAppliedEvent || app.status !== "draft", label: "Postulación enviada" },
+  ];
+  const readinessScore = readinessChecks.filter((c) => c.done).length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -144,7 +223,10 @@ export default function ApplicationDetailPage() {
             <ArrowLeftIcon size={20} />
           </Link>
           <div className="flex-1">
-            <h1 className="font-bold text-white">Postulación</h1>
+            <h1 className="font-bold text-white">
+              {app.job_title ?? "Postulación"}
+              {app.job_company && <span className="text-slate-400 font-normal"> — {app.job_company}</span>}
+            </h1>
             <p className="text-xs text-slate-500">
               Estado: <span className="text-slate-300">{STATUS_LABEL[app.status] ?? app.status}</span>
             </p>
@@ -168,6 +250,25 @@ export default function ApplicationDetailPage() {
             {error}
           </div>
         )}
+
+        {/* Readiness checklist */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+              <ClipboardListIcon size={16} className="text-blue-400" />
+              Lista de preparación
+            </h3>
+            <span className="text-xs text-slate-500">{readinessScore}/{readinessChecks.length}</span>
+          </div>
+          <div className="space-y-2">
+            {readinessChecks.map((check, i) => (
+              <ReadinessItem key={i} done={check.done} label={check.label} />
+            ))}
+          </div>
+          {readinessScore === readinessChecks.length && (
+            <div className="mt-4 text-xs text-emerald-400 font-semibold">¡Listo para postularte!</div>
+          )}
+        </div>
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
@@ -197,6 +298,55 @@ export default function ApplicationDetailPage() {
             <BrainIcon size={15} />
             Preparación entrevista
           </Link>
+        </div>
+
+        {/* Notes + Follow-up date */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+              <StickyNoteIcon size={16} className="text-blue-400" />
+              Notas personales
+            </h3>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              placeholder="Contacto de referencia, comentarios de la entrevista…"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none mb-3"
+            />
+            <button
+              onClick={handleSaveNotes}
+              disabled={savingNotes}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+            >
+              <SaveIcon size={12} />
+              {notesSaved ? "¡Guardado!" : savingNotes ? "Guardando…" : "Guardar notas"}
+            </button>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+              <CalendarIcon size={16} className="text-blue-400" />
+              Fecha de seguimiento
+            </h3>
+            <p className="text-xs text-slate-500 mb-3">
+              Recordatorio para hacer follow-up si no recibiste respuesta.
+            </p>
+            <input
+              type="date"
+              value={followUpDate}
+              onChange={(e) => setFollowUpDate(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 mb-3 [color-scheme:dark]"
+            />
+            <button
+              onClick={handleSaveFollowUp}
+              disabled={savingDate}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+            >
+              <SaveIcon size={12} />
+              {dateSaved ? "¡Guardado!" : savingDate ? "Guardando…" : "Guardar fecha"}
+            </button>
+          </div>
         </div>
 
         {/* Strategy */}

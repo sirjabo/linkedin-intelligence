@@ -12,7 +12,7 @@ Requirements:
 
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
-    reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "secure1234"})
+    reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "Secure1234"})
     assert reg.status_code == 201
     return reg.json()["access_token"]
 

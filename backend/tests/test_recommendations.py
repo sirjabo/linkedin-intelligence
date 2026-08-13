@@ -129,7 +129,7 @@ SAMPLE_REMOTIVE_RESPONSE = {
 
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
-    reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "secure1234"})
+    reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "Secure1234"})
     assert reg.status_code == 201
     return reg.json()["access_token"]
 
@@ -162,7 +162,7 @@ async def test_recommendations_with_profile(client: AsyncClient, mock_remotive, 
 
     # Create a candidate profile via the candidates endpoint
     await client.post(
-        "/api/v2/candidates/sources",
+        "/api/v2/candidates/me/sources/text",
         headers={"Authorization": f"Bearer {token}"},
         json={"source_type": "manual", "raw_content": "Python data engineer with SQL and dbt skills."},
     )
@@ -187,7 +187,7 @@ async def test_recommendations_with_profile(client: AsyncClient, mock_remotive, 
 async def test_recommendations_response_shape(client: AsyncClient, mock_remotive, mock_profile_agent):
     token = await _register_and_login(client, "rec3@example.com")
     await client.post(
-        "/api/v2/candidates/sources",
+        "/api/v2/candidates/me/sources/text",
         headers={"Authorization": f"Bearer {token}"},
         json={"source_type": "manual", "raw_content": "Python engineer"},
     )
@@ -212,7 +212,7 @@ async def test_recommendations_limit_capped(client: AsyncClient, mock_remotive, 
     """limit > 50 should be capped to 50."""
     token = await _register_and_login(client, "rec4@example.com")
     await client.post(
-        "/api/v2/candidates/sources",
+        "/api/v2/candidates/me/sources/text",
         headers={"Authorization": f"Bearer {token}"},
         json={"source_type": "manual", "raw_content": "Python engineer"},
     )
