@@ -102,7 +102,7 @@ async def create_interview_prep(
         ip.behavioral_questions = [q.model_dump() for q in prep_result.behavioral_questions]
         ip.star_stories = [s.model_dump() for s in prep_result.star_stories]
         ip.questions_to_ask = prep_result.questions_to_ask
-        ip.company_research = prep_result.company_research
+        ip.company_research = prep_result.company_research.model_dump()
     else:
         ip = InterviewPrep(
             application_id=app.id,
@@ -110,7 +110,7 @@ async def create_interview_prep(
             behavioral_questions=[q.model_dump() for q in prep_result.behavioral_questions],
             star_stories=[s.model_dump() for s in prep_result.star_stories],
             questions_to_ask=prep_result.questions_to_ask,
-            company_research=prep_result.company_research,
+            company_research=prep_result.company_research.model_dump(),
         )
         db.add(ip)
 

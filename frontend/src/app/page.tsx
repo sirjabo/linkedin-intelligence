@@ -1,8 +1,10 @@
+"use client";
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { ArrowRight, FileText, BarChart2, TrendingUp, Zap, Sparkles } from "lucide-react";
-
-// Dashboard link for authenticated users shown in hero section
+import { useAuth } from "@/lib/auth";
 
 const features = [
   {
@@ -34,6 +36,15 @@ const features = [
 const roles = ["AI Engineer", "Analytics Engineer", "Data Engineer", "ML Engineer", "Data Scientist"];
 
 export default function HomePage() {
+  const { token, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && token) router.replace("/dashboard");
+  }, [token, isLoading, router]);
+
+  if (isLoading) return null;
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />

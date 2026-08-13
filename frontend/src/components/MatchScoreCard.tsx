@@ -18,8 +18,9 @@ const TIER_LABEL: Record<string, string> = {
 
 export default function MatchScoreCard({ match }: { match: MatchResult }) {
   const pct = Math.round(match.overall_score * 100);
-  const color = TIER_COLOR[match.tier] ?? "text-slate-400";
-  const label = TIER_LABEL[match.tier] ?? match.tier;
+  const tier = match.match_tier ?? match.tier;
+  const color = TIER_COLOR[tier] ?? "text-slate-400";
+  const label = TIER_LABEL[tier] ?? tier;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
@@ -39,15 +40,17 @@ export default function MatchScoreCard({ match }: { match: MatchResult }) {
 
       <p className={`text-sm font-medium mb-4 ${color}`}>{label}</p>
 
-      {match.reasoning && (
-        <p className="text-sm text-slate-400 mb-4 leading-relaxed">{match.reasoning}</p>
+      {(match.llm_reasoning ?? match.reasoning) && (
+        <p className="text-sm text-slate-400 mb-4 leading-relaxed">
+          {match.llm_reasoning ?? match.reasoning}
+        </p>
       )}
 
-      {match.strengths.length > 0 && (
+      {(match.llm_strengths ?? match.strengths ?? []).length > 0 && (
         <div className="mb-3">
           <p className="text-xs font-semibold text-emerald-500 uppercase mb-1.5">Fortalezas</p>
           <ul className="space-y-1">
-            {match.strengths.map((s, i) => (
+            {(match.llm_strengths ?? match.strengths ?? []).map((s: string, i: number) => (
               <li key={i} className="text-sm text-slate-300 flex gap-2">
                 <span className="text-emerald-500 mt-0.5">✓</span>
                 {s}
@@ -57,11 +60,11 @@ export default function MatchScoreCard({ match }: { match: MatchResult }) {
         </div>
       )}
 
-      {match.gaps.length > 0 && (
+      {(match.llm_gaps ?? match.gaps ?? []).length > 0 && (
         <div>
           <p className="text-xs font-semibold text-yellow-500 uppercase mb-1.5">Gaps</p>
           <ul className="space-y-1">
-            {match.gaps.map((g, i) => (
+            {(match.llm_gaps ?? match.gaps ?? []).map((g: string, i: number) => (
               <li key={i} className="text-sm text-slate-300 flex gap-2">
                 <span className="text-yellow-500 mt-0.5">△</span>
                 {g}

@@ -9,7 +9,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 MODEL_EXTRACT = "claude-haiku-4-5-20251001"
-MODEL_CONSOLIDATE = "claude-sonnet-5"
+MODEL_CONSOLIDATE = "claude-haiku-4-5-20251001"
 
 
 # ── Output schemas ────────────────────────────────────────────────────────────
