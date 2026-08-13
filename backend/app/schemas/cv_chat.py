@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 from datetime import datetime
 
@@ -66,22 +66,20 @@ class CVData(BaseModel):
 
 
 class CVSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     cv_data: CVData | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ChatMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     role: str
     content: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ChatRequest(BaseModel):
