@@ -15,6 +15,8 @@ from app.schemas.candidate import (
 )
 from app.services.pdf_extractor import extract_pdf_text
 from app.services.agents.profile_agent import extract_from_source, consolidate_profiles
+from app.services.learning_loop import compute_calibration
+from app.db.models.match import MatchAnalysis
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.ssrf import validate_url_not_private
@@ -347,6 +349,55 @@ async def profile_health(
         "total": total,
         "checks": checks,
         "tips": tips,
+    }
+
+
+@router.get("/me/learning-insights")
+async def get_learning_insights(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return calibration insights derived from match outcomes.
+
+    Aggregates all matches that have an outcome recorded via the feedback endpoint
+    and computes whether the scoring engine is over/under-optimistic for this candidate.
+    """
+    cand_result = await db.execute(select(Candidate).where(Candidate.user_id == current_user.id))
+    candidate = cand_result.scalar_one_or_none()
+    if not candidate:
+        return compute_calibration([]).model_dump() if False else {
+            "total_outcomes": 0,
+            "by_tier": [],
+            "overall_interview_rate": None,
+            "bias_direction": "insufficient_data",
+            "calibration_score": None,
+            "insights": ["Create a candidate profile first."],
+        }
+
+    rows = await db.execute(
+        select(MatchAnalysis.match_tier, MatchAnalysis.outcome)
+        .where(MatchAnalysis.candidate_id == candidate.id)
+    )
+    outcomes = [{"tier": r.match_tier, "outcome": r.outcome} for r in rows]
+    report = compute_calibration(outcomes)
+
+    return {
+        "total_outcomes": report.total_outcomes,
+        "by_tier": [
+            {
+                "tier": t.tier,
+                "total_applications": t.total_applications,
+                "outcomes_recorded": t.outcomes_recorded,
+                "interview_rate": t.interview_rate,
+                "rejection_rate": t.rejection_rate,
+                "expected_interview_rate": t.expected_interview_rate,
+            }
+            for t in report.by_tier
+        ],
+        "overall_interview_rate": report.overall_interview_rate,
+        "bias_direction": report.bias_direction,
+        "calibration_score": report.calibration_score,
+        "insights": report.insights,
     }
 
 
