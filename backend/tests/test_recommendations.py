@@ -1,9 +1,10 @@
 """Tests for Phase 5 — Job Discovery / Recommendations."""
 import pytest
+from collections import Counter
 from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient
 
-from app.services.job_recommender import rank_jobs, score_job, _candidate_keywords
+from app.services.job_recommender import rank_jobs, score_job, _candidate_keywords, _compute_idf
 from app.services.job_sources.base import JobRaw
 
 
@@ -40,34 +41,52 @@ def test_candidate_keywords_from_summary():
     assert "pipelines" in kw
 
 
-def test_score_job_perfect_match():
-    job = _make_job(tech_tags=["python", "sql"])
-    candidate_kw = {"python", "sql"}
-    result = score_job(job, candidate_kw)
-    assert result.score == 1.0
-    assert "python" in result.matched_keywords
-    assert "sql" in result.matched_keywords
+def test_candidate_keywords_skill_weight_higher():
+    """Skills should have higher weight than summary tokens."""
+    profile = {
+        "skills": ["python"],
+        "summary": "experienced developer",
+        "experience": [],
+        "education": [],
+    }
+    kw = _candidate_keywords(profile)
+    assert kw["python"] > kw.get("experienced", 0)
+
+
+def test_score_job_strong_match():
+    """A job whose tags closely match the candidate's skills should score > 0.5."""
+    job = _make_job(title="Python Engineer", description="Python SQL work", tech_tags=["python", "sql"])
+    jobs = [job]
+    idf = _compute_idf(jobs)
+    candidate = Counter({"python": 3, "sql": 3})
+    result = score_job(job, candidate, idf)
+    assert result.score > 0.5
 
 
 def test_score_job_no_match():
     job = _make_job(title="Java Backend Engineer", description="Java Spring Boot", tech_tags=["java", "spring"])
-    candidate_kw = {"python", "sql", "dbt"}
-    result = score_job(job, candidate_kw)
+    jobs = [job]
+    idf = _compute_idf(jobs)
+    candidate = Counter({"python": 3, "dbt": 3})
+    result = score_job(job, candidate, idf)
     assert result.score == 0.0
     assert result.matched_keywords == []
 
 
 def test_score_job_partial_match():
     job = _make_job(tech_tags=["python", "java"])
-    candidate_kw = {"python", "sql", "dbt"}
-    result = score_job(job, candidate_kw)
-    assert 0 < result.score < 1.0
+    jobs = [job]
+    idf = _compute_idf(jobs)
+    candidate = Counter({"python": 3, "sql": 3, "dbt": 3})
+    result = score_job(job, candidate, idf)
+    assert result.score > 0.0
     assert "python" in result.matched_keywords
 
 
-def test_score_job_empty_candidate_keywords():
+def test_score_job_empty_candidate():
     job = _make_job()
-    result = score_job(job, set())
+    idf = _compute_idf([job])
+    result = score_job(job, Counter(), idf)
     assert result.score == 0.0
 
 

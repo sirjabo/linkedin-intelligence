@@ -138,7 +138,7 @@ async def answer_field(
     if not form:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No form found for this application")
 
-    db_field = next((f for f in form.fields if f.id == payload.field_id), None)
+    db_field = next((f for f in form.fields if f.id == field_id), None)
     if not db_field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form field not found")
 

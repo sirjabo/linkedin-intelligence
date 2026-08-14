@@ -83,7 +83,7 @@ class ApplicationAgentSession(Base):
         self.status = new_status
         now = datetime.utcnow()
         if new_status == "discovering":
-            pass
+            self.discovered_at = now
         elif new_status == "submitted":
             self.submitted_at = now
             self.completed_at = now
