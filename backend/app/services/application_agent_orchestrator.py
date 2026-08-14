@@ -171,7 +171,7 @@ class ApplicationAgentOrchestrator:
             form.status = "ready" if human_count == 0 else "mapped"
 
             # Handle CV file
-            cv_path = _ensure_cv_file(candidate, profile, app)
+            cv_path = await _ensure_cv_file(candidate, profile, app)
             if cv_path:
                 session.screenshot_before_path = None  # reset
 
@@ -248,7 +248,7 @@ class ApplicationAgentOrchestrator:
         await db.commit()
 
         try:
-            cv_path = _ensure_cv_file(candidate, profile, app)
+            cv_path = await _ensure_cv_file(candidate, profile, app)
 
             async with PlaywrightAdapter(headless=True) as browser:
                 await browser.open_url(session.form_url)
@@ -628,14 +628,14 @@ async def _load_form(application_id: uuid.UUID, db: AsyncSession) -> Application
     return form
 
 
-def _ensure_cv_file(
+async def _ensure_cv_file(
     candidate: Candidate,
     profile: CandidateProfile | None,
     application: Application,
 ) -> str | None:
     try:
         if not cv_exists(candidate.id, application.id):
-            return generate_cv_file(candidate, profile, application)
+            return await generate_cv_file(candidate, profile, application)
         return get_cv_path(candidate.id, application.id)
     except Exception as exc:
         logger.warning("cv_file_generation_failed", error=str(exc))
