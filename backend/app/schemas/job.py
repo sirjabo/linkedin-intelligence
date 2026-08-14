@@ -27,6 +27,7 @@ class RequirementResponse(BaseModel):
     category: str
     is_required: bool
     seniority_signal: str | None
+    classification: str | None = None  # MANDATORY | PREFERRED | INFERRED
 
 
 class JobResponse(BaseModel):
@@ -47,6 +48,7 @@ class JobResponse(BaseModel):
     key_responsibilities: list | None
     company_description: str | None
     parsing_confidence: float | None
+    visa_sponsorship: bool | None = None
     job_url: str | None
     status: str
     requirements: list[RequirementResponse] = []
@@ -69,4 +71,5 @@ class ParsedJobResponse(BaseModel):
     requirements: list[dict]
     key_responsibilities: list[str]
     company_description: str | None
+    visa_sponsorship: bool | None = None
     parsing_confidence: float

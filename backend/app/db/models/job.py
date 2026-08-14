@@ -28,6 +28,7 @@ class Job(Base):
     key_responsibilities: Mapped[list | None] = mapped_column(JSON)
     company_description: Mapped[str | None] = mapped_column(Text)
     parsing_confidence: Mapped[float | None] = mapped_column(Float)
+    visa_sponsorship: Mapped[bool | None] = mapped_column(Boolean)   # True = offers sponsorship
     raw_jd: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="analyzed")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -54,5 +55,6 @@ class JobRequirement(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False)  # technical | soft | experience | ...
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     seniority_signal: Mapped[str | None] = mapped_column(String(100))
+    classification: Mapped[str | None] = mapped_column(String(50))  # MANDATORY | PREFERRED | INFERRED
 
     job: Mapped[Job] = relationship("Job", back_populates="requirements")

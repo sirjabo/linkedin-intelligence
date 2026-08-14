@@ -234,6 +234,46 @@ def test_hard_constraint_no_data():
     assert result.blocked is False
 
 
+def test_hard_constraint_visa_blocked():
+    """Candidate needs visa, job does not sponsor → BLOCKED."""
+    result = check_hard_constraints(
+        candidate_career_level=None,
+        candidate_salary_pref_min=None,
+        job_seniority=None,
+        job_salary_max=None,
+        candidate_work_authorization="visa_required",
+        job_visa_sponsorship=False,
+    )
+    assert result.blocked is True
+    assert any("work authorization" in b.lower() for b in result.blockers)
+
+
+def test_hard_constraint_visa_not_blocked_when_sponsorship_offered():
+    """Candidate needs visa, job offers sponsorship → not blocked."""
+    result = check_hard_constraints(
+        candidate_career_level=None,
+        candidate_salary_pref_min=None,
+        job_seniority=None,
+        job_salary_max=None,
+        candidate_work_authorization="visa_required",
+        job_visa_sponsorship=True,
+    )
+    assert result.blocked is False
+
+
+def test_hard_constraint_visa_not_blocked_when_unknown():
+    """Candidate needs visa, job doesn't mention sponsorship → not blocked (uncertain)."""
+    result = check_hard_constraints(
+        candidate_career_level=None,
+        candidate_salary_pref_min=None,
+        job_seniority=None,
+        job_salary_max=None,
+        candidate_work_authorization="visa_required",
+        job_visa_sponsorship=None,
+    )
+    assert result.blocked is False
+
+
 # ── Career Fit unit tests ──────────────────────────────────────────────────────
 
 def test_career_fit_one_level_up():

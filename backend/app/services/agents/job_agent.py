@@ -21,6 +21,9 @@ class RequirementItem(BaseModel):
     seniority_signal: str | None = Field(
         None, description="Signal about required seniority level, e.g. '5+ years', 'senior-level'"
     )
+    classification: str | None = Field(
+        None, description="MANDATORY (explicitly required), PREFERRED (explicitly preferred), INFERRED (not stated but implied)"
+    )
 
 
 class ParsedJob(BaseModel):
@@ -39,6 +42,7 @@ class ParsedJob(BaseModel):
     requirements: list[RequirementItem] = Field(default_factory=list)
     key_responsibilities: list[str] = Field(default_factory=list)
     company_description: str | None = None
+    visa_sponsorship: bool | None = Field(None, description="True if company offers visa sponsorship, False if explicitly not, null if not mentioned")
     parsing_confidence: float = Field(ge=0.0, le=1.0, default=0.8)
 
 
@@ -49,11 +53,14 @@ PARSE_SYSTEM = """You are an expert at extracting structured information from jo
 Extract every requirement, skill, and attribute mentioned. Follow these rules:
 - NEVER invent requirements not in the job description text.
 - Classify each requirement: must_have (explicitly required/mandatory) or nice_to_have (preferred/plus).
+- For each requirement set classification: MANDATORY (uses words like "required", "must", "mandatory"),
+  PREFERRED (uses words like "preferred", "a plus", "nice to have"), or INFERRED (implied but not stated).
 - For tech_stack: only technologies explicitly named, no inferences.
 - For salary: only extract if explicitly stated — never estimate.
 - Set parsing_confidence: 1.0=detailed JD with clear requirements, 0.5=vague JD.
 - remote_type: 'remote' if fully remote, 'hybrid' if mixed, 'onsite' if office required, null if unclear.
 - seniority: infer from years of experience required or role level; null if unclear.
+- visa_sponsorship: true if company explicitly offers sponsorship, false if they state they do not sponsor, null if not mentioned.
 
 Never hallucinate. Stick strictly to what the text says."""
 

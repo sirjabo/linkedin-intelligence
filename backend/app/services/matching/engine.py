@@ -244,12 +244,15 @@ def check_hard_constraints(
     candidate_salary_pref_min: int | None,
     job_seniority: str | None,
     job_salary_max: int | None,
+    candidate_work_authorization: str | None = None,
+    job_visa_sponsorship: bool | None = None,
 ) -> HardConstraintResult:
     """Return blocked=True if any hard constraint fires.
 
     Hard constraints prevent application regardless of skill match:
     - Seniority gap > 2 levels (candidate too junior for the role)
     - Salary gap > 30% (job pays far below candidate's minimum)
+    - Work authorization: candidate needs sponsorship but job doesn't offer it
     """
     blockers: list[str] = []
 
@@ -271,6 +274,13 @@ def check_hard_constraints(
                 f"Salary gap: job max ${job_salary_max:,} is {gap_pct}% below "
                 f"candidate minimum ${candidate_salary_pref_min:,}"
             )
+
+    # Work authorization blocker
+    # Blocked only when candidate explicitly needs sponsorship AND job explicitly does not offer it
+    if candidate_work_authorization == "visa_required" and job_visa_sponsorship is False:
+        blockers.append(
+            "Work authorization: candidate requires visa sponsorship but job does not offer it"
+        )
 
     return HardConstraintResult(blocked=bool(blockers), blockers=blockers)
 

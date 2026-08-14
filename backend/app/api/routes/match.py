@@ -98,6 +98,8 @@ async def run_match(
         candidate_salary_pref_min=candidate_salary_min,
         job_seniority=job.seniority,
         job_salary_max=job.salary_max,
+        candidate_work_authorization=candidate.work_authorization,
+        job_visa_sponsorship=job.visa_sponsorship,
     )
 
     det_result = compute_deterministic(

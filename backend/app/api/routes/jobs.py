@@ -51,6 +51,7 @@ async def analyze_job(
         requirements=[r.model_dump() for r in parsed.requirements],
         key_responsibilities=parsed.key_responsibilities,
         company_description=parsed.company_description,
+        visa_sponsorship=parsed.visa_sponsorship,
         parsing_confidence=parsed.parsing_confidence,
     )
 
@@ -81,6 +82,7 @@ async def create_job(
         key_responsibilities=parsed.key_responsibilities,
         company_description=parsed.company_description,
         parsing_confidence=parsed.parsing_confidence,
+        visa_sponsorship=parsed.visa_sponsorship,
         raw_jd=payload.raw_jd,
         status="analyzed",
     )
@@ -95,6 +97,7 @@ async def create_job(
             category=req.category,
             is_required=req.is_required,
             seniority_signal=req.seniority_signal,
+            classification=req.classification,
         ))
 
     await db.commit()
