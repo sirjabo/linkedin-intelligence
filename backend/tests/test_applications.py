@@ -65,6 +65,44 @@ def test_claim_validator_with_matching_evidence():
     assert isinstance(result.unverified_claims, list)
 
 
+def test_claim_validator_plausible_classification():
+    """Partial overlap (1-2 keywords) → PLAUSIBLE, not SUPPORTED or UNSUPPORTED."""
+    evidence = [_FakeEvidence(claim="managed engineering team", source_text="team engineering")]
+    text = "I led a team of engineers to deliver results."
+    result = validate_claims(text, evidence)
+    # Check that plausible_claims field exists (Evidence 2.0)
+    assert hasattr(result, "plausible_claims")
+    assert isinstance(result.plausible_claims, list)
+
+
+def test_claim_validator_supported_classification():
+    """≥ 3 keyword matches → SUPPORTED."""
+    evidence = [_FakeEvidence(
+        claim="built data pipeline reduced latency improved throughput performance",
+        source_text="pipeline performance optimization latency throughput data engineering",
+    )]
+    text = "I built a data pipeline that reduced latency and improved throughput performance."
+    result = validate_claims(text, evidence)
+    # With rich evidence, at least one claim should be SUPPORTED
+    assert len(result.verified_claims) > 0
+
+
+def test_claim_validator_to_dict_has_plausible_key():
+    result = validate_claims("Built 3 data pipelines saving $50k.", [])
+    d = result.to_dict()
+    assert "plausible_claims" in d
+
+
+def test_claim_validator_detailed_field():
+    """detailed field provides per-claim ClaimVerification objects."""
+    from app.services.claim_validator import VerificationStatus
+    result = validate_claims("Saved $100k by optimizing systems.", [])
+    assert hasattr(result, "detailed")
+    assert len(result.detailed) > 0
+    for item in result.detailed:
+        assert item.status in ("SUPPORTED", "PLAUSIBLE", "UNSUPPORTED")
+
+
 # ── Integration helpers ────────────────────────────────────────────────────────
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:

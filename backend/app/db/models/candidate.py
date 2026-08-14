@@ -99,6 +99,7 @@ class EvidenceRecord(Base):
     source_ref: Mapped[str | None] = mapped_column(String(512))
     source_text: Mapped[str | None] = mapped_column(Text)
     strength: Mapped[float | None] = mapped_column(Float)
+    verification_status: Mapped[str | None] = mapped_column(String(20))  # SUPPORTED | PLAUSIBLE | UNSUPPORTED
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     candidate: Mapped[Candidate] = relationship("Candidate", back_populates="evidence_records")
