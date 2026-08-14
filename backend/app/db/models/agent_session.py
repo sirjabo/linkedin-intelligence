@@ -59,6 +59,7 @@ class ApplicationAgentSession(Base):
     screenshot_before_path: Mapped[str | None] = mapped_column(String(1024))
     screenshot_filled_path: Mapped[str | None] = mapped_column(String(1024))
     screenshot_confirm_path: Mapped[str | None] = mapped_column(String(1024))
+    screenshot_after_path: Mapped[str | None] = mapped_column(String(1024))
 
     # ── Error tracking ────────────────────────────────────────────────────────
     error_message: Mapped[str | None] = mapped_column(Text)

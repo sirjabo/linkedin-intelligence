@@ -45,6 +45,18 @@ class GreenhouseAdapter:
         )
 
     async def submit(self, browser: BrowserAutomationAdapter) -> bool:
+        # Greenhouse can have multi-page forms — navigate through any intermediate pages
+        # before clicking the final Submit.
+        max_pages = 10
+        for _ in range(max_pages):
+            has_next = await browser.has_element("button:has-text('Next'), button:has-text('Continue')")
+            has_submit = await browser.has_element("button[type='submit'], input[type='submit']")
+            if has_submit and not has_next:
+                break
+            if has_next:
+                await browser.click_next()
+            else:
+                break
         await browser.click_submit()
         return await browser.is_confirmation_page()
 

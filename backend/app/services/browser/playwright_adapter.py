@@ -235,3 +235,11 @@ class PlaywrightAdapter:
     async def extract_confirmation_id(self) -> str | None:
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return result.get("confirmation_id")
+
+    async def has_element(self, selector: str) -> bool:
+        assert self._page
+        try:
+            count = await self._page.locator(selector).count()
+            return count > 0
+        except Exception:
+            return False

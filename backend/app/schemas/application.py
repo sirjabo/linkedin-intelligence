@@ -118,3 +118,28 @@ class ApplicationListResponse(BaseModel):
     applied_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class FitAnalysisResponse(BaseModel):
+    job_fit_score: float
+    career_fit_score: float | None
+    match_tier: str
+    skill_overlap_score: float
+    experience_score: float
+    location_score: float
+    education_score: float
+    matched_skills: list[str]
+    missing_skills: list[str]
+    llm_strengths: list | None
+    llm_gaps: list | None
+    llm_reasoning: str | None
+
+
+class DecisionResponse(BaseModel):
+    decision: str
+    blockers: list[str]
+    overall_approach: str | None
+
+
+class OutcomeCreate(BaseModel):
+    outcome: str  # got_interview | offer | rejected | ghosted | withdrew

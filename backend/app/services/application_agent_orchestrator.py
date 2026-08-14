@@ -11,6 +11,7 @@ Security invariants:
   - No auto-submit without explicit human confirmation
 """
 import asyncio
+import os
 import uuid
 from datetime import datetime
 
@@ -36,6 +37,7 @@ from app.services.agents.cv_agent import personalize_cv
 from app.services.agents.communication_agent import generate_cover_letter
 from app.services.claim_validator import validate_claims
 from app.services.ai.provider import LLMProvider, default_provider
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +47,22 @@ _resolver = CandidateKnowledgeResolver()
 
 class AgentError(Exception):
     pass
+
+
+def _save_screenshot(data: bytes | None, session_id: str, label: str) -> str | None:
+    """Persist screenshot bytes to disk and return the file path."""
+    if not data:
+        return None
+    try:
+        dir_path = os.path.join(settings.UPLOAD_DIR, "screenshots", session_id)
+        os.makedirs(dir_path, exist_ok=True)
+        path = os.path.join(dir_path, f"{label}.png")
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
+    except Exception as exc:
+        logger.warning("screenshot_save_failed", session_id=session_id, label=label, error=str(exc))
+        return None
 
 
 class ApplicationAgentOrchestrator:
@@ -92,10 +110,12 @@ class ApplicationAgentOrchestrator:
 
             # Open browser, run any ATS-specific pre-discovery steps, discover form
             session.status = "discovering"
+            _before_bytes: bytes | None = None
             async with PlaywrightAdapter(headless=True) as browser:
                 await ats_adapter.before_discover(browser)
                 await browser.open_url(form_url)
                 raw_form = await browser.discover_form()
+                _before_bytes = await browser.capture_screenshot()
 
             session.discovered_at = datetime.utcnow()
             session.fields_total = len(raw_form.fields)
@@ -172,8 +192,9 @@ class ApplicationAgentOrchestrator:
 
             # Handle CV file
             cv_path = await _ensure_cv_file(candidate, profile, app)
-            if cv_path:
-                session.screenshot_before_path = None  # reset
+
+            # Persist before-fill screenshot
+            session.screenshot_before_path = _save_screenshot(_before_bytes, str(session.id), "before")
 
             session.status = "ready_to_fill" if human_count == 0 else "awaiting_human"
             await db.commit()
@@ -306,8 +327,15 @@ class ApplicationAgentOrchestrator:
                 session.fields_confirmed = filled
                 session.filled_at = datetime.utcnow()
 
-                # Screenshot before submit
-                screenshot = await browser.capture_screenshot()
+                # Screenshot after filling, before submit
+                _filled_bytes = await browser.capture_screenshot()
+
+                # Phase 6: pre-submit validation — warn on HTML5 invalid fields
+                try:
+                    if await browser.has_element(":invalid"):
+                        logger.warning("form_has_invalid_fields", session_id=str(session.id))
+                except Exception:
+                    pass
 
                 # Click submit
                 session.status = "submitting"
@@ -321,12 +349,18 @@ class ApplicationAgentOrchestrator:
                     success = await browser.is_confirmation_page()
 
                 confirmation_id = await browser.extract_confirmation_id()
+                _after_bytes = await browser.capture_screenshot()
+
                 final_url = None
                 try:
                     state = await browser.open_url(browser._page.url if browser._page else session.form_url)
                     final_url = state.url
                 except Exception:
                     pass
+
+            # Persist screenshots
+            session.screenshot_filled_path = _save_screenshot(_filled_bytes, str(session.id), "filled")
+            session.screenshot_after_path = _save_screenshot(_after_bytes, str(session.id), "after")
 
             # Commit submission outcome
             session.status = "submitted" if success else "failed"

@@ -18,6 +18,7 @@ from app.schemas.application import (
     ApplicationCreate, ApplicationUpdate, ApplicationResponse, ApplicationListResponse,
     CVVersionResponse, CoverLetterResponse, ApplicationAnswerResponse, ApplicationEventResponse,
     AnswersRequest, EventCreate, SubmissionCreate, SubmissionResponse,
+    FitAnalysisResponse, DecisionResponse, OutcomeCreate,
 )
 from app.services.agents.application_agent import generate_strategy
 from app.services.agents.cv_agent import personalize_cv
@@ -97,6 +98,24 @@ async def _get_job(job_id: uuid.UUID, candidate_id: uuid.UUID, db: AsyncSession)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return job
+
+
+async def _get_match_for_app(
+    application: Application, candidate: Candidate, db: AsyncSession
+) -> MatchAnalysis:
+    result = await db.execute(
+        select(MatchAnalysis).where(
+            MatchAnalysis.candidate_id == candidate.id,
+            MatchAnalysis.job_id == application.job_id,
+        )
+    )
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No match analysis found. Run POST /jobs/{job_id}/match first.",
+        )
+    return match
 
 
 def _profile_skills(profile: CandidateProfile | None) -> list[str]:
@@ -523,6 +542,79 @@ async def get_submission(
     if not sub:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No submission record found")
     return sub
+
+
+@router.get("/{app_id}/fit-analysis", response_model=FitAnalysisResponse)
+async def get_fit_analysis(
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the fit breakdown for this application: job-fit score, career-fit, skill gaps."""
+    candidate = await _get_candidate(user, db)
+    application = await _get_application(app_id, candidate, db, load_relations=False)
+    match = await _get_match_for_app(application, candidate, db)
+    return FitAnalysisResponse(
+        job_fit_score=match.overall_score,
+        career_fit_score=match.career_fit_score,
+        match_tier=match.match_tier,
+        skill_overlap_score=match.skill_overlap_score,
+        experience_score=match.experience_score,
+        location_score=match.location_score,
+        education_score=match.education_score,
+        matched_skills=match.matched_skills or [],
+        missing_skills=match.missing_skills or [],
+        llm_strengths=match.llm_strengths,
+        llm_gaps=match.llm_gaps,
+        llm_reasoning=match.llm_reasoning,
+    )
+
+
+@router.get("/{app_id}/decision", response_model=DecisionResponse)
+async def get_decision(
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the application decision (APPLY/STRETCH/BLOCKED) with blocking reasons."""
+    candidate = await _get_candidate(user, db)
+    application = await _get_application(app_id, candidate, db, load_relations=False)
+    match = await _get_match_for_app(application, candidate, db)
+    overall_approach: str | None = None
+    if application.strategy:
+        overall_approach = application.strategy.get("overall_approach")
+    return DecisionResponse(
+        decision=match.application_decision or "DO_NOT_APPLY",
+        blockers=match.hard_blockers or [],
+        overall_approach=overall_approach,
+    )
+
+
+@router.post("/{app_id}/outcome")
+async def record_outcome(
+    app_id: uuid.UUID,
+    payload: OutcomeCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Record the real-world outcome of an application for the learning loop.
+
+    Accepted values: got_interview | offer | rejected | ghosted | withdrew
+    """
+    valid = {"got_interview", "offer", "rejected", "ghosted", "withdrew"}
+    if payload.outcome not in valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"outcome must be one of {sorted(valid)}",
+        )
+    candidate = await _get_candidate(user, db)
+    application = await _get_application(app_id, candidate, db, load_relations=False)
+    match = await _get_match_for_app(application, candidate, db)
+    match.outcome = payload.outcome
+    match.updated_at = datetime.utcnow()
+    await db.commit()
+    logger.info("application.outcome_recorded", app_id=str(app_id), outcome=payload.outcome)
+    return {"outcome": match.outcome, "match_tier": match.match_tier}
 
 
 @router.get("/stats/summary")
