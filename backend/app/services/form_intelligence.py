@@ -1,11 +1,11 @@
 """Form Intelligence: classify form fields and map candidate data to values.
 
-Deterministic — no LLM calls. Uses keyword matching for semantic classification.
+Deterministic first, LLM fallback for unrecognized fields.
 Human-in-the-loop for custom essays and fields with no auto-fill source.
 """
 import re
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, get_args
 
 SemanticType = Literal[
     "full_name", "first_name", "last_name",
@@ -78,11 +78,57 @@ class MappedField:
     options: list[str] | None = None
 
 
+_ALL_SEMANTIC_TYPES: frozenset[str] = frozenset(get_args(SemanticType))
+
+
 def classify_field(label: str) -> SemanticType:
     """Return the semantic type for a form field label."""
     for pattern, sem_type in _LABEL_RULES:
         if pattern.search(label):
             return sem_type
+    return "unknown"
+
+
+async def classify_field_llm(
+    label: str,
+    placeholder: str | None = None,
+    options: list[str] | None = None,
+    field_type: str = "text",
+    model: str = "claude-haiku-4-5-20251001",
+) -> SemanticType:
+    """LLM fallback for fields that didn't match any regex rule.
+
+    Calls Anthropic haiku with a minimal prompt; returns 'unknown' on any failure.
+    """
+    try:
+        import anthropic
+        from app.core.config import settings
+
+        client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        types_list = ", ".join(sorted(_ALL_SEMANTIC_TYPES))
+        extra = ""
+        if placeholder:
+            extra += f"\nPlaceholder: {placeholder}"
+        if options:
+            extra += f"\nOptions: {options[:10]}"  # cap to avoid huge prompts
+
+        resp = await client.messages.create(
+            model=model,
+            max_tokens=20,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Classify this form field into exactly ONE of: {types_list}\n"
+                    f"Label: {label}\nField type: {field_type}{extra}\n"
+                    f"Reply with ONLY the type name."
+                ),
+            }],
+        )
+        candidate = resp.content[0].text.strip().lower().replace("-", "_")
+        if candidate in _ALL_SEMANTIC_TYPES:
+            return candidate  # type: ignore[return-value]
+    except Exception:
+        pass
     return "unknown"
 
 

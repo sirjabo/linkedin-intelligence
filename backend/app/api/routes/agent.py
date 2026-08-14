@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.db.models.user import User
 from app.db.models.candidate import Candidate
-from app.db.models.application import Application
+from app.db.models.application import Application, ApplicationAnswer
 from app.db.models.form import ApplicationForm, ApplicationFormField
 from app.db.models.agent_session import ApplicationAgentSession
 from app.api.deps import get_current_user
@@ -24,6 +24,8 @@ from app.schemas.agent import (
     AgentFieldAnswerRequest,
     AgentSubmitRequest,
     AgentSessionResponse,
+    ApplicationAnswerResponse,
+    ApplicationAnswerUpdateRequest,
 )
 from app.services.application_agent_orchestrator import ApplicationAgentOrchestrator, AgentError
 from app.core.limiter import limiter
@@ -226,3 +228,51 @@ async def submit_agent(
 
     fields = await _get_session_fields(application_id, db)
     return AgentSessionResponse.from_session(session, fields)
+
+
+@router.get("/{application_id}/agent/answers", response_model=list[ApplicationAnswerResponse])
+async def list_agent_answers(
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ApplicationAnswerResponse]:
+    """Return all stored answers (question/answer pairs) for this application."""
+    await _get_application_for_user(application_id, current_user, db)
+
+    result = await db.execute(
+        select(ApplicationAnswer)
+        .where(ApplicationAnswer.application_id == application_id)
+        .order_by(ApplicationAnswer.created_at)
+    )
+    rows = result.scalars().all()
+    return [ApplicationAnswerResponse.model_validate(r) for r in rows]
+
+
+@router.patch(
+    "/{application_id}/agent/answers/{answer_id}",
+    response_model=ApplicationAnswerResponse,
+)
+async def update_agent_answer(
+    application_id: uuid.UUID,
+    answer_id: uuid.UUID,
+    payload: ApplicationAnswerUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApplicationAnswerResponse:
+    """Edit the text of a stored answer."""
+    await _get_application_for_user(application_id, current_user, db)
+
+    result = await db.execute(
+        select(ApplicationAnswer).where(
+            ApplicationAnswer.id == answer_id,
+            ApplicationAnswer.application_id == application_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Answer not found")
+
+    row.answer = payload.answer
+    await db.commit()
+    await db.refresh(row)
+    return ApplicationAnswerResponse.model_validate(row)

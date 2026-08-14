@@ -1,5 +1,6 @@
 """Pydantic schemas for Application Agent API endpoints."""
 import uuid
+from datetime import datetime
 from pydantic import BaseModel, HttpUrl, field_validator
 
 
@@ -37,6 +38,20 @@ class AgentFormFieldResponse(BaseModel):
     human_required: bool
     human_answer: str | None
     options: list[str] | None
+
+
+class ApplicationAnswerResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    question: str
+    answer: str
+    evidence_refs: list | None
+    created_at: datetime
+
+
+class ApplicationAnswerUpdateRequest(BaseModel):
+    answer: str
 
 
 class AgentSessionResponse(BaseModel):

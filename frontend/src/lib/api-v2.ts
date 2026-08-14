@@ -322,3 +322,104 @@ export interface ProfileHealth {
 export function getProfileHealth(token: string) {
   return req<ProfileHealth>("GET", "/candidates/me/health", token);
 }
+
+// Agent session
+export interface AgentField {
+  id: string;
+  label: string;
+  field_type: string;
+  semantic_type: string;
+  is_required: boolean;
+  auto_fill_value: string | null;
+  human_required: boolean;
+  human_answer: string | null;
+  options: string[] | null;
+}
+
+export interface AgentSession {
+  session_id: string;
+  application_id: string;
+  status: string;
+  ats_name: string | null;
+  form_url: string | null;
+  fields_total: number;
+  fields_auto_filled: number;
+  fields_human_pending: number;
+  fields_confirmed: number;
+  avg_confidence: number | null;
+  confirmation_id: string | null;
+  final_url: string | null;
+  error_message: string | null;
+  fields: AgentField[] | null;
+}
+
+export function startAgent(token: string, appId: string, formUrl: string) {
+  return req<AgentSession>("POST", `/applications/${appId}/agent/start`, token, { form_url: formUrl });
+}
+
+export function getAgentStatus(token: string, appId: string) {
+  return req<AgentSession>("GET", `/applications/${appId}/agent/status`, token);
+}
+
+export function answerAgentField(token: string, appId: string, fieldId: string, value: string) {
+  return req<AgentSession>(
+    "POST", `/applications/${appId}/agent/answer/${fieldId}`, token, { field_id: fieldId, value }
+  );
+}
+
+export function previewAgent(token: string, appId: string) {
+  return req<AgentSession>("POST", `/applications/${appId}/agent/preview`, token);
+}
+
+export function submitAgent(token: string, appId: string, humanConfirmed: boolean) {
+  return req<AgentSession>(
+    "POST", `/applications/${appId}/agent/submit`, token, { human_confirmed: humanConfirmed }
+  );
+}
+
+// Fit analysis, decision, outcome
+export interface FitAnalysis {
+  job_fit_score: number;
+  match_tier: string;
+  matched_skills: string[];
+  missing_skills: string[];
+  career_fit_score: number | null;
+  skill_overlap_score: number | null;
+  experience_score: number | null;
+  location_score: number | null;
+  llm_reasoning: string | null;
+  llm_strengths: string[];
+  llm_gaps: string[];
+}
+
+export interface DecisionResult {
+  decision: string;
+  blockers: string[];
+  overall_approach: string | null;
+}
+
+export interface OutcomeResult {
+  outcome: string;
+  match_tier: string;
+}
+
+export function getFitAnalysis(token: string, appId: string) {
+  return req<FitAnalysis>("GET", `/applications/${appId}/fit-analysis`, token);
+}
+
+export function getDecision(token: string, appId: string) {
+  return req<DecisionResult>("GET", `/applications/${appId}/decision`, token);
+}
+
+export function recordOutcome(token: string, appId: string, outcome: string) {
+  return req<OutcomeResult>("POST", `/applications/${appId}/outcome`, token, { outcome });
+}
+
+// Agent answers (list + edit)
+export function listAgentAnswers(token: string, appId: string) {
+  return req<ApplicationAnswer[]>("GET", `/applications/${appId}/agent/answers`, token);
+}
+
+export function updateAgentAnswer(token: string, appId: string, answerId: string, answer: string) {
+  return req<ApplicationAnswer>("PATCH", `/applications/${appId}/agent/answers/${answerId}`, token, { answer });
+}

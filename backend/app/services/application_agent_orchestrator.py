@@ -29,7 +29,7 @@ from app.services.browser.adapter import RawFormField
 from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
 from app.services.cv_storage import generate_cv_file, cv_exists, get_cv_path
 from app.services.ats.registry import detect_ats
-from app.services.form_intelligence import classify_field
+from app.services.form_intelligence import classify_field, classify_field_llm
 from app.services.matching.engine import compute_deterministic, tier_from_score, DET_WEIGHT
 from app.services.agents.match_agent import reason_about_match
 from app.services.agents.application_agent import generate_strategy
@@ -112,8 +112,8 @@ class ApplicationAgentOrchestrator:
             session.status = "discovering"
             _before_bytes: bytes | None = None
             async with PlaywrightAdapter(headless=True) as browser:
-                await ats_adapter.before_discover(browser)
                 await browser.open_url(form_url)
+                await ats_adapter.before_discover(browser)  # called after navigation so adapters see a loaded page
                 raw_form = await browser.discover_form()
                 _before_bytes = await browser.capture_screenshot()
 
@@ -148,6 +148,15 @@ class ApplicationAgentOrchestrator:
 
             for i, raw_field in enumerate(raw_form.fields):
                 sem_type = classify_field(raw_field.label or raw_field.name)
+
+                # LLM fallback when deterministic rules can't classify the field
+                if sem_type == "unknown":
+                    sem_type = await classify_field_llm(
+                        label=raw_field.label or raw_field.name,
+                        placeholder=raw_field.placeholder,
+                        options=raw_field.options,
+                        field_type=raw_field.field_type,
+                    )
 
                 # Apply ATS-specific field normalization
                 normalized = ats_adapter.normalize_field(raw_field)

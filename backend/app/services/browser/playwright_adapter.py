@@ -4,7 +4,7 @@ Uses the pre-installed Chromium at PLAYWRIGHT_BROWSERS_PATH.
 Never import this directly in domain logic — depend on the BrowserAutomationAdapter Protocol.
 """
 import os
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+from playwright.async_api import async_playwright, Page, Browser, BrowserContext, Frame
 
 from app.services.browser.adapter import (
     BrowserAutomationAdapter,
@@ -53,6 +53,7 @@ class PlaywrightAdapter:
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._active_frame: Frame | None = None  # set when inside an iframe
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -106,7 +107,8 @@ class PlaywrightAdapter:
 
     async def discover_form(self) -> RawForm:
         assert self._page, "call __aenter__ first"
-        result = await self._page.evaluate(FORM_EXTRACTOR_JS)
+        target = self._active_frame or self._page
+        result = await target.evaluate(FORM_EXTRACTOR_JS)
         raw_fields = result.get("fields", [])
 
         fields: list[RawFormField] = []
@@ -149,7 +151,8 @@ class PlaywrightAdapter:
     async def fill_text(self, css_selector: str, value: str) -> bool:
         assert self._page
         try:
-            await self._page.locator(css_selector).first.fill(value, timeout=5_000)
+            target = self._active_frame or self._page
+            await target.locator(css_selector).first.fill(value, timeout=5_000)
             return True
         except Exception as exc:
             logger.warning("fill_text_failed", selector=css_selector, error=str(exc))
@@ -158,8 +161,8 @@ class PlaywrightAdapter:
     async def select_option(self, css_selector: str, value: str) -> bool:
         assert self._page
         try:
-            locator = self._page.locator(css_selector).first
-            # try by value then by label
+            target = self._active_frame or self._page
+            locator = target.locator(css_selector).first
             try:
                 await locator.select_option(value=value, timeout=5_000)
             except Exception:
@@ -172,7 +175,8 @@ class PlaywrightAdapter:
     async def check_checkbox(self, css_selector: str, checked: bool) -> bool:
         assert self._page
         try:
-            locator = self._page.locator(css_selector).first
+            target = self._active_frame or self._page
+            locator = target.locator(css_selector).first
             if checked:
                 await locator.check(timeout=5_000)
             else:
@@ -185,7 +189,8 @@ class PlaywrightAdapter:
     async def upload_file(self, css_selector: str, file_path: str) -> bool:
         assert self._page
         try:
-            await self._page.locator(css_selector).first.set_input_files(file_path, timeout=10_000)
+            target = self._active_frame or self._page
+            await target.locator(css_selector).first.set_input_files(file_path, timeout=10_000)
             return True
         except Exception as exc:
             logger.warning("upload_file_failed", selector=css_selector, path=file_path, error=str(exc))
@@ -239,7 +244,34 @@ class PlaywrightAdapter:
     async def has_element(self, selector: str) -> bool:
         assert self._page
         try:
-            count = await self._page.locator(selector).count()
+            target = self._active_frame or self._page
+            count = await target.locator(selector).count()
             return count > 0
         except Exception:
             return False
+
+    async def switch_to_frame(self, frame_selector: str) -> bool:
+        """Switch context into an iframe matched by CSS selector. Returns True on success."""
+        assert self._page
+        try:
+            element = await self._page.query_selector(frame_selector)
+            if not element:
+                return False
+            frame = await element.content_frame()
+            if not frame:
+                return False
+            self._active_frame = frame
+            logger.info("switched_to_frame", selector=frame_selector)
+            return True
+        except Exception as exc:
+            logger.warning("switch_to_frame_failed", selector=frame_selector, error=str(exc))
+            return False
+
+    async def switch_to_main_frame(self) -> None:
+        """Return context to the main page (exit iframe)."""
+        self._active_frame = None
+
+    async def get_current_url(self) -> str | None:
+        if self._page:
+            return self._page.url
+        return None
