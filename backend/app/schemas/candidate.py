@@ -18,6 +18,12 @@ class CandidateUpdate(BaseModel):
     location: str | None = None
     target_roles: list[str] | None = None
     preferences: dict[str, Any] | None = None
+    # Knowledge Base 2.0
+    work_authorization: str | None = None
+    availability: str | None = None
+    career_goals: str | None = None
+    salary_min_usd: int | None = None
+    languages: list[dict[str, str]] | None = None
 
 
 class CandidateResponse(BaseModel):
@@ -30,6 +36,12 @@ class CandidateResponse(BaseModel):
     location: str | None
     target_roles: list[str] | None
     preferences: dict[str, Any] | None
+    # Knowledge Base 2.0
+    work_authorization: str | None = None
+    availability: str | None = None
+    career_goals: str | None = None
+    salary_min_usd: int | None = None
+    languages: list | None = None
     created_at: datetime
     updated_at: datetime
 

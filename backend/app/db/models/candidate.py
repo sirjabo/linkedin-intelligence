@@ -17,6 +17,12 @@ class Candidate(Base):
     location: Mapped[str | None] = mapped_column(String(255))
     target_roles: Mapped[list | None] = mapped_column(JSON)
     preferences: Mapped[dict | None] = mapped_column(JSON)
+    # Knowledge Base 2.0 fields
+    work_authorization: Mapped[str | None] = mapped_column(String(100))   # citizen|permanent_resident|visa_required|open_to_sponsorship
+    availability: Mapped[str | None] = mapped_column(String(50))           # immediate|two_weeks|one_month|three_months|not_looking
+    career_goals: Mapped[str | None] = mapped_column(Text)
+    salary_min_usd: Mapped[int | None] = mapped_column(Integer)
+    languages: Mapped[list | None] = mapped_column(JSON)                   # [{"language": "English", "level": "native"}, ...]
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

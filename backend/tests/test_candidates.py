@@ -120,3 +120,27 @@ async def test_get_profile_before_rebuild(client: AsyncClient):
     token = await _register_and_login(client, "henry@example.com")
     resp = await client.get("/api/v2/candidates/me/profile", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_candidate_kb_fields(client: AsyncClient):
+    """Knowledge Base 2.0: work_authorization, salary, availability, languages."""
+    token = await _register_and_login(client, "kb_user@example.com")
+    resp = await client.put(
+        "/api/v2/candidates/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "work_authorization": "citizen",
+            "availability": "immediate",
+            "career_goals": "Become a Staff Engineer in AI infrastructure",
+            "salary_min_usd": 120_000,
+            "languages": [{"language": "English", "level": "native"}, {"language": "Spanish", "level": "fluent"}],
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["work_authorization"] == "citizen"
+    assert data["availability"] == "immediate"
+    assert data["salary_min_usd"] == 120_000
+    assert len(data["languages"]) == 2
+    assert data["career_goals"] == "Become a Staff Engineer in AI infrastructure"

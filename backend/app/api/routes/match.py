@@ -86,10 +86,11 @@ async def run_match(
     # location lives on Candidate, not CandidateProfile
     candidate_location: str | None = candidate.location
 
-    candidate_salary_pref = (
-        candidate.preferences.get("salary_min") if candidate.preferences else None
-    )
-    candidate_salary_min = int(candidate_salary_pref) if candidate_salary_pref is not None else None
+    # Prefer the dedicated salary_min_usd field; fall back to legacy preferences JSON
+    candidate_salary_min: int | None = candidate.salary_min_usd
+    if candidate_salary_min is None and candidate.preferences:
+        legacy = candidate.preferences.get("salary_min")
+        candidate_salary_min = int(legacy) if legacy is not None else None
 
     # ── Hard Constraints (Layer 1) ─────────────────────────────────────────────
     hard_constraint = check_hard_constraints(
