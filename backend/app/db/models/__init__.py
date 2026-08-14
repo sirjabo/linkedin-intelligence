@@ -6,6 +6,7 @@ from app.db.models.application import Application, CVVersion, CoverLetter, Appli
 from app.db.models.interview import InterviewPrep
 from app.db.models.cv_session import CVSession, ChatMessage
 from app.db.models.form import ApplicationForm, ApplicationFormField
+from app.db.models.agent_session import ApplicationAgentSession
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "ChatMessage",
     "ApplicationForm",
     "ApplicationFormField",
+    "ApplicationAgentSession",
 ]
