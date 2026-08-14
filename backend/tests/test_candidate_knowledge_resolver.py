@@ -64,13 +64,17 @@ def _make_profile(
     )
 
 
-def _make_application(cover_letters: list | None = None) -> SimpleNamespace:
+def _make_application(
+    cover_letters: list | None = None,
+    answers: list | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid.uuid4(),
         candidate_id=uuid.uuid4(),
         job_id=uuid.uuid4(),
         cover_letters=cover_letters or [],
         cv_versions=[],
+        answers=answers or [],
     )
 
 
@@ -212,13 +216,6 @@ async def test_resolve_cv_file_human_required():
 
 # ── Unknown / custom types ────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_resolve_unknown_type_human_required():
-    c = _make_candidate()
-    r = await resolver.resolve("unknown", "Some mystery field", None, c, None, _make_application())
-    assert r.source == "HUMAN_REQUIRED"
-    assert r.value is None
-
 
 @pytest.mark.asyncio
 async def test_resolve_custom_essay_no_api_key_falls_back():
@@ -234,6 +231,81 @@ async def test_resolve_custom_essay_no_api_key_falls_back():
     # Should either generate or fall back — never invent
     assert r.value is None or len(r.value) > 0
     assert r.source in ("GENERATED", "HUMAN_REQUIRED")
+
+
+# ── FROM_KB tests ─────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_custom_essay_from_kb_answer_match():
+    """FROM_KB: returns stored ApplicationAnswer when label matches question."""
+    c = _make_candidate()
+    p = _make_profile()
+    stored_answer = SimpleNamespace(
+        question="Why do you want to work here?",
+        answer="I am passionate about data engineering and your company's mission.",
+    )
+    app = _make_application(answers=[stored_answer])
+
+    r = await resolver.resolve("custom_essay", "Why do you want to work here?", None, c, p, app)
+    assert r.source == "FROM_KB"
+    assert r.value == "I am passionate about data engineering and your company's mission."
+
+
+@pytest.mark.asyncio
+async def test_custom_essay_from_kb_partial_label_match():
+    """FROM_KB: substring match works when label is contained in stored question."""
+    c = _make_candidate()
+    stored_answer = SimpleNamespace(
+        question="Describe why you want this role at our company",
+        answer="I have deep experience in Spark pipelines.",
+    )
+    app = _make_application(answers=[stored_answer])
+
+    r = await resolver.resolve("custom_essay", "why you want this role", None, c, None, app)
+    assert r.source == "FROM_KB"
+    assert "Spark" in r.value
+
+
+@pytest.mark.asyncio
+async def test_custom_essay_from_kb_cover_letter_motivation():
+    """FROM_KB: motivation field uses cover letter content when no answer matches."""
+    c = _make_candidate()
+    cover = SimpleNamespace(
+        content="Dear Hiring Manager, I am excited about this opportunity because of my Spark expertise.",
+        created_at=datetime(2026, 8, 14),
+        evidence_refs=[],
+    )
+    app = _make_application(cover_letters=[cover], answers=[])
+
+    r = await resolver.resolve("custom_essay", "What motivates you?", None, c, None, app)
+    assert r.source == "FROM_KB"
+    assert "Spark" in r.value
+
+
+@pytest.mark.asyncio
+async def test_unknown_type_from_kb_when_answer_exists():
+    """Unknown semantic type uses FROM_KB if a matching answer exists."""
+    c = _make_candidate()
+    stored_answer = SimpleNamespace(
+        question="Describe your leadership experience",
+        answer="I led a team of 5 engineers at BigCo.",
+    )
+    app = _make_application(answers=[stored_answer])
+
+    r = await resolver.resolve("unknown", "Describe your leadership experience", None, c, None, app)
+    assert r.source == "FROM_KB"
+    assert "BigCo" in r.value
+
+
+@pytest.mark.asyncio
+async def test_unknown_type_still_human_required_when_no_kb():
+    """Unknown semantic type is HUMAN_REQUIRED when no KB entry matches."""
+    c = _make_candidate()
+    app = _make_application(answers=[])
+
+    r = await resolver.resolve("unknown", "Some mystery field", None, c, None, app)
+    assert r.source == "HUMAN_REQUIRED"
+    assert r.value is None
 
 
 # ── Helper function tests ─────────────────────────────────────────────────────

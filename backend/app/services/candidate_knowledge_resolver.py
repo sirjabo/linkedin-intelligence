@@ -81,7 +81,18 @@ class CandidateKnowledgeResolver:
                 application=application,
             )
 
-        # Unknown semantic type → HUMAN_REQUIRED
+        # Unknown semantic type — try FROM_KB before falling back to HUMAN_REQUIRED
+        kb_value = _resolve_from_kb(field_label, application)
+        if kb_value:
+            logger.info("unknown_field_from_kb", semantic_type=semantic_type, label=field_label)
+            return FieldResolution(
+                semantic_type=semantic_type,
+                value=kb_value,
+                source="FROM_KB",
+                confidence=0.75,
+                evidence=f"matched ApplicationAnswer or CoverLetter for label '{field_label}'",
+            )
+
         return FieldResolution(
             semantic_type=semantic_type,
             value=None,
@@ -211,6 +222,15 @@ class CandidateKnowledgeResolver:
         application: Application,
         **_,
     ) -> FieldResolution:
+        # FROM_KB: check previously generated/stored answers before calling LLM
+        kb_value = _resolve_from_kb(field_label, application)
+        if kb_value:
+            logger.info("custom_essay_from_kb", label=field_label, chars=len(kb_value))
+            return FieldResolution(
+                "custom_essay", kb_value, "FROM_KB", 0.85,
+                f"matched ApplicationAnswer or CoverLetter for label '{field_label}'",
+            )
+
         context = _build_candidate_context(candidate, profile)
         if not context:
             return FieldResolution(
@@ -276,6 +296,38 @@ class CandidateKnowledgeResolver:
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
+
+_COVER_LETTER_TRIGGERS = {"motivat", "interest", "why", "about yourself", "cover"}
+
+
+def _resolve_from_kb(field_label: str, application: Application) -> str | None:
+    """Check stored ApplicationAnswer and CoverLetter content for a matching answer.
+
+    Deterministic substring match — no LLM involved.
+    Returns the matched answer string, or None if no match found.
+    """
+    label_lower = field_label.lower().strip()
+
+    # 1. Search ApplicationAnswer rows for a question similar to the field label
+    for answer in (application.answers or []):
+        q_lower = (answer.question or "").lower().strip()
+        if not q_lower or not answer.answer:
+            continue
+        if label_lower in q_lower or q_lower in label_lower:
+            return answer.answer
+
+    # 2. Cover letter content for motivation / interest / "why" fields
+    if any(trigger in label_lower for trigger in _COVER_LETTER_TRIGGERS):
+        letters = sorted(
+            (application.cover_letters or []),
+            key=lambda c: c.created_at,
+            reverse=True,
+        )
+        if letters and letters[0].content:
+            return letters[0].content[:500]
+
+    return None
+
 
 def _compute_total_years(profile: CandidateProfile | None) -> float | None:
     if not profile or not profile.experience:
