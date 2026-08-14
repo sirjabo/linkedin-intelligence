@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, Text, DateTime, Date, ForeignKey, JSON, Uuid
+from sqlalchemy import String, Text, DateTime, Date, ForeignKey, JSON, Uuid, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -43,6 +43,9 @@ class Application(Base):
     )
     interview_prep: Mapped["InterviewPrep | None"] = relationship(  # type: ignore[name-defined]
         "InterviewPrep", back_populates="application", uselist=False, cascade="all, delete-orphan"
+    )
+    submission: Mapped["ApplicationSubmission | None"] = relationship(
+        "ApplicationSubmission", back_populates="application", uselist=False, cascade="all, delete-orphan"
     )
 
 
@@ -93,6 +96,25 @@ class ApplicationAnswer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application: Mapped[Application] = relationship("Application", back_populates="answers")
+
+
+class ApplicationSubmission(Base):
+    __tablename__ = "application_submissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    confirmation_number: Mapped[str | None] = mapped_column(String(255))
+    submission_url: Mapped[str | None] = mapped_column(String(2048))
+    # manual | agent | api
+    submitted_via: Mapped[str] = mapped_column(String(100), nullable=False, default="manual")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    application: Mapped[Application] = relationship("Application", back_populates="submission")
 
 
 class ApplicationEvent(Base):

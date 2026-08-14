@@ -10,13 +10,14 @@ from app.db.session import get_db
 from app.db.models.candidate import Candidate, CandidateProfile
 from app.db.models.job import Job
 from app.db.models.match import MatchAnalysis
-from app.db.models.application import Application, CVVersion, CoverLetter, ApplicationAnswer, ApplicationEvent
+from app.db.models.application import Application, CVVersion, CoverLetter, ApplicationAnswer, ApplicationEvent, ApplicationSubmission
+from app.db.models.form import ApplicationForm
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.schemas.application import (
     ApplicationCreate, ApplicationUpdate, ApplicationResponse, ApplicationListResponse,
     CVVersionResponse, CoverLetterResponse, ApplicationAnswerResponse, ApplicationEventResponse,
-    AnswersRequest, EventCreate,
+    AnswersRequest, EventCreate, SubmissionCreate, SubmissionResponse,
 )
 from app.services.agents.application_agent import generate_strategy
 from app.services.agents.cv_agent import personalize_cv
@@ -431,6 +432,97 @@ async def add_event(
     await db.commit()
     await db.refresh(event)
     return event
+
+
+@router.post("/{app_id}/submit", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
+async def submit_application(
+    app_id: uuid.UUID,
+    payload: SubmissionCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Record that an application was submitted externally.
+
+    - Blocks if the application's form has unanswered human fields
+    - Blocks duplicate submissions (409)
+    - Advances application status to 'applied' and records applied_at
+    """
+    candidate = await _get_candidate(user, db)
+    application = await _get_application(app_id, candidate, db, load_relations=False)
+
+    # Block duplicate submission
+    dup = await db.execute(
+        select(ApplicationSubmission).where(ApplicationSubmission.application_id == application.id)
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Application already submitted")
+
+    # If a form is registered, it must be ready
+    form_result = await db.execute(
+        select(ApplicationForm).where(ApplicationForm.application_id == application.id)
+    )
+    form = form_result.scalar_one_or_none()
+    if form and form.human_fields_pending > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Form has {form.human_fields_pending} unanswered field(s). Answer them before submitting.",
+        )
+
+    now = datetime.utcnow()
+    submission = ApplicationSubmission(
+        id=uuid.uuid4(),
+        application_id=application.id,
+        submitted_at=now,
+        confirmation_number=payload.confirmation_number,
+        submission_url=payload.submission_url,
+        submitted_via=payload.submitted_via,
+        notes=payload.notes,
+        created_at=now,
+    )
+    db.add(submission)
+
+    application.status = "applied"
+    application.applied_at = application.applied_at or now
+    application.updated_at = now
+
+    db.add(ApplicationEvent(
+        id=uuid.uuid4(),
+        application_id=application.id,
+        event_type="applied",
+        notes=payload.notes,
+        occurred_at=now,
+        created_at=now,
+    ))
+
+    await db.commit()
+    await db.refresh(submission)
+
+    logger.info(
+        "application.submitted",
+        app_id=str(app_id),
+        submitted_via=payload.submitted_via,
+        has_confirmation=bool(payload.confirmation_number),
+    )
+    return submission
+
+
+@router.get("/{app_id}/submit", response_model=SubmissionResponse)
+async def get_submission(
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Retrieve the submission record for an application."""
+    candidate = await _get_candidate(user, db)
+    await _get_application(app_id, candidate, db, load_relations=False)
+
+    result = await db.execute(
+        select(ApplicationSubmission).where(ApplicationSubmission.application_id == app_id)
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No submission record found")
+    return sub
 
 
 @router.get("/stats/summary")

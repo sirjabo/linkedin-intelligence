@@ -455,3 +455,109 @@ async def test_golden_path(client: AsyncClient, mock_job_agent, mock_match_agent
     assert len(data["events"]) == 2
     assert data["strategy"] is not None
     assert data["applied_at"] is not None
+
+
+# ── Fase 6: Submit + Confirmation ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_submit_application_success(client: AsyncClient, mock_job_agent, mock_match_agent, mock_application_agents):
+    token = await _register_and_login(client, "sub1@example.com")
+    job_id = await _create_job(client, token)
+    app_data = await _create_application(client, token, job_id)
+    app_id = app_data["id"]
+
+    resp = await client.post(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"confirmation_number": "REF-12345", "submitted_via": "manual", "notes": "Applied via company portal"},
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["application_id"] == app_id
+    assert data["confirmation_number"] == "REF-12345"
+    assert data["submitted_via"] == "manual"
+    assert data["submitted_at"] is not None
+
+    # Application status advances to applied
+    app_resp = await client.get(f"/api/v2/applications/{app_id}", headers={"Authorization": f"Bearer {token}"})
+    assert app_resp.json()["status"] == "applied"
+    assert app_resp.json()["applied_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_submit_duplicate_rejected(client: AsyncClient, mock_job_agent, mock_match_agent, mock_application_agents):
+    token = await _register_and_login(client, "sub2@example.com")
+    job_id = await _create_job(client, token)
+    app_data = await _create_application(client, token, job_id)
+    app_id = app_data["id"]
+
+    await client.post(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    dup = await client.post(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    assert dup.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_submit_form_not_ready_rejected(client: AsyncClient, mock_job_agent, mock_match_agent, mock_application_agents):
+    """Submitting while the form has pending human fields should return 422."""
+    token = await _register_and_login(client, "sub3@example.com")
+    job_id = await _create_job(client, token)
+    app_data = await _create_application(client, token, job_id)
+    app_id = app_data["id"]
+
+    # Register a form with a human-required field
+    await client.post(
+        f"/api/v2/applications/{app_id}/form",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"fields": [{"label": "Why do you want to join us?", "is_required": True}]},
+    )
+
+    resp = await client.post(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    assert resp.status_code == 422
+    assert "unanswered" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_submission(client: AsyncClient, mock_job_agent, mock_match_agent, mock_application_agents):
+    token = await _register_and_login(client, "sub4@example.com")
+    job_id = await _create_job(client, token)
+    app_data = await _create_application(client, token, job_id)
+    app_id = app_data["id"]
+
+    await client.post(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"submission_url": "https://jobs.example.com/apply/123"},
+    )
+
+    resp = await client.get(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["submission_url"] == "https://jobs.example.com/apply/123"
+
+
+@pytest.mark.asyncio
+async def test_get_submission_not_found(client: AsyncClient, mock_job_agent, mock_match_agent, mock_application_agents):
+    token = await _register_and_login(client, "sub5@example.com")
+    job_id = await _create_job(client, token)
+    app_data = await _create_application(client, token, job_id)
+    app_id = app_data["id"]
+
+    resp = await client.get(
+        f"/api/v2/applications/{app_id}/submit",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404

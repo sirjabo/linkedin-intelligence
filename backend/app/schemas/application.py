@@ -86,6 +86,25 @@ class ApplicationResponse(BaseModel):
     events: list[ApplicationEventResponse] = []
 
 
+class SubmissionCreate(BaseModel):
+    confirmation_number: str | None = None
+    submission_url: str | None = None
+    submitted_via: str = "manual"  # manual | agent | api
+    notes: str | None = None
+
+
+class SubmissionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    application_id: uuid.UUID
+    submitted_at: datetime
+    confirmation_number: str | None
+    submission_url: str | None
+    submitted_via: str
+    notes: str | None
+    created_at: datetime
+
+
 class ApplicationListResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
