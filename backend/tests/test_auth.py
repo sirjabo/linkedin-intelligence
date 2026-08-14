@@ -100,3 +100,27 @@ async def test_refresh_token(client: AsyncClient):
     resp = await client.post("/api/v2/auth/refresh", json={"refresh_token": refresh_token})
     assert resp.status_code == 200
     assert "access_token" in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_account_deletion(client: AsyncClient):
+    """DELETE /candidates/me should delete the account and all associated data."""
+    reg = await client.post("/api/v2/auth/register", json={
+        "email": "deleteuser@example.com",
+        "password": "Secure1234",
+    })
+    assert reg.status_code == 201
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Account exists
+    resp = await client.get("/api/v2/candidates/me", headers=headers)
+    assert resp.status_code == 200
+
+    # Delete it
+    resp = await client.delete("/api/v2/candidates/me", headers=headers)
+    assert resp.status_code == 204
+
+    # Token still decodes but user is gone — should 401
+    resp = await client.get("/api/v2/candidates/me", headers=headers)
+    assert resp.status_code == 401

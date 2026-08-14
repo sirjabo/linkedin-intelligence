@@ -3,6 +3,7 @@
 Pure functions — no I/O, no async, no LLM. Testable in isolation.
 """
 from dataclasses import dataclass, field
+from typing import Literal
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,18 @@ TIER_THRESHOLDS = [
 ]
 
 
-# ── Result type ───────────────────────────────────────────────────────────────
+# ── Result types ──────────────────────────────────────────────────────────────
+
+ApplicationDecision = Literal[
+    "APPLY", "APPLY_WITH_CUSTOMIZATION", "STRETCH", "LOW_FIT", "DO_NOT_APPLY", "BLOCKED"
+]
+
+
+@dataclass
+class HardConstraintResult:
+    blocked: bool
+    blockers: list[str] = field(default_factory=list)
+
 
 @dataclass
 class DeterministicResult:
@@ -43,6 +55,7 @@ class DeterministicResult:
     overall_score: float
     matched_skills: list[str] = field(default_factory=list)
     missing_skills: list[str] = field(default_factory=list)
+    career_fit_score: float | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -224,6 +237,110 @@ def _score_salary(
     return 0.20
 
 
+# ── Hard Constraints Layer ─────────────────────────────────────────────────────
+
+def check_hard_constraints(
+    candidate_career_level: str | None,
+    candidate_salary_pref_min: int | None,
+    job_seniority: str | None,
+    job_salary_max: int | None,
+) -> HardConstraintResult:
+    """Return blocked=True if any hard constraint fires.
+
+    Hard constraints prevent application regardless of skill match:
+    - Seniority gap > 2 levels (candidate too junior for the role)
+    - Salary gap > 30% (job pays far below candidate's minimum)
+    """
+    blockers: list[str] = []
+
+    # Seniority blocker
+    if candidate_career_level and job_seniority:
+        c_rank = SENIORITY_RANK.get(_norm(candidate_career_level), 3)
+        j_rank = SENIORITY_RANK.get(_norm(job_seniority), 3)
+        if j_rank - c_rank > 2:
+            blockers.append(
+                f"Seniority gap: candidate is {candidate_career_level} (rank {c_rank}), "
+                f"job requires {job_seniority} (rank {j_rank})"
+            )
+
+    # Salary blocker (> 30% below minimum)
+    if job_salary_max is not None and candidate_salary_pref_min is not None and candidate_salary_pref_min > 0:
+        if job_salary_max < candidate_salary_pref_min * 0.70:
+            gap_pct = round((1 - job_salary_max / candidate_salary_pref_min) * 100, 1)
+            blockers.append(
+                f"Salary gap: job max ${job_salary_max:,} is {gap_pct}% below "
+                f"candidate minimum ${candidate_salary_pref_min:,}"
+            )
+
+    return HardConstraintResult(blocked=bool(blockers), blockers=blockers)
+
+
+# ── Career Fit Score ───────────────────────────────────────────────────────────
+
+def compute_career_fit(
+    candidate_career_level: str | None,
+    candidate_salary_pref_min: int | None,
+    job_seniority: str | None,
+    job_salary_max: int | None,
+) -> float:
+    """Compute career fit score [0.0, 1.0].
+
+    Measures how well the job fits the candidate's career trajectory,
+    independent of current skill match. Ideal: job is 0–1 levels above candidate.
+    """
+    scores: list[float] = []
+
+    if candidate_career_level and job_seniority:
+        c_rank = SENIORITY_RANK.get(_norm(candidate_career_level), 3)
+        j_rank = SENIORITY_RANK.get(_norm(job_seniority), 3)
+        gap = j_rank - c_rank
+        if gap == 1:
+            scores.append(1.00)   # one step up — ideal growth
+        elif gap == 0:
+            scores.append(0.90)   # lateral — solid
+        elif gap == -1:
+            scores.append(0.65)   # slight step down (intentional pivot?)
+        elif gap == 2:
+            scores.append(0.55)   # stretch goal
+        elif gap < -1:
+            scores.append(0.40)   # significant step down
+        else:
+            scores.append(0.15)   # gap > 2 — hard-blocked anyway
+
+    sal = _score_salary(job_salary_max, candidate_salary_pref_min)
+    if sal is not None:
+        scores.append(sal)
+
+    return round(sum(scores) / len(scores), 3) if scores else 0.70
+
+
+# ── Application Decision Engine ────────────────────────────────────────────────
+
+def decide_application(
+    overall_score: float,
+    hard_constraint: HardConstraintResult,
+    missing_skills: list[str],
+) -> ApplicationDecision:
+    """Return an actionable recommendation for this candidate/job pair.
+
+    BLOCKED              → hard constraint fired (seniority or salary gap)
+    DO_NOT_APPLY         → overall score < 0.40
+    LOW_FIT              → 0.40 ≤ score < 0.55
+    STRETCH              → 0.55 ≤ score < 0.70
+    APPLY_WITH_CUSTOMIZATION → score ≥ 0.70 but has missing skills
+    APPLY                → score ≥ 0.70 and no missing skills
+    """
+    if hard_constraint.blocked:
+        return "BLOCKED"
+    if overall_score >= 0.70:
+        return "APPLY_WITH_CUSTOMIZATION" if missing_skills else "APPLY"
+    if overall_score >= 0.55:
+        return "STRETCH"
+    if overall_score >= 0.40:
+        return "LOW_FIT"
+    return "DO_NOT_APPLY"
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def tier_from_score(score: float) -> str:
@@ -260,6 +377,7 @@ def compute_deterministic(
 
     Accepts plain Python values so it can be unit-tested without ORM objects.
     When salary data is available, incorporates a 5th salary component.
+    Also computes career_fit_score (separate from job-fit score).
     """
     skill_score, matched, missing = _score_skill_overlap(
         profile_skills, requirements, job_tech_stack
@@ -268,6 +386,9 @@ def compute_deterministic(
     loc_score = _score_location(candidate_location, job_location, job_remote_type)
     edu_score = _score_education(profile_education, requirements)
     sal_score = _score_salary(job_salary_max, candidate_salary_pref_min)
+    career_fit = compute_career_fit(
+        profile_career_level, candidate_salary_pref_min, job_seniority, job_salary_max
+    )
 
     if sal_score is not None:
         w = BASE_WEIGHTS_WITH_SALARY
@@ -295,4 +416,5 @@ def compute_deterministic(
         overall_score=round(overall, 3),
         matched_skills=matched,
         missing_skills=missing,
+        career_fit_score=career_fit,
     )

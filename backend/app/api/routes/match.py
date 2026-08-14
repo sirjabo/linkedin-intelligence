@@ -13,7 +13,10 @@ from app.db.models.match import MatchAnalysis
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.schemas.match import MatchResponse, MatchFeedback
-from app.services.matching.engine import compute_deterministic, tier_from_score, DET_WEIGHT
+from app.services.matching.engine import (
+    compute_deterministic, tier_from_score, DET_WEIGHT,
+    check_hard_constraints, decide_application,
+)
 from app.services.agents.match_agent import reason_about_match
 from app.core.logging import get_logger
 
@@ -86,6 +89,16 @@ async def run_match(
     candidate_salary_pref = (
         candidate.preferences.get("salary_min") if candidate.preferences else None
     )
+    candidate_salary_min = int(candidate_salary_pref) if candidate_salary_pref is not None else None
+
+    # ── Hard Constraints (Layer 1) ─────────────────────────────────────────────
+    hard_constraint = check_hard_constraints(
+        candidate_career_level=profile_career_level,
+        candidate_salary_pref_min=candidate_salary_min,
+        job_seniority=job.seniority,
+        job_salary_max=job.salary_max,
+    )
+
     det_result = compute_deterministic(
         profile_skills=profile_skills,
         profile_career_level=profile_career_level,
@@ -97,7 +110,7 @@ async def run_match(
         job_tech_stack=job.tech_stack or [],
         requirements=job.requirements,
         job_salary_max=job.salary_max,
-        candidate_salary_pref_min=int(candidate_salary_pref) if candidate_salary_pref is not None else None,
+        candidate_salary_pref_min=candidate_salary_min,
     )
 
     # ── LLM reasoning ─────────────────────────────────────────────────────────
@@ -139,6 +152,7 @@ async def run_match(
         det_result.overall_score * DET_WEIGHT + llm_result.score * (1 - DET_WEIGHT), 3
     )
     match_tier = tier_from_score(hybrid_score)
+    application_decision = decide_application(hybrid_score, hard_constraint, det_result.missing_skills)
 
     logger.info(
         "match.run_complete",
@@ -148,6 +162,8 @@ async def run_match(
         llm_score=llm_result.score,
         hybrid=hybrid_score,
         tier=match_tier,
+        decision=application_decision,
+        blocked=hard_constraint.blocked,
     )
 
     # ── Upsert MatchAnalysis ──────────────────────────────────────────────────
@@ -175,6 +191,9 @@ async def run_match(
         existing.llm_reasoning = llm_result.reasoning
         existing.llm_strengths = llm_result.strengths
         existing.llm_gaps = llm_result.gaps
+        existing.career_fit_score = det_result.career_fit_score
+        existing.application_decision = application_decision
+        existing.hard_blockers = hard_constraint.blockers if hard_constraint.blockers else None
         existing.updated_at = now
         analysis = existing
     else:
@@ -195,6 +214,9 @@ async def run_match(
             llm_reasoning=llm_result.reasoning,
             llm_strengths=llm_result.strengths,
             llm_gaps=llm_result.gaps,
+            career_fit_score=det_result.career_fit_score,
+            application_decision=application_decision,
+            hard_blockers=hard_constraint.blockers if hard_constraint.blockers else None,
             created_at=now,
             updated_at=now,
         )

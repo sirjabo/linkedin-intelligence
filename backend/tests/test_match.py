@@ -6,6 +6,10 @@ from app.services.matching.engine import (
     compute_deterministic,
     tier_from_score,
     DeterministicResult,
+    check_hard_constraints,
+    compute_career_fit,
+    decide_application,
+    HardConstraintResult,
 )
 
 SAMPLE_JD = """\
@@ -157,6 +161,137 @@ def test_compute_deterministic_nice_to_have_bonus():
     assert result.skill_overlap_score == pytest.approx(1.0, abs=0.01)
 
 
+# ── Hard Constraints unit tests ───────────────────────────────────────────────
+
+def test_hard_constraint_seniority_blocked():
+    """Junior (rank 2) vs staff (rank 5): gap = 3 > 2 → BLOCKED."""
+    result = check_hard_constraints(
+        candidate_career_level="junior",
+        candidate_salary_pref_min=None,
+        job_seniority="staff",
+        job_salary_max=None,
+    )
+    assert result.blocked is True
+    assert len(result.blockers) == 1
+    assert "seniority" in result.blockers[0].lower()
+
+
+def test_hard_constraint_seniority_not_blocked_distance_2():
+    """Mid (rank 3) vs staff (rank 5): gap = 2, not blocked."""
+    result = check_hard_constraints(
+        candidate_career_level="mid",
+        candidate_salary_pref_min=None,
+        job_seniority="staff",
+        job_salary_max=None,
+    )
+    assert result.blocked is False
+    assert result.blockers == []
+
+
+def test_hard_constraint_salary_blocked():
+    """Job max $50k vs candidate minimum $100k: 50% gap > 30% → BLOCKED."""
+    result = check_hard_constraints(
+        candidate_career_level=None,
+        candidate_salary_pref_min=100_000,
+        job_seniority=None,
+        job_salary_max=50_000,
+    )
+    assert result.blocked is True
+    assert any("salary" in b.lower() for b in result.blockers)
+
+
+def test_hard_constraint_salary_not_blocked_close_gap():
+    """Job max $72k vs candidate minimum $100k: 28% gap ≤ 30% → not blocked."""
+    result = check_hard_constraints(
+        candidate_career_level=None,
+        candidate_salary_pref_min=100_000,
+        job_seniority=None,
+        job_salary_max=72_000,
+    )
+    assert result.blocked is False
+
+
+def test_hard_constraint_both_blocked():
+    """Junior vs staff + salary gap → two blockers."""
+    result = check_hard_constraints(
+        candidate_career_level="junior",
+        candidate_salary_pref_min=100_000,
+        job_seniority="staff",
+        job_salary_max=40_000,
+    )
+    assert result.blocked is True
+    assert len(result.blockers) == 2
+
+
+def test_hard_constraint_no_data():
+    """Missing data → not blocked (cannot determine constraint)."""
+    result = check_hard_constraints(
+        candidate_career_level=None,
+        candidate_salary_pref_min=None,
+        job_seniority=None,
+        job_salary_max=None,
+    )
+    assert result.blocked is False
+
+
+# ── Career Fit unit tests ──────────────────────────────────────────────────────
+
+def test_career_fit_one_level_up():
+    """Mid → senior: ideal growth, career fit should be high."""
+    score = compute_career_fit("mid", None, "senior", None)
+    assert score >= 0.90
+
+
+def test_career_fit_lateral():
+    """Senior → senior: lateral move, still solid."""
+    score = compute_career_fit("senior", None, "senior", None)
+    assert 0.80 <= score <= 1.0
+
+
+def test_career_fit_step_down():
+    """Senior → mid: step down, lower career fit."""
+    score = compute_career_fit("senior", None, "mid", None)
+    assert score < 0.80
+
+
+def test_career_fit_no_data():
+    """No seniority or salary data → returns neutral default."""
+    score = compute_career_fit(None, None, None, None)
+    assert score == 0.70
+
+
+# ── Application Decision Engine unit tests ─────────────────────────────────────
+
+def test_decide_blocked():
+    hc = HardConstraintResult(blocked=True, blockers=["seniority gap"])
+    assert decide_application(0.90, hc, []) == "BLOCKED"
+
+
+def test_decide_apply():
+    hc = HardConstraintResult(blocked=False)
+    assert decide_application(0.80, hc, []) == "APPLY"
+
+
+def test_decide_apply_with_customization():
+    hc = HardConstraintResult(blocked=False)
+    assert decide_application(0.75, hc, ["kubernetes"]) == "APPLY_WITH_CUSTOMIZATION"
+
+
+def test_decide_stretch():
+    hc = HardConstraintResult(blocked=False)
+    assert decide_application(0.60, hc, []) == "STRETCH"
+
+
+def test_decide_low_fit():
+    hc = HardConstraintResult(blocked=False)
+    assert decide_application(0.45, hc, []) == "LOW_FIT"
+
+
+def test_decide_do_not_apply():
+    hc = HardConstraintResult(blocked=False)
+    assert decide_application(0.30, hc, []) == "DO_NOT_APPLY"
+
+
 # ── Integration tests ─────────────────────────────────────────────────────────
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
@@ -193,6 +328,11 @@ async def test_run_match_success(client: AsyncClient, mock_job_agent, mock_match
     assert data["match_tier"] in {"excellent", "strong", "moderate", "weak", "poor"}
     assert data["job_id"] == job_id
     assert mock_match_agent.called
+    # Matching 2.0 fields
+    assert "application_decision" in data
+    assert data["application_decision"] in {
+        "APPLY", "APPLY_WITH_CUSTOMIZATION", "STRETCH", "LOW_FIT", "DO_NOT_APPLY", "BLOCKED"
+    }
 
 
 @pytest.mark.asyncio

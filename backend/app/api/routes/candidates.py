@@ -17,6 +17,7 @@ from app.services.pdf_extractor import extract_pdf_text
 from app.services.agents.profile_agent import extract_from_source, consolidate_profiles
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.ssrf import validate_url_not_private
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 logger = get_logger(__name__)
@@ -120,6 +121,10 @@ async def ingest_text_source(
         raise HTTPException(status_code=400, detail="raw_text is required")
 
     candidate = await _get_candidate_or_404(current_user, db)
+
+    if payload.source_url:
+        validate_url_not_private(payload.source_url)
+
     extracted = await extract_from_source(payload.raw_text, source_type=payload.source_type)
 
     source = CandidateSource(
@@ -343,3 +348,21 @@ async def profile_health(
         "checks": checks,
         "tips": tips,
     }
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_account(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete the current user's account and all associated data (GDPR compliance).
+
+    Cascade deletes: candidate → sources, profile, evidence, jobs, applications, match analyses.
+    """
+    # Delete the user; all related data is deleted via DB cascade (ondelete="CASCADE")
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if user:
+        await db.delete(user)
+        await db.commit()
+    logger.info("account_deleted", user_id=str(current_user.id))

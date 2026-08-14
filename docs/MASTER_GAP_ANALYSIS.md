@@ -1,377 +1,225 @@
-# LinkedIn Intelligence — Master Gap Analysis
+# LinkedIn Intelligence 2.0 — Master Gap Analysis
 
-> Generado: 2026-08-13  
-> Base: auditoría de código real (no documentación)  
+> Actualizado: 2026-08-14
+> Basado en: directiva `LINKEDIN_INTELLIGENCE_MASTER_IMPLEMENTATION_DIRECTIVE.md` + código real
 > Branch: `claude/new-session-ce0sct`
+> Tests: 90 pasando, 0 fallando
 
 ---
 
 ## Metodología
 
-Este documento analiza el código fuente real, no la documentación. Cada ítem fue verificado leyendo los archivos en `backend/` y `frontend/`. Las bugs reportadas son defectos confirmados, no hipotéticos.
+Análisis basado en lectura directa del código fuente. No en documentación. Cada ítem verifica
+archivos reales en `backend/` y `frontend/`. Estado refleja la situación post-implementación
+de las Fases 1–11.
+
+---
+
+## Resumen ejecutivo
+
+Fases 1–11 implementaron la fundación completa: auth, perfil de candidato, ingesta de fuentes,
+matching híbrido (determinístico + LLM), workspace de postulación, analytics, seguridad básica,
+CI/CD, health score del perfil, expansión semántica de skills, y registro de outcome.
+
+Las capacidades P0 más críticas aún ausentes son:
+1. Rate limiting en endpoints de auth (seguridad)
+2. Hard Constraints Layer en matching (trabajo autorizado, salario, seniority imposible)
+3. Career Fit separado de Job Fit
+4. Application Decision Engine (APPLY / STRETCH / DO_NOT_APPLY / BLOCKED)
+5. Form Intelligence (enteramente ausente)
+6. Submission + Confirmation workflow (ausente)
+7. Account deletion / GDPR
 
 ---
 
 ## Tabla de capacidades
 
-| Capacidad | Estado | Tests | Prod-ready | Notas |
-|-----------|--------|-------|-----------|-------|
-| Auth register/login/refresh | ✅ Implementado | ✅ 9 tests | ⚠️ Parcial | SECRET_KEY default inseguro |
-| JWT manual (stdlib) | ✅ Implementado | ✅ 5 tests | ✅ | HMAC-SHA256, sin cffi |
-| Password hash (pbkdf2) | ✅ Implementado | ✅ | ✅ | |
-| Candidate model básico | ✅ Implementado | ✅ 9 tests | ✅ | |
-| CandidateSource (text) | ✅ Implementado | ✅ | ✅ | |
-| CandidateSource (PDF upload) | ✅ Implementado | ❌ Sin tests | ❌ | PDF upload no testeado |
-| Profile extraction (LLM) | ✅ Implementado | ✅ mock | ⚠️ | Llamada real sin tests |
-| Profile consolidation (multi-source) | ❌ Bug crítico | ❌ | ❌ | Usa modelo inválido `"claude-sonnet-5"` |
-| EvidenceRecord rebuild | ⚠️ Parcial | ⚠️ | ❌ | Solo guarda `evidence_type="skill"`, resto se descarta |
-| ProfileConflict detection | ✅ Modelo existe | ❌ | ❌ | Campo `conflicts` en JSON, nunca expuesto al usuario |
-| Job create/parse | ✅ Implementado | ✅ 11 tests | ✅ | |
-| Job list/get | ✅ Implementado | ✅ | ✅ | |
-| Job analyze (sin guardar) | ✅ Implementado | ✅ | ✅ | |
-| Matching engine (determinístico) | ✅ Implementado | ✅ 5 unit | ✅ | |
-| Matching engine (LLM reasoning) | ✅ Implementado | ✅ mock | ⚠️ | |
-| MatchScoreCard (frontend) | ❌ Bug crítico | ❌ | ❌ | Lee campos incorrectos, renderiza vacío |
-| Application CRUD | ✅ Implementado | ✅ 17 tests | ✅ | |
-| Application state machine | ⚠️ Parcial | ⚠️ | ⚠️ | 7 estados, falta `discovered`/`saving`/`analyzing`/`ready`/`screening` |
-| CV generation (LLM) | ✅ Implementado | ✅ mock | ⚠️ | |
-| Strategy caching | ✅ Implementado | ✅ | ✅ | |
-| Claim validation (determinístico) | ✅ Implementado | ✅ 3 tests | ⚠️ | Solo regex + token overlap, no semántico |
-| Cover letter generation | ✅ Implementado | ✅ mock | ⚠️ | |
-| Application answers | ✅ Backend | ❌ Frontend | ❌ | Endpoint existe, UI ausente |
-| Interview prep (backend) | ❌ Bug crítico | ✅ mock | ❌ | TypeError en runtime — provider.generate() args incorrectos |
-| Interview prep (frontend) | ❌ Faltante | ❌ | ❌ | Ninguna UI |
-| Job discovery (Remotive) | ✅ Implementado | ✅ 11 tests | ✅ | |
-| Recommendations (backend) | ✅ Implementado | ✅ | ✅ | Keyword-overlap scoring |
-| Recommendations (frontend) | ❌ Faltante | ❌ | ❌ | Ninguna UI, ningún link al dashboard |
-| Candidate profile UI | ❌ Faltante | ❌ | ❌ | Todo el surface `/candidates/me/*` no tiene UI |
-| Candidate onboarding flow | ❌ Faltante | ❌ | ❌ | |
-| Application list con job title | ❌ Bug | ❌ | ❌ | Lista muestra UUID parcial, no título del trabajo |
-| Follow-up date UI | ❌ Parcial | ❌ | ❌ | Campo en DB y PATCH, sin UI |
-| Analytics / funnel | ❌ Faltante | ❌ | ❌ | |
-| Outcome tracking | ⚠️ Parcial | ❌ | ❌ | ApplicationEvent existe, sin análisis |
-| Learning loop | ❌ Faltante | ❌ | ❌ | |
-| CI/CD | ❌ Faltante | ❌ | ❌ | Sin GitHub Actions |
-| Docker Compose (v2) | ⚠️ Parcial | ❌ | ❌ | docker-compose.yml existe pero no refleja v2 |
-| Refresh token (frontend) | ❌ Bug | ❌ | ❌ | api-v2.ts no maneja refresh, tokens expiran en 60min |
-| v1 CVSession auth | ❌ Sin auth | ❌ | ❌ | Acceso sin autenticación |
-| E2E golden journey | ❌ Faltante | ❌ | ❌ | |
+| # | Capacidad | Estado | Tests | Notas |
+|---|-----------|--------|-------|-------|
+| **CANDIDATE** | | | | |
+| 1 | Auth register/login/refresh | ✅ IMPLEMENTED | ✅ 9 tests | Refresh tokens, password strength |
+| 2 | JWT stdlib (no cffi) | ✅ IMPLEMENTED | ✅ 5 tests | HMAC-SHA256 |
+| 3 | Password hash (pbkdf2) | ✅ IMPLEMENTED | ✅ | |
+| 4 | Rate limiting en auth | ❌ MISSING | ❌ | Brute force sin protección |
+| 5 | Candidate model básico | ✅ IMPLEMENTED | ✅ | name, location, target_roles, preferences |
+| 6 | Work authorization field | ❌ MISSING | ❌ | No existe campo en modelo |
+| 7 | Availability field | ❌ MISSING | ❌ | No existe campo en modelo |
+| 8 | Standard application answers | ❌ MISSING | ❌ | No existe entidad pre-guardada |
+| 9 | STAR stories pre-guardadas | ❌ MISSING | ❌ | Solo se generan per-application |
+| 10 | Career goals / motivations | ❌ MISSING | ❌ | No existe campo |
+| 11 | CandidateSource (text/PDF) | ✅ IMPLEMENTED | ✅ | CV, LinkedIn, GitHub, Portfolio, Manual |
+| 12 | GitHub source ingestion real | ❌ MISSING | ❌ | Solo acepta texto pegado, no API de GitHub |
+| 13 | Profile extraction (LLM) | ✅ IMPLEMENTED | ✅ mock | EvidenceRef, SkillExtracted, ExperienceExtracted |
+| 14 | Profile consolidation multi-fuente | ✅ IMPLEMENTED | ✅ mock | Bug de modelo inválido fixeado |
+| 15 | EvidenceRecord storage | ✅ IMPLEMENTED | ✅ | claim, evidence_type, source_text, strength |
+| 16 | ProfileConflict detection + UI | ⚠️ PARTIAL | ❌ | Campo `conflicts` en JSON, sin UI de resolución |
+| 17 | Profile health score | ✅ IMPLEMENTED | ✅ | 10 checks, tips accionables |
+| 18 | Profile Quality (vs Completeness) | ⚠️ PARTIAL | ❌ | Solo completeness, no quality ni evidence coverage |
+| 19 | Profile editor con evidencia | ⚠️ PARTIAL | ❌ | UI edita campos básicos, no experience/projects |
+| 20 | Account deletion (GDPR) | ❌ MISSING | ❌ | No existe endpoint |
+| **JOB** | | | | |
+| 21 | Job create + JD parsing (LLM) | ✅ IMPLEMENTED | ✅ 11 tests | title, company, seniority, tech_stack, requirements |
+| 22 | Job list/get | ✅ IMPLEMENTED | ✅ | |
+| 23 | Job deduplication | ❌ MISSING | ❌ | Mismo trabajo puede guardarse múltiples veces |
+| 24 | JobSource extensible (Protocol) | ✅ IMPLEMENTED | ✅ | base.py con JobSource Protocol |
+| 25 | Remotive adapter | ✅ IMPLEMENTED | ✅ | Único adapter implementado |
+| 26 | Greenhouse / Lever / Ashby adapters | ❌ MISSING | ❌ | Solo Remotive |
+| 27 | MANDATORY / PREFERRED / INFERRED classification | ⚠️ PARTIAL | ✅ | must_have / nice_to_have, falta INFERRED/UNKNOWN |
+| 28 | Job normalization canónica | ⚠️ PARTIAL | ❌ | Parcial en JobAgent, sin pipeline explícito |
+| 29 | Company Intelligence (separado de Job) | ❌ MISSING | ❌ | company_description en Job, sin entidad propia |
+| 30 | Salary extraction + normalization | ⚠️ PARTIAL | ✅ | salary_min/max en modelo, no siempre extraído |
+| **MATCHING** | | | | |
+| 31 | Matching determinístico (4 componentes) | ✅ IMPLEMENTED | ✅ 5 unit | skill_overlap, experience, location, education |
+| 32 | Matching con salary scoring | ✅ IMPLEMENTED | ✅ | Opcional, backward-compatible |
+| 33 | Semantic skill expansion (sinónimos) | ✅ IMPLEMENTED | ✅ | 25+ grupos de aliases |
+| 34 | LLM reasoning layer | ✅ IMPLEMENTED | ✅ mock | reasoning, strengths, gaps, recommendation |
+| 35 | Layer 1 — Hard Constraints | ❌ MISSING | ❌ | Sin work_auth, seniority imposible, salary blocker |
+| 36 | Layer 2 — Per-requirement coverage | ❌ MISSING | ❌ | No score por requirement individual |
+| 37 | Layer 3 — Semantic experience matching | ❌ MISSING | ❌ | Solo keyword overlap |
+| 38 | Layer 4 — Seniority deep evaluation | ⚠️ PARTIAL | ✅ | SENIORITY_RANK existe, falta scope/ownership |
+| 39 | Layer 5 — Domain experience | ❌ MISSING | ❌ | |
+| 40 | Layer 6 — Transferable skills | ❌ MISSING | ❌ | |
+| 41 | Career Fit (separado de Job Fit) | ❌ MISSING | ❌ | Un solo score, no diferencia fit laboral de carrera |
+| 42 | Application Decision Engine | ⚠️ PARTIAL | ✅ | LLM recommendation: apply/stretch/pass. Sin BLOCKED |
+| 43 | Outcome tracking (registro) | ✅ IMPLEMENTED | ✅ | outcome column en match_analyses |
+| 44 | Learning loop (ajuste de pesos) | ❌ MISSING | ❌ | Outcome registrado pero no usado para aprender |
+| **APPLICATION** | | | | |
+| 45 | Application CRUD completo | ✅ IMPLEMENTED | ✅ 17 tests | notes, follow_up_date, events |
+| 46 | Application state machine | ⚠️ PARTIAL | ✅ | 7 estados (draft→rejected), falta discovering/ready |
+| 47 | Application strategy (LLM) | ✅ IMPLEMENTED | ✅ mock | approach, cv_changes, cover_letter_key_points |
+| 48 | CV personalization (LLM) | ✅ IMPLEMENTED | ✅ mock | changes con original/adapted/rationale/evidence_ref |
+| 49 | CV change explainability | ✅ IMPLEMENTED | ✅ | CVChange model con original/adapted/rationale |
+| 50 | Cover letter generation (LLM) | ✅ IMPLEMENTED | ✅ mock | |
+| 51 | Application answers (backend) | ✅ IMPLEMENTED | ✅ mock | |
+| 52 | Application answers (frontend) | ✅ IMPLEMENTED | ✅ | textarea + generate con IA |
+| 53 | Readiness checklist | ✅ IMPLEMENTED | ✅ | CV ✓, carta ✓, estrategia ✓, enviado ✓ |
+| 54 | Evidence validation (claim validator) | ✅ IMPLEMENTED | ✅ | Regex + keyword overlap. No semántico |
+| 55 | Evidence classification (SUPPORTED/PLAUSIBLE/UNSUPPORTED) | ❌ MISSING | ❌ | Solo verified/unverified |
+| 56 | Evidence graph (requirement → claim) | ❌ MISSING | ❌ | |
+| 57 | Master CV concept | ❌ MISSING | ❌ | CVVersion per application, no Master CV base |
+| 58 | CV version compare | ❌ MISSING | ❌ | |
+| 59 | Application workspace unificado | ✅ IMPLEMENTED | ✅ | /applications/[id] con todas las secciones |
+| 60 | Interview prep (backend) | ✅ IMPLEMENTED | ✅ mock | questions, STAR stories, company research |
+| 61 | Interview prep (frontend) | ✅ IMPLEMENTED | ✅ | /applications/[id]/interview-prep |
+| **FORM INTELLIGENCE** | | | | |
+| 62 | Application Form entity | ❌ MISSING | ❌ | No existe en ningún archivo |
+| 63 | Form discovery (browser) | ❌ MISSING | ❌ | |
+| 64 | Field semantic classification | ❌ MISSING | ❌ | |
+| 65 | Candidate data → Field mapping | ❌ MISSING | ❌ | |
+| 66 | Browser automation adapter | ❌ MISSING | ❌ | Playwright no configurado para uso |
+| 67 | Human-in-the-loop form fields | ❌ MISSING | ❌ | |
+| 68 | Form fill + validation | ❌ MISSING | ❌ | |
+| **SUBMISSION** | | | | |
+| 69 | Submission entity | ❌ MISSING | ❌ | |
+| 70 | Submit action | ❌ MISSING | ❌ | |
+| 71 | Confirmation capture | ❌ MISSING | ❌ | |
+| 72 | SUBMITTED / UNCONFIRMED states | ❌ MISSING | ❌ | |
+| **DISCOVERY / RECOMMENDATIONS** | | | | |
+| 73 | Job recommendations (backend) | ✅ IMPLEMENTED | ✅ | keyword scoring + Remotive |
+| 74 | Job recommendations (frontend) | ✅ IMPLEMENTED | ✅ | /recommendations |
+| 75 | Recommendation 2.0 (Job Fit + Career Fit + Freshness) | ❌ MISSING | ❌ | Solo keyword score simple |
+| 76 | Analytics funnel dashboard | ✅ IMPLEMENTED | ✅ | /analytics con KPIs y funnel |
+| 77 | Outcome analytics breakdown | ⚠️ PARTIAL | ✅ | Funnel básico, sin breakdown por role/company |
+| **SECURITY** | | | | |
+| 78 | Auth JWT + refresh tokens | ✅ IMPLEMENTED | ✅ | |
+| 79 | Password strength validation | ✅ IMPLEMENTED | ✅ | 8+ chars, upper, lower, digit |
+| 80 | Security headers middleware | ✅ IMPLEMENTED | ✅ | CSP, X-Frame, HSTS |
+| 81 | Rate limiting en /auth/* | ❌ MISSING | ❌ | Sin SlowAPI ni similar |
+| 82 | Ownership checks (entidades) | ✅ IMPLEMENTED | ✅ | candidate_id en todas las queries |
+| 83 | MIME validation (uploads) | ⚠️ PARTIAL | ❌ | Acepta content_type "application/pdf", sin magic bytes |
+| 84 | SSRF protection (URL fetching) | ❌ MISSING | ❌ | source_url sin validación de private IPs |
+| 85 | Prompt injection tests | ❌ MISSING | ❌ | No se testea contenido adversarial en JDs |
+| 86 | Account deletion (GDPR) | ❌ MISSING | ❌ | |
+| **INFRASTRUCTURE** | | | | |
+| 87 | LLMProvider centralizado | ✅ IMPLEMENTED | ✅ | provider.py con generate/structured_output/stream |
+| 88 | Cost tracking | ✅ IMPLEMENTED | ✅ | cost_tracker.py |
+| 89 | Model routing (economy vs capable) | ❌ MISSING | ❌ | Un único modelo para todo |
+| 90 | Prompt versioning | ❌ MISSING | ❌ | Prompts hardcodeados en agentes |
+| 91 | Request ID / correlation ID | ✅ IMPLEMENTED | ✅ | middleware en main.py |
+| 92 | Structured logging (structlog) | ✅ IMPLEMENTED | ✅ | get_logger con campos estructurados |
+| 93 | CI/CD pipeline | ✅ IMPLEMENTED | ✅ | GitHub Actions: lint, typecheck, pytest, tsc |
+| 94 | Alembic migrations (001–006) | ✅ IMPLEMENTED | ✅ | 006 pendiente en prod |
+| 95 | RAG / pgvector | ❌ MISSING | ❌ | Synonym expansion en Python puro (MVP OK) |
+| 96 | Caching (JD parsing, embeddings) | ❌ MISSING | ❌ | Sin Redis ni cache |
+| **FRONTEND** | | | | |
+| 97 | Landing page | ✅ IMPLEMENTED | ✅ | |
+| 98 | Auth (login/register/onboarding) | ✅ IMPLEMENTED | ✅ | Wizard 5 pasos |
+| 99 | Dashboard | ✅ IMPLEMENTED | ✅ | Lista trabajos + nav |
+| 100 | Profile page (health + sources) | ✅ IMPLEMENTED | ✅ | health score, tips, fuentes |
+| 101 | Job detail + match + outcome | ✅ IMPLEMENTED | ✅ | job/[id] con outcome feedback |
+| 102 | Application workspace | ✅ IMPLEMENTED | ✅ | /applications/[id] completo |
+| 103 | Interview prep page | ✅ IMPLEMENTED | ✅ | |
+| 104 | Analytics dashboard | ✅ IMPLEMENTED | ✅ | |
+| 105 | Recommendations page | ✅ IMPLEMENTED | ✅ | |
+| 106 | Loading / empty / error states | ⚠️ PARTIAL | ❌ | Cubierto en mayoría, no consistente en todas |
+| 107 | Responsive (mobile) | ⚠️ PARTIAL | ❌ | Diseño usa max-w-5xl, mobile no optimizado |
+| 108 | Accessibility (a11y) | ❌ MISSING | ❌ | Sin aria-labels, focus states, screen reader |
+| **TESTING** | | | | |
+| 109 | Unit tests (90 pasando) | ✅ IMPLEMENTED | ✅ | |
+| 110 | Integration tests | ⚠️ PARTIAL | ✅ | httpx async client, SQLite in-memory |
+| 111 | E2E tests (Playwright) | ❌ MISSING | ❌ | |
+| 112 | AI evaluation tests | ❌ MISSING | ❌ | Todos los LLM calls mockeados |
+| 113 | Real AI smoke tests | ❌ MISSING | ❌ | |
+| 114 | Prompt injection tests | ❌ MISSING | ❌ | |
 
 ---
 
-## Bugs críticos (producción rota)
+## Deuda técnica identificada
 
-### BUG-001 — `interview_agent.generate_interview_prep()` TypeError
-
-**Severidad:** P0 — runtime crash  
-**Archivo:** `backend/app/services/agents/interview_agent.py`  
-**Problema:**
-
-```python
-# Lo que llama:
-result = await provider.generate(prompt=prompt, tools=[_TOOL_SCHEMA], tool_choice=...)
-
-# Firma real de AnthropicProvider.generate():
-async def generate(self, system: str, messages: list, model: str, max_tokens: int) -> str
-```
-
-Los kwargs `prompt=`, `tools=`, `tool_choice=` no existen. Cada request a `POST /applications/{id}/interview-prep` retorna HTTP 500.  
-**Fix:** Migrar `interview_agent.py` a `provider.structured_output()` como los demás agentes.
+| Ítem | Severidad | Archivo |
+|------|-----------|---------|
+| Sin rate limiting en /auth/* | 🔴 CRÍTICO | main.py + auth.py |
+| SSRF: source_url sin validación | 🔴 CRÍTICO | candidates.py |
+| Sin account deletion | 🔴 ALTO | candidates.py / users |
+| MIME validation incompleta (no magic bytes) | 🟡 MEDIO | candidates.py |
+| Prompts hardcodeados sin versión | 🟡 MEDIO | todos los agentes |
+| Refresh token en localStorage (no httpOnly) | 🟡 MEDIO | auth.tsx |
+| Un solo modelo para todo (no routing) | 🟡 MEDIO | todos los agentes |
+| Conflicts en JSON sin UI | 🟡 MEDIO | profile_agent.py |
+| Career Fit inexistente | 🟡 MEDIO | engine.py + match.py |
+| Outcome no retroalimenta matching | 🟡 MEDIO | engine.py |
 
 ---
 
-### BUG-002 — `MatchScoreCard` renderiza vacío
+## Capacidades clave faltantes por prioridad P0
 
-**Severidad:** P0 — feature completamente rota  
-**Archivo:** `frontend/src/components/MatchScoreCard.tsx`  
-**Problema:**
+### P0.1 — Rate Limiting (Seguridad crítica)
+Sin este fix, los endpoints `/auth/register` y `/auth/login` son vulnerables a brute force.
 
-```typescript
-// Lo que lee el componente:
-match.tier          // undefined
-match.reasoning     // undefined
-match.strengths     // undefined
-match.gaps          // undefined
+**Archivos a modificar:**
+- `backend/requirements.txt` — agregar slowapi
+- `backend/app/main.py` — configurar Limiter
+- `backend/app/api/routes/auth.py` — decorar register y login
+- `backend/tests/test_auth.py` — tests de rate limiting
 
-// Lo que devuelve el backend:
-match.match_tier    // correcto
-match.llm_reasoning // correcto
-match.llm_strengths // correcto
-match.llm_gaps      // correcto
-```
+### P0.2 — Matching 2.0: Hard Constraints + Career Fit
+El matching actual puede recomendar trabajos que el candidato no puede aceptar legalmente o por seniority.
 
-El match score siempre aparece vacío aunque la API responda correctamente.  
-**Fix:** Corregir los nombres de campo en `MatchScoreCard.tsx`.
+**Archivos a modificar:**
+- `backend/app/services/matching/engine.py` — Layer 1 constraints + career_fit_score
+- `backend/app/db/models/candidate.py` — campos work_authorization, availability
+- `backend/app/schemas/candidate.py`
+- `backend/alembic/versions/007_candidate_fields.py`
+- `backend/app/schemas/match.py` — career_fit_score en respuesta
+- `backend/app/db/models/match.py` — campo career_fit_score
+- `backend/tests/test_match.py` — tests hard constraints
 
----
+### P0.3 — Application Decision Engine
+Reemplazar el `recommendation` del LLM por una decisión estructurada con explicación verificable.
 
-### BUG-003 — `consolidate_profiles` usa modelo inválido
-
-**Severidad:** P0 — crash en consolidación multi-fuente  
-**Archivo:** `backend/app/services/agents/profile_agent.py`  
-**Problema:**
-
-```python
-model="claude-sonnet-5"  # No existe
-```
-
-Modelo correcto: `claude-sonnet-4-5` o `claude-haiku-4-5-20251001`. Todo usuario con más de una fuente (CV + LinkedIn) ve un 500 al hacer rebuild del perfil.  
-**Fix:** Usar un modelo válido del LLMProvider.
+**Archivos a modificar:**
+- `backend/app/services/agents/application_agent.py`
+- `backend/app/api/routes/match.py`
+- `frontend/src/app/jobs/[id]/page.tsx`
 
 ---
 
-### BUG-004 — `ApplicationListResponse` no incluye job title
-
-**Severidad:** P1 — UX rota  
-**Archivos:** `backend/app/schemas/application.py`, `frontend/src/app/applications/page.tsx`  
-**Problema:** La lista de postulaciones muestra `"Job ID: a3f4c9d1…"`. El usuario no puede identificar a qué trabajo corresponde cada postulación.  
-**Fix:** Incluir `job_title` y `job_company` en `ApplicationListResponse` vía join.
-
----
-
-### BUG-005 — `test_recommendations_with_profile` path incorrecto
-
-**Severidad:** P1 — test roto  
-**Archivo:** `backend/tests/test_recommendations.py`  
-**Problema:** Llama `POST /api/v2/candidates/sources` (404). Path correcto: `/api/v2/candidates/me/sources/text`.  
-**Fix:** Corregir path en el test.
-
----
-
-## Deuda técnica
-
-### DEUDA-001 — EvidenceRecord rebuild descarta datos
-
-**Archivo:** `backend/app/api/routes/candidates.py` líneas 221-229  
-**Problema:** Solo crea `EvidenceRecord` para `evidence_type="skill"`. Evidencias de experience, education, achievements y certifications se pierden en cada rebuild. El ClaimValidator pierde cobertura.
-
----
-
-### DEUDA-002 — Migration 005 inconsistente con 001-004
-
-**Archivo:** `backend/alembic/versions/005_interview.py`  
-**Problemas:**
-- Usa `sa.JSON()` en vez de `sa.JSONB()` (PostgreSQL pierde indexing)
-- `created_at` y `updated_at` sin `server_default=sa.func.now()` (NULLs en prod si ORM no los setea)
-
----
-
-### DEUDA-003 — JWT en localStorage (XSS)
-
-**Archivo:** `frontend/src/lib/auth.tsx`  
-**Problema:** `localStorage.setItem("li_token", token)`. Cualquier script inyectado puede exfiltrar el token. El estándar es `httpOnly cookie`.  
-**Mitigación corto plazo:** Agregar Content-Security-Policy headers.
-
----
-
-### DEUDA-004 — SECRET_KEY default inseguro
-
-**Archivo:** `backend/app/core/config.py`  
-**Problema:** `SECRET_KEY = "dev-secret-change-in-production"`. Si no se sobreescribe en producción, todos los JWTs son forgeables con clave conocida.  
-**Fix:** Arrancar con error explícito si `ENVIRONMENT=production` y `SECRET_KEY` es el default.
-
----
-
-### DEUDA-005 — v1 CVSession sin autenticación
-
-**Archivos:** `backend/app/api/routes/cv.py`, `backend/app/api/routes/chat.py`  
-**Problema:** Cualquier persona con el UUID de sesión puede leer o modificar cualquier CVSession. Sin `user_id`, imposible retrofittear auth sin migración.  
-**Decisión requerida:** Deprecar v1 o migrar a auth.
-
----
-
-### DEUDA-006 — No hay refresh token en frontend
-
-**Archivo:** `frontend/src/lib/api-v2.ts`  
-**Problema:** El `login()` guarda solo `access_token`. Expira en 60 minutos. Las llamadas subsiguientes fallan silenciosamente sin intentar refresh.
-
----
-
-### DEUDA-007 — Config muerta
-
-**Archivo:** `backend/app/core/config.py`  
-**Problema:** `OPENAI_API_KEY` y `REDIS_URL` configurados pero nunca usados. Genera confusión sobre el stack real.
-
----
-
-### DEUDA-008 — Campos de Job sin usar en matching
-
-- `salary_min` / `salary_max`: extraídos, guardados, ignorados por matching engine
-- `seniority_signal` en `JobRequirement`: extraído, guardado, ignorado
-- `Candidate.preferences`: guardado como JSON, nunca leído por agentes ni engine
-
----
-
-### DEUDA-009 — Candidate onboarding sin UI
-
-Todo el surface `/api/v2/candidates/me/*` está implementado en backend (sources upload, text ingest, profile rebuild, evidence) pero no existe ninguna página en frontend que lo use.
-
----
-
-## Estado de tests
-
-| Suite | Tests | Mocks | Coverage real | Roto |
-|-------|-------|-------|--------------|------|
-| test_auth.py | 9 | Ninguno (no LLM) | Alta | No |
-| test_candidates.py | 9 | profile_agent | Media | No |
-| test_jobs.py | 11 | job_agent | Alta | No |
-| test_match.py | 12 | match_agent | Alta | No |
-| test_applications.py | 17 | application_agents | Alta | No |
-| test_interview.py | 8 | interview_agent | Media | No (mock evade BUG-001) |
-| test_recommendations.py | 11 | remotive | Alta | Sí (BUG-005) |
-| test_security.py | 5 | Ninguno | Alta | No |
-| **Total** | **82** | | | **1 roto** |
-
-### Tests críticos faltantes
-
-| Área | Por qué falta | Prioridad |
-|------|--------------|-----------|
-| PDF upload | Sin test de integración | P1 |
-| interview_agent real (sin mock) | BUG-001 oculto por mock | P0 |
-| MatchScoreCard frontend | BUG-002 no detectado | P1 |
-| consolidate_profiles multi-source real | BUG-003 oculto por mock | P0 |
-| Token refresh flow | Sin test E2E de expiración | P1 |
-| Ownership checks exhaustivos | Parcial | P1 |
-| ApplicationListResponse con job title | Campo ausente sin test | P1 |
-
----
-
-## Funcionalidad faltante por área
-
-### Backend — faltante
-
-| Capacidad | Complejidad | Dependencias | Prioridad |
-|-----------|------------|--------------|-----------|
-| Candidate preferences aplicados a matching | Baja | Matching engine | P1 |
-| Salary matching en engine | Media | Candidate model | P1 |
-| Application state machine completo | Media | Application model | P2 |
-| Follow-up reminders | Media | Infraestructura email | P3 |
-| Funnel analytics por usuario | Media | Outcome tracking | P2 |
-| Learning loop | Alta | Analytics + outcomes | P3 |
-| pgvector / RAG para evidencias | Alta | Postgres + embeddings | P2 |
-| Prompt versioning | Media | Agents | P2 |
-| Cost tracking por llamada LLM | Baja | Provider | P2 |
-| Account deletion + data export | Media | Privacy | P1 |
-| Rate limiting | Media | Middleware | P1 |
-| Prompt injection protection | Media | Agents + input validation | P1 |
-
-### Frontend — faltante
-
-| Página / Feature | Complejidad | Prioridad |
-|-----------------|------------|-----------|
-| `/recommendations` | Baja | P0 (API existe) |
-| `/applications/[id]/interview-prep` | Baja | P0 (API existe) |
-| Answers en `/applications/[id]` | Baja | P0 (API existe) |
-| `/profile` (candidate management) | Media | P0 (API existe) |
-| Auth redirect en landing page | Muy baja | P1 |
-| Refresh token flow | Baja | P1 |
-| Follow-up date UI | Baja | P2 |
-| Onboarding flow `/onboarding` | Alta | P1 |
-| Dashboard mejorado (stats) | Media | P2 |
-| Job inbox con filtros | Media | P2 |
-| Profile editor | Alta | P2 |
-| Document review (compare versions) | Alta | P2 |
-| Analytics dashboard | Alta | P3 |
-
----
-
-## Riesgos
-
-| Riesgo | Probabilidad | Impacto | Mitigación |
-|--------|-------------|---------|------------|
-| SECRET_KEY default en prod | Media | Crítico | Validar en startup |
-| JWT localStorage exfiltrado | Media | Alto | CSP headers + migrar a cookies |
-| v1 session data leak | Alta | Medio | Deprecar v1 |
-| consolidate_profiles crash (BUG-003) | Alta | Alto | Fix urgente |
-| Interview prep crash (BUG-001) | Alta | Alto | Fix urgente |
-| LLM hallucination en CV generation | Media | Alto | Claim validator (parcial) |
-| Token expiry sin refresh | Alta | Medio | Fix frontend |
-
----
-
-## Prioridades de implementación
-
-### P0 — Bugs que bloquean features existentes (antes de cualquier nueva feature)
-
-1. BUG-001: Fix `interview_agent` TypeError
-2. BUG-002: Fix `MatchScoreCard` field names
-3. BUG-003: Fix `consolidate_profiles` model name
-4. BUG-004: Add job title a `ApplicationListResponse`
-5. BUG-005: Fix test path en `test_recommendations`
-
-### P0 — UI faltante para APIs que ya existen
-
-6. Página `/recommendations`
-7. Página `/applications/[id]/interview-prep`
-8. Sección de answers en `/applications/[id]`
-9. Página `/profile` (candidate profile + sources)
-
-### P1 — Deuda técnica crítica
-
-10. DEUDA-004: SECRET_KEY validation on startup
-11. DEUDA-006: Refresh token en frontend
-12. DEUDA-001: EvidenceRecord rebuild completo
-13. DEUDA-002: Migration 005 fixes
-
-### P1 — Funcionalidad core faltante
-
-14. Onboarding flow `/onboarding`
-15. Candidate preferences → matching
-16. Application state machine completo
-17. Rate limiting
-18. Account deletion / data export
-
-### P2 — Mejoras de matching y personalización
-
-19. Salary matching
-20. Semantic matching (embeddings)
-21. Funnel analytics
-22. Cost tracking por LLM call
-23. Profile health score
-
-### P3 — Features diferenciadores
-
-24. Learning loop
-25. Interview simulator
-26. pgvector / RAG
-27. CI/CD (GitHub Actions)
-28. Market intelligence
-
----
-
-## Dependencias entre fases
-
-```
-BUG-001,2,3,4,5 (fixes)
-    ↓
-UI faltante P0 (recommendations, interview-prep, answers, profile)
-    ↓
-Onboarding flow (depende de profile UI)
-    ↓
-Candidate preferences → Matching (depende de onboarding completo)
-    ↓
-Funnel analytics (depende de outcome tracking mejorado)
-    ↓
-Learning loop (depende de analytics)
-    ↓
-Semantic matching / pgvector (infraestructura independiente)
-```
-
----
-
-## Complejidad estimada por área
-
-| Área | Días estimados | Riesgo técnico |
-|------|---------------|---------------|
-| Bug fixes P0 (5 bugs) | 1 | Bajo |
-| UI P0 faltante (4 páginas) | 2-3 | Bajo |
-| Refresh token + SECRET_KEY | 0.5 | Bajo |
-| EvidenceRecord rebuild completo | 1 | Bajo |
-| Onboarding flow | 3-4 | Medio |
-| Application state machine | 1 | Bajo |
-| Salary matching | 1 | Bajo |
-| Rate limiting | 1 | Bajo |
-| Funnel analytics | 2 | Medio |
-| Semantic matching | 3-5 | Alto |
-| Learning loop | 5+ | Alto |
-| CI/CD | 1-2 | Bajo |
+## Riesgos críticos
+
+| Riesgo | Impacto | Mitigación |
+|--------|---------|-----------|
+| Sin rate limiting — brute force en auth | Alto | Implementar SlowAPI |
+| SSRF en source_url | Alto | Validar URLs privadas |
+| Sin account deletion — violación GDPR | Alto | Implementar DELETE /candidates/me |
+| Form Intelligence requiere browser infra | Muy alto | Playwright aislado, separar lógica de negocio |
+| LLM hallucination en CV | Medio | Claim validator + validación de evidencia |

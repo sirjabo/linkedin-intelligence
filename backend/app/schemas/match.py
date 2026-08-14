@@ -22,6 +22,10 @@ class MatchResponse(BaseModel):
     llm_reasoning: str | None
     llm_strengths: list | None
     llm_gaps: list | None
+    # Matching 2.0
+    career_fit_score: float | None = None
+    application_decision: str | None = None
+    hard_blockers: list | None = None
     outcome: str | None = None
     created_at: datetime
     updated_at: datetime

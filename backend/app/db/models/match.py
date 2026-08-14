@@ -35,6 +35,10 @@ class MatchAnalysis(Base):
     llm_reasoning: Mapped[str | None] = mapped_column(Text)
     llm_strengths: Mapped[list | None] = mapped_column(JSON)
     llm_gaps: Mapped[list | None] = mapped_column(JSON)
+    # Matching 2.0 fields
+    career_fit_score: Mapped[float | None] = mapped_column(Float)
+    application_decision: Mapped[str | None] = mapped_column(String(50))  # APPLY|APPLY_WITH_CUSTOMIZATION|STRETCH|LOW_FIT|DO_NOT_APPLY|BLOCKED
+    hard_blockers: Mapped[list | None] = mapped_column(JSON)
     # Learning loop: actual outcome recorded by the user after applying
     # Values: "offer" | "interview" | "phone_screen" | "rejected" | "no_response" | None
     outcome: Mapped[str | None] = mapped_column(String(50))

@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,15 +10,22 @@ from app.db.models.user import User
 from app.db.models.candidate import Candidate
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, RefreshRequest
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.limiter import limiter
+from app.core.config import settings
 from app.core.logging import get_logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = get_logger(__name__)
 bearer_scheme = HTTPBearer()
 
+# Strict in production, permissive in dev/test to avoid test interference
+_LOGIN_LIMIT = "5/minute" if settings.ENVIRONMENT == "production" else "200/minute"
+_REGISTER_LIMIT = "3/minute" if settings.ENVIRONMENT == "production" else "200/minute"
+
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+@limiter.limit(_REGISTER_LIMIT)
+async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -44,7 +51,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+@limiter.limit(_LOGIN_LIMIT)
+async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email, User.is_active.is_(True)))
     user = result.scalar_one_or_none()
     if not user or not verify_password(payload.password, user.hashed_password):
