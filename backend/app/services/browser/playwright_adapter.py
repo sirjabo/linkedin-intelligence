@@ -195,8 +195,13 @@ class PlaywrightAdapter:
 
     async def click_submit(self) -> PageState:
         assert self._page
-        async with self._page.expect_navigation(wait_until="domcontentloaded", timeout=30_000):
-            await self._page.locator("button[type='submit'], input[type='submit']").first.click(timeout=10_000)
+        submit_url = self._page.url
+        try:
+            async with self._page.expect_navigation(wait_until="domcontentloaded", timeout=15_000):
+                await self._page.locator("button[type='submit'], input[type='submit']").first.click(timeout=10_000)
+        except Exception:
+            # Navigation may have already completed or the server returned in-place
+            await self._page.wait_for_load_state("domcontentloaded", timeout=15_000)
         title = await self._page.title()
         return PageState(url=self._page.url, title=title)
 

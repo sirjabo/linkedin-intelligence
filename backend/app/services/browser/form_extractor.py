@@ -137,7 +137,7 @@ CONFIRMATION_DETECTOR_JS = r"""
 
   // Try to extract a confirmation ID / reference number
   const refPatterns = [
-    /\b(app[-_]?[a-z0-9]+)\b/i,
+    /\b(app[-_][a-z0-9]{4,})\b/i,
     /\b(ref[-_:]?\s*[A-Z0-9]{6,})\b/i,
     /reference[:\s]+([A-Z0-9-]{4,})/i,
     /confirmation[:\s]+([A-Z0-9-]{4,})/i,
