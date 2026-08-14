@@ -5,6 +5,7 @@ from app.db.models.match import MatchAnalysis
 from app.db.models.application import Application, CVVersion, CoverLetter, ApplicationAnswer, ApplicationEvent
 from app.db.models.interview import InterviewPrep
 from app.db.models.cv_session import CVSession, ChatMessage
+from app.db.models.form import ApplicationForm, ApplicationFormField
 
 __all__ = [
     "User",
@@ -23,4 +24,6 @@ __all__ = [
     "InterviewPrep",
     "CVSession",
     "ChatMessage",
+    "ApplicationForm",
+    "ApplicationFormField",
 ]
