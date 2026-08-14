@@ -16,6 +16,7 @@ from app.schemas.candidate import (
 from app.services.pdf_extractor import extract_pdf_text
 from app.services.agents.profile_agent import extract_from_source, consolidate_profiles
 from app.services.learning_loop import compute_calibration
+from app.services.profile_optimizer import generate_optimization_report
 from app.db.models.match import MatchAnalysis
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -398,6 +399,70 @@ async def get_learning_insights(
         "bias_direction": report.bias_direction,
         "calibration_score": report.calibration_score,
         "insights": report.insights,
+    }
+
+
+@router.get("/me/profile-optimizer")
+async def get_profile_optimizer(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return prioritized profile improvement tips based on match history.
+
+    Aggregates skill gaps across all MatchAnalysis rows for the candidate,
+    generates actionable tips, and optionally enriches with an LLM summary.
+    """
+    candidate = await _get_candidate_or_404(current_user, db)
+
+    # Load profile data
+    profile_result = await db.execute(
+        select(CandidateProfile).where(CandidateProfile.candidate_id == candidate.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    profile_data: dict = {}
+    if profile:
+        profile_data = {
+            "summary": profile.summary,
+            "skills": profile.skills,
+            "experience": profile.experience,
+            "education": profile.education,
+        }
+
+    # Load all match analyses
+    analyses_result = await db.execute(
+        select(MatchAnalysis)
+        .where(MatchAnalysis.candidate_id == candidate.id)
+    )
+    analyses = [
+        {
+            "match_tier": row.match_tier,
+            "overall_score": row.overall_score,
+            "missing_skills": row.missing_skills or [],
+            "matched_skills": row.matched_skills or [],
+            "llm_gaps": row.llm_gaps or [],
+        }
+        for row in analyses_result.scalars().all()
+    ]
+
+    report = await generate_optimization_report(analyses, profile_data)
+
+    return {
+        "total_analyses_reviewed": report.total_analyses_reviewed,
+        "summary": report.summary,
+        "top_skill_gaps": [
+            {"skill": g.skill, "frequency": g.frequency}
+            for g in report.top_skill_gaps
+        ],
+        "tips": [
+            {
+                "priority": t.priority,
+                "category": t.category,
+                "tip": t.tip,
+                "evidence": t.evidence,
+                "impact": t.impact,
+            }
+            for t in report.tips
+        ],
     }
 
 

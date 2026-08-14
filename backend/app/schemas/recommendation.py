@@ -5,6 +5,7 @@ class RecommendationRequest(BaseModel):
     query: str = ""
     limit: int = 20
     category: str | None = None
+    sources: list[str] | None = None  # None = all available; e.g. ["remotive", "arbeitnow", "remoteok"]
 
 
 class RecommendedJobResponse(BaseModel):

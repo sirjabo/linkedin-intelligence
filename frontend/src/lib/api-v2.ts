@@ -241,9 +241,7 @@ export interface Recommendation {
   matched_keywords: string[];
 }
 
-export function getRecommendations(token: string, query?: string) {
-  return req<Recommendation[]>("POST", "/recommendations", token, { query: query ?? "", limit: 20 });
-}
+// getRecommendations is defined below with sources support
 
 // Candidates
 export interface Candidate {
@@ -422,4 +420,46 @@ export function listAgentAnswers(token: string, appId: string) {
 
 export function updateAgentAnswer(token: string, appId: string, answerId: string, answer: string) {
   return req<ApplicationAnswer>("PATCH", `/applications/${appId}/agent/answers/${answerId}`, token, { answer });
+}
+
+// Profile Optimizer
+export interface SkillGap {
+  skill: string;
+  frequency: number;
+}
+
+export interface OptimizationTip {
+  priority: number;
+  category: string;
+  tip: string;
+  evidence: string;
+  impact: "high" | "medium" | "low";
+}
+
+export interface OptimizationReport {
+  total_analyses_reviewed: number;
+  summary: string;
+  top_skill_gaps: SkillGap[];
+  tips: OptimizationTip[];
+}
+
+export function getProfileOptimizer(token: string) {
+  return req<OptimizationReport>("GET", "/candidates/me/profile-optimizer", token);
+}
+
+// Job Radar
+export function getJobSources() {
+  return req<{ sources: string[] }>("GET", "/recommendations/sources", undefined);
+}
+
+export function getRecommendations(
+  token: string,
+  query?: string,
+  sources?: string[]
+) {
+  return req<Recommendation[]>("POST", "/recommendations", token, {
+    query: query ?? "",
+    limit: 20,
+    sources: sources ?? null,
+  });
 }
