@@ -1,7 +1,7 @@
 """ApplicationAgentOrchestrator — coordinates browser automation + candidate knowledge.
 
 Three-phase flow:
-  start()  → discover form, classify fields, resolve values, persist session
+  start()  → [intelligence] discover form, classify fields, resolve values, persist session
   resume() → validate all human fields answered, transition to ready_to_fill
   submit() → re-navigate, fill all fields in browser, click submit, capture confirmation
 
@@ -10,6 +10,7 @@ Security invariants:
   - Never invents field values — all values come from CandidateKnowledgeResolver
   - No auto-submit without explicit human confirmation
 """
+import asyncio
 import uuid
 from datetime import datetime
 
@@ -17,16 +18,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.db.models.application import Application, ApplicationSubmission
+from app.db.models.application import Application, ApplicationSubmission, CVVersion, CoverLetter
 from app.db.models.candidate import Candidate, CandidateProfile
 from app.db.models.form import ApplicationForm, ApplicationFormField
 from app.db.models.agent_session import ApplicationAgentSession
+from app.db.models.job import Job
 from app.services.browser.playwright_adapter import PlaywrightAdapter
 from app.services.browser.adapter import RawFormField
 from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
 from app.services.cv_storage import generate_cv_file, cv_exists, get_cv_path
 from app.services.ats.registry import detect_ats
 from app.services.form_intelligence import classify_field
+from app.services.matching.engine import compute_deterministic, tier_from_score, DET_WEIGHT
+from app.services.agents.match_agent import reason_about_match
+from app.services.agents.application_agent import generate_strategy
+from app.services.agents.cv_agent import personalize_cv
+from app.services.agents.communication_agent import generate_cover_letter
+from app.services.claim_validator import validate_claims
+from app.services.ai.provider import LLMProvider, default_provider
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -46,10 +55,12 @@ class ApplicationAgentOrchestrator:
         application_id: uuid.UUID,
         form_url: str,
         db: AsyncSession,
+        intelligence_provider: LLMProvider | None = None,
     ) -> ApplicationAgentSession:
         """Discover the form and resolve all field values from candidate data.
 
         Creates ApplicationAgentSession + ApplicationForm + ApplicationFormField rows.
+        Runs the AI intelligence pipeline first (strategy, CV, cover letter) — graceful if LLM unavailable.
         Returns the session with status="awaiting_human" (or "ready_to_fill" if none needed).
         """
         # Load application + candidate + profile
@@ -70,6 +81,15 @@ class ApplicationAgentOrchestrator:
         await db.flush()
 
         try:
+            # Pre-browser intelligence phase (graceful — never raises)
+            await _run_intelligence_phase(
+                app=app,
+                candidate=candidate,
+                profile=profile,
+                db=db,
+                provider=intelligence_provider or default_provider,
+            )
+
             # Open browser, run any ATS-specific pre-discovery steps, discover form
             session.status = "discovering"
             async with PlaywrightAdapter(headless=True) as browser:
@@ -153,8 +173,6 @@ class ApplicationAgentOrchestrator:
             # Handle CV file
             cv_path = _ensure_cv_file(candidate, profile, app)
             if cv_path:
-                # Mark the cv_file field as ready (we have the file)
-                # The actual path injection happens at fill time
                 session.screenshot_before_path = None  # reset
 
             session.status = "ready_to_fill" if human_count == 0 else "awaiting_human"
@@ -350,7 +368,212 @@ class ApplicationAgentOrchestrator:
             raise AgentError(f"submit() failed: {exc}") from exc
 
 
+# ── Intelligence pipeline ─────────────────────────────────────────────────────
+
+async def _run_intelligence_phase(
+    *,
+    app: Application,
+    candidate: Candidate,
+    profile: CandidateProfile | None,
+    db: AsyncSession,
+    provider: LLMProvider,
+) -> None:
+    """Run AI intelligence pipeline before browser automation.
+
+    Populates Application.strategy, CVVersion, CoverLetter.
+    Fails gracefully — catches all exceptions; orchestrator continues on any error.
+    """
+    try:
+        # Load Job with requirements
+        job_result = await db.execute(
+            select(Job)
+            .options(selectinload(Job.requirements))
+            .where(Job.id == app.job_id)
+        )
+        job = job_result.scalar_one_or_none()
+        if not job:
+            logger.warning("intelligence_phase.no_job", application_id=str(app.id))
+            return
+
+        # Extract and normalize profile data
+        _profile_skills = _normalize_skills(profile.skills if profile else None)
+        _skills_list = _extract_skill_names(profile.skills if profile else None)
+        _career_level = profile.career_level if profile else None
+        _summary = (profile.summary or "") if profile else ""
+        _education = (profile.education or []) if profile else []
+        _experience = (profile.experience or []) if profile else []
+        _projects = (profile.projects or []) if profile else []
+        _headline: str | None = None
+        if profile and isinstance(profile.professional_identity, dict):
+            _headline = profile.professional_identity.get("headline")
+
+        _requirements_must = [r.description for r in job.requirements if r.requirement_type == "must_have"]
+        _requirements_nice = [r.description for r in job.requirements if r.requirement_type == "nice_to_have"]
+
+        # Deterministic matching (sync, no LLM)
+        det = compute_deterministic(
+            profile_skills=_profile_skills,
+            profile_career_level=_career_level,
+            profile_education=_education,
+            candidate_location=candidate.location,
+            job_seniority=job.seniority,
+            job_location=job.location,
+            job_remote_type=job.remote_type,
+            job_tech_stack=job.tech_stack or [],
+            requirements=job.requirements,
+            job_salary_max=job.salary_max,
+            candidate_salary_pref_min=candidate.salary_min_usd,
+        )
+
+        # LLM match reasoning
+        llm_match = await reason_about_match(
+            candidate_summary=_summary,
+            candidate_skills=_skills_list,
+            candidate_career_level=_career_level,
+            candidate_location=candidate.location,
+            job_title=job.title,
+            job_company=job.company,
+            job_seniority=job.seniority,
+            job_location=job.location,
+            job_remote_type=job.remote_type,
+            job_tech_stack=job.tech_stack or [],
+            requirements_must_have=_requirements_must,
+            requirements_nice_to_have=_requirements_nice,
+            deterministic_score=det.overall_score,
+            matched_skills=det.matched_skills,
+            missing_skills=det.missing_skills,
+            provider=provider,
+        )
+
+        hybrid_score = det.overall_score * DET_WEIGHT + llm_match.score * (1 - DET_WEIGHT)
+        match_tier = tier_from_score(hybrid_score)
+
+        # Application strategy
+        strategy = await generate_strategy(
+            candidate_summary=_summary,
+            candidate_skills=_skills_list,
+            candidate_career_level=_career_level,
+            candidate_location=candidate.location,
+            job_title=job.title,
+            job_company=job.company,
+            job_seniority=job.seniority,
+            job_tech_stack=job.tech_stack or [],
+            requirements_must_have=_requirements_must,
+            match_tier=match_tier,
+            match_overall_score=hybrid_score,
+            matched_skills=det.matched_skills,
+            missing_skills=det.missing_skills,
+            llm_reasoning=llm_match.reasoning,
+            provider=provider,
+        )
+        app.strategy = strategy.model_dump()
+
+        # CV personalization + Cover letter (parallel)
+        personalized_cv_result, cover_letter_result = await asyncio.gather(
+            personalize_cv(
+                candidate_summary=_summary,
+                candidate_headline=_headline,
+                candidate_skills=_skills_list,
+                candidate_career_level=_career_level,
+                candidate_experience=_experience,
+                candidate_projects=_projects,
+                job_title=job.title,
+                job_company=job.company,
+                job_seniority=job.seniority,
+                job_tech_stack=job.tech_stack or [],
+                requirements_must_have=_requirements_must,
+                strategy_guidance=[c.model_dump() for c in strategy.cv_changes],
+                provider=provider,
+            ),
+            generate_cover_letter(
+                candidate_summary=_summary,
+                candidate_skills=_skills_list,
+                candidate_career_level=_career_level,
+                candidate_location=candidate.location,
+                job_title=job.title,
+                job_company=job.company,
+                job_seniority=job.seniority,
+                strengths_to_emphasize=strategy.strengths_to_emphasize,
+                cover_letter_key_points=strategy.cover_letter_key_points,
+                match_tier=match_tier,
+                provider=provider,
+            ),
+        )
+
+        # Claim validation on adapted CV text (Phase 2: add real evidence records)
+        cv_text = " ".join(c.adapted for c in personalized_cv_result.changes if c.adapted)
+        validation = validate_claims(cv_text, evidence_records=[])
+        if validation.unverified_claims:
+            logger.warning(
+                "intelligence_phase.unverified_claims",
+                application_id=str(app.id),
+                count=len(validation.unverified_claims),
+            )
+
+        # Persist CVVersion and CoverLetter
+        db.add(CVVersion(
+            application_id=app.id,
+            summary_adapted=personalized_cv_result.summary_adapted,
+            headline_adapted=personalized_cv_result.headline_adapted,
+            skills_ordered=personalized_cv_result.skills_ordered,
+            changes=[c.model_dump() for c in personalized_cv_result.changes],
+            evidence_refs=personalized_cv_result.evidence_refs,
+            ats_keywords=personalized_cv_result.ats_keywords_added,
+            validation_result=validation.to_dict(),
+        ))
+        db.add(CoverLetter(
+            application_id=app.id,
+            content=cover_letter_result.content,
+            evidence_refs=cover_letter_result.evidence_refs,
+        ))
+        await db.flush()
+
+        logger.info(
+            "intelligence_phase.complete",
+            application_id=str(app.id),
+            match_tier=match_tier,
+            hybrid_score=round(hybrid_score, 3),
+            cv_changes=len(personalized_cv_result.changes),
+            strategy_recommendation=strategy.recommendation,
+        )
+
+    except Exception as exc:
+        logger.warning(
+            "intelligence_phase.failed",
+            application_id=str(app.id),
+            error=str(exc),
+        )
+
+
 # ── Private helpers ───────────────────────────────────────────────────────────
+
+def _normalize_skills(skills: list | None) -> list[dict]:
+    """Normalize skills to list[dict] with canonical_name for the matching engine."""
+    if not skills:
+        return []
+    result = []
+    for s in skills:
+        if isinstance(s, dict):
+            result.append(s)
+        elif isinstance(s, str) and s:
+            result.append({"canonical_name": s})
+    return result
+
+
+def _extract_skill_names(skills: list | None) -> list[str]:
+    """Extract plain skill name strings for LLM agents."""
+    if not skills:
+        return []
+    names = []
+    for s in skills:
+        if isinstance(s, dict):
+            name = s.get("canonical_name") or s.get("name") or ""
+            if name:
+                names.append(name)
+        elif isinstance(s, str) and s:
+            names.append(s)
+    return names
+
 
 async def _load_application_context(
     application_id: uuid.UUID, db: AsyncSession
@@ -360,6 +583,7 @@ async def _load_application_context(
         .options(
             selectinload(Application.cover_letters),
             selectinload(Application.cv_versions),
+            selectinload(Application.answers),
         )
         .where(Application.id == application_id)
     )
