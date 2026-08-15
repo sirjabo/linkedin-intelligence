@@ -10,7 +10,7 @@ import structlog
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
-from app.api.routes import cv, chat, auth, candidates, jobs, match, applications, recommendations, interview, forms, agent, market
+from app.api.routes import cv, chat, auth, candidates, jobs, match, applications, recommendations, interview, forms, agent, market, analyze
 
 configure_logging()
 logger = get_logger(__name__)
@@ -83,6 +83,7 @@ app.include_router(interview.router, prefix="/api/v2")
 app.include_router(forms.router, prefix="/api/v2")
 app.include_router(agent.router, prefix="/api/v2")
 app.include_router(market.router, prefix="/api/v2")
+app.include_router(analyze.router, prefix="/api/v2")
 
 
 @app.get("/health")

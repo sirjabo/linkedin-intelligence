@@ -515,3 +515,44 @@ export function getMarketTrends(role?: string) {
   const qs = role ? `?role=${role}` : "";
   return req<MarketTrendsResponse>("GET", `/market/trends${qs}`, undefined);
 }
+
+// LinkedIn Analyzer
+export interface LinkedInSectionScores {
+  title: number;
+  about: number;
+  experience: number;
+  skills: number;
+  projects: number;
+  education: number;
+}
+
+export interface LinkedInTitleAnalysis {
+  current: string;
+  issues: string[];
+  suggested_variants: string[];
+}
+
+export interface LinkedInRecommendation {
+  priority: number;
+  section: string;
+  message: string;
+  impact: "very_high" | "high" | "medium" | "low";
+}
+
+export interface LinkedInAnalysis {
+  analysis_id: string;
+  overall_score: number;
+  target_role: string;
+  section_scores: LinkedInSectionScores;
+  title_analysis: LinkedInTitleAnalysis;
+  keyword_gaps: string[];
+  recommendations: LinkedInRecommendation[];
+}
+
+export function analyzeLinkedIn(token: string, profile_text: string, target_role: string) {
+  return req<LinkedInAnalysis>("POST", "/analyze/linkedin", token, { profile_text, target_role });
+}
+
+export function getAnalyzeRoles() {
+  return req<{ roles: string[] }>("GET", "/analyze/linkedin/roles", undefined);
+}
