@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { getRecommendations, type Recommendation } from "@/lib/api-v2";
-import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon, StarIcon } from "lucide-react";
+import { getRecommendations, getJobSources, type Recommendation } from "@/lib/api-v2";
+import { ArrowLeftIcon, ExternalLinkIcon, SearchIcon, StarIcon, ServerIcon } from "lucide-react";
 
 function ScoreBadge({ score }: { score: number }) {
   const pct = Math.round(score * 100);
@@ -19,6 +19,12 @@ function ScoreBadge({ score }: { score: number }) {
   );
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  remotive: "Remotive",
+  arbeitnow: "Arbeitnow",
+  remoteok: "RemoteOK",
+};
+
 export default function RecommendationsPage() {
   const { token, isLoading } = useAuth();
   const router = useRouter();
@@ -29,9 +35,31 @@ export default function RecommendationsPage() {
   const [error, setError] = useState("");
   const [fetched, setFetched] = useState(false);
 
+  // Sources
+  const [availableSources, setAvailableSources] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+
   useEffect(() => {
     if (!isLoading && !token) router.replace("/login");
   }, [token, isLoading, router]);
+
+  useEffect(() => {
+    getJobSources()
+      .then((data) => {
+        setAvailableSources(data.sources);
+        setSelectedSources(data.sources);
+      })
+      .catch(() => {
+        setAvailableSources(["remotive", "arbeitnow", "remoteok"]);
+        setSelectedSources(["remotive", "arbeitnow", "remoteok"]);
+      });
+  }, []);
+
+  function toggleSource(src: string) {
+    setSelectedSources((prev) =>
+      prev.includes(src) ? prev.filter((s) => s !== src) : [...prev, src]
+    );
+  }
 
   async function handleSearch(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -39,7 +67,11 @@ export default function RecommendationsPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await getRecommendations(token, query || undefined);
+      const data = await getRecommendations(
+        token,
+        query || undefined,
+        selectedSources.length > 0 ? selectedSources : undefined
+      );
       setJobs(data);
       setFetched(true);
     } catch (err: unknown) {
@@ -50,9 +82,9 @@ export default function RecommendationsPage() {
   }
 
   useEffect(() => {
-    if (token) handleSearch();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+    if (token && availableSources.length > 0) handleSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, availableSources]);
 
   if (isLoading) {
     return (
@@ -74,25 +106,50 @@ export default function RecommendationsPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-        {/* Search */}
-        <form onSubmit={handleSearch} className="flex gap-3">
-          <div className="flex-1 relative">
-            <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ej: Python data engineer, ML engineer…"
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
-            />
+        {/* Search + source selector */}
+        <form onSubmit={handleSearch} className="space-y-3">
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Ej: Python data engineer, ML engineer…"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+            >
+              {loading ? "Buscando…" : "Buscar"}
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-          >
-            {loading ? "Buscando…" : "Buscar"}
-          </button>
+
+          {/* Source checkboxes */}
+          {availableSources.length > 0 && (
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                <ServerIcon size={12} />
+                Fuentes:
+              </span>
+              {availableSources.map((src) => (
+                <label key={src} className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedSources.includes(src)}
+                    onChange={() => toggleSource(src)}
+                    className="accent-blue-600 w-3.5 h-3.5"
+                  />
+                  <span className="text-xs text-slate-300">
+                    {SOURCE_LABELS[src] ?? src}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
         </form>
 
         {error && (

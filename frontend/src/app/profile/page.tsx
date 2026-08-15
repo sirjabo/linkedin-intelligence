@@ -11,15 +11,23 @@ import {
   rebuildProfile,
   getProfile,
   getProfileHealth,
+  getProfileOptimizer,
   type Candidate,
   type CandidateSource,
   type CandidateProfile,
   type ProfileHealth,
+  type OptimizationReport,
 } from "@/lib/api-v2";
 import {
   ArrowLeftIcon, UserIcon, PlusIcon, RefreshCwIcon,
-  ZapIcon, CheckCircleIcon, AlertCircleIcon,
+  ZapIcon, CheckCircleIcon, AlertCircleIcon, TrendingUpIcon,
 } from "lucide-react";
+
+const IMPACT_COLOR: Record<string, string> = {
+  high: "text-red-400",
+  medium: "text-yellow-400",
+  low: "text-slate-400",
+};
 
 const SOURCE_TYPES = [
   { value: "cv", label: "CV / Currículum" },
@@ -50,6 +58,11 @@ export default function ProfilePage() {
   const [health, setHealth] = useState<ProfileHealth | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Profile Optimizer state
+  const [optimizer, setOptimizer] = useState<OptimizationReport | null>(null);
+  const [loadingOptimizer, setLoadingOptimizer] = useState(false);
+  const [optimizerError, setOptimizerError] = useState("");
 
   // Source ingestion state
   const [sourceType, setSourceType] = useState("cv");
@@ -157,6 +170,20 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleLoadOptimizer() {
+    if (!token) return;
+    setLoadingOptimizer(true);
+    setOptimizerError("");
+    try {
+      const report = await getProfileOptimizer(token);
+      setOptimizer(report);
+    } catch (err: unknown) {
+      setOptimizerError(err instanceof Error ? err.message : "Error al cargar recomendaciones");
+    } finally {
+      setLoadingOptimizer(false);
+    }
+  }
+
   if (isLoading || pageLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -243,6 +270,107 @@ export default function ProfilePage() {
             )}
           </div>
         )}
+
+        {/* Profile Optimizer */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+              <TrendingUpIcon size={16} className="text-purple-400" />
+              Optimizador de perfil
+            </h3>
+            {!optimizer && (
+              <button
+                onClick={handleLoadOptimizer}
+                disabled={loadingOptimizer}
+                className="flex items-center gap-1.5 text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 border border-purple-800/50 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                {loadingOptimizer ? (
+                  <RefreshCwIcon size={12} className="animate-spin" />
+                ) : (
+                  <TrendingUpIcon size={12} />
+                )}
+                {loadingOptimizer ? "Analizando…" : "Ver recomendaciones"}
+              </button>
+            )}
+            {optimizer && (
+              <button
+                onClick={handleLoadOptimizer}
+                disabled={loadingOptimizer}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                {loadingOptimizer ? "Actualizando…" : "Actualizar"}
+              </button>
+            )}
+          </div>
+
+          {optimizerError && (
+            <p className="text-xs text-red-400">{optimizerError}</p>
+          )}
+
+          {!optimizer && !loadingOptimizer && !optimizerError && (
+            <p className="text-xs text-slate-500">
+              Analiza tus postulaciones anteriores para detectar qué skills necesitás agregar a tu perfil.
+            </p>
+          )}
+
+          {optimizer && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500">
+                Basado en {optimizer.total_analyses_reviewed} análisis de postulaciones.
+              </p>
+              {optimizer.summary && (
+                <p className="text-sm text-slate-300 leading-relaxed">{optimizer.summary}</p>
+              )}
+
+              {optimizer.top_skill_gaps.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-slate-400 mb-2">Skills faltantes más frecuentes</p>
+                  <div className="flex flex-wrap gap-2">
+                    {optimizer.top_skill_gaps.slice(0, 10).map((gap) => (
+                      <span
+                        key={gap.skill}
+                        className="inline-flex items-center gap-1.5 text-xs bg-red-900/20 text-red-300 border border-red-800/40 px-2 py-0.5 rounded"
+                      >
+                        {gap.skill}
+                        <span className="text-red-500 font-medium">{gap.frequency}×</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {optimizer.tips.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-slate-400 mb-2">Recomendaciones</p>
+                  <div className="space-y-3">
+                    {optimizer.tips.map((tip, i) => (
+                      <div key={i} className="border-l-2 border-slate-700 pl-3">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`text-xs font-semibold uppercase ${IMPACT_COLOR[tip.impact] ?? "text-slate-400"}`}>
+                            {tip.impact}
+                          </span>
+                          <span className="text-xs text-slate-600">·</span>
+                          <span className="text-xs text-slate-500 capitalize">{tip.category}</span>
+                        </div>
+                        <p className="text-sm text-slate-300">{tip.tip}</p>
+                        {tip.evidence && (
+                          <p className="text-xs text-slate-500 mt-0.5">{tip.evidence}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {optimizer.tips.length === 0 && optimizer.top_skill_gaps.length === 0 && (
+                <p className="text-sm text-emerald-400 flex items-center gap-2">
+                  <CheckCircleIcon size={14} />
+                  Tu perfil está bien alineado con tus postulaciones recientes.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Candidate info */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
@@ -448,13 +576,13 @@ export default function ProfilePage() {
                         {(exp.title ?? exp.role ?? "") as string}
                         {exp.company ? ` · ${exp.company as string}` : ""}
                       </p>
-                      {(exp.start_date ?? exp.start) && (
+                      {(exp.start_date ?? exp.start) != null && (
                         <p className="text-xs text-slate-500 mt-0.5">
                           {(exp.start_date ?? exp.start) as string}
-                          {(exp.end_date ?? exp.end) ? ` – ${(exp.end_date ?? exp.end) as string}` : " – Presente"}
+                          {(exp.end_date ?? exp.end) != null ? ` – ${(exp.end_date ?? exp.end) as string}` : " – Presente"}
                         </p>
                       )}
-                      {exp.description && (
+                      {exp.description != null && (
                         <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                           {(exp.description as string).slice(0, 200)}
                           {(exp.description as string).length > 200 ? "…" : ""}

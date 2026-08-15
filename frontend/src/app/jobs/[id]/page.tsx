@@ -101,7 +101,7 @@ export default function JobDetailPage() {
     );
   }
 
-  const currentOutcome = match?.outcome ?? null;
+  const currentOutcome = (match as Record<string, unknown> | null)?.outcome as string | null ?? null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">

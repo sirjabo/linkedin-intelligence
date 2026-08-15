@@ -10,10 +10,17 @@ import {
   addEvent,
   generateAnswers,
   updateApplication,
+  startAgent,
+  getAgentStatus,
+  answerAgentField,
+  previewAgent,
+  submitAgent,
   type Application,
   type CVVersion,
   type CoverLetter,
   type ApplicationAnswer,
+  type AgentSession,
+  type AgentField,
 } from "@/lib/api-v2";
 import {
   ArrowLeftIcon,
@@ -27,7 +34,26 @@ import {
   CalendarIcon,
   StickyNoteIcon,
   SaveIcon,
+  BotIcon,
+  AlertTriangleIcon,
+  RefreshCwIcon,
+  SendIcon,
 } from "lucide-react";
+
+const AGENT_STATUS_LABEL: Record<string, string> = {
+  initializing: "Inicializando…",
+  discovering: "Descubriendo formulario…",
+  mapping: "Mapeando campos…",
+  awaiting_human: "Esperando respuestas",
+  ready_to_fill: "Listo para completar",
+  filling: "Completando formulario…",
+  previewing: "Vista previa…",
+  submitting: "Enviando…",
+  submitted: "Enviado",
+  failed: "Falló",
+};
+
+const AGENT_POLL_INTERVAL = 3000;
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -64,6 +90,17 @@ export default function ApplicationDetailPage() {
   const [questions, setQuestions] = useState("");
   const [answers, setAnswers] = useState<ApplicationAnswer[]>([]);
   const [genAnswers, setGenAnswers] = useState(false);
+
+  // Browser Agent state
+  const [agentFormUrl, setAgentFormUrl] = useState("");
+  const [agentSession, setAgentSession] = useState<AgentSession | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentError, setAgentError] = useState("");
+  const [fieldAnswers, setFieldAnswers] = useState<Record<string, string>>({});
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [submitDone, setSubmitDone] = useState(false);
 
   // Notes editing
   const [notes, setNotes] = useState("");
@@ -186,6 +223,90 @@ export default function ApplicationDetailPage() {
     }
   }
 
+  async function handleStartAgent() {
+    if (!token || !id || !agentFormUrl.trim()) return;
+    setAgentLoading(true);
+    setAgentError("");
+    setAgentSession(null);
+    setFieldAnswers({});
+    setSubmitDone(false);
+    try {
+      const session = await startAgent(token, id, agentFormUrl.trim());
+      setAgentSession(session);
+      pollAgentStatus();
+    } catch (err: unknown) {
+      setAgentError(err instanceof Error ? err.message : "Error al iniciar agente");
+    } finally {
+      setAgentLoading(false);
+    }
+  }
+
+  function pollAgentStatus() {
+    if (!token || !id) return;
+    const interval = setInterval(async () => {
+      try {
+        const session = await getAgentStatus(token, id);
+        setAgentSession(session);
+        const terminal = ["awaiting_human", "ready_to_fill", "submitted", "failed"];
+        if (terminal.includes(session.status)) {
+          clearInterval(interval);
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, AGENT_POLL_INTERVAL);
+  }
+
+  async function handleAnswerField(field: AgentField) {
+    if (!token || !id) return;
+    const value = fieldAnswers[field.id] ?? "";
+    if (!value.trim()) return;
+    setSavingField(field.id);
+    setAgentError("");
+    try {
+      const session = await answerAgentField(token, id, field.id, value.trim());
+      setAgentSession(session);
+    } catch (err: unknown) {
+      setAgentError(err instanceof Error ? err.message : "Error al guardar respuesta");
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  async function handlePreview() {
+    if (!token || !id) return;
+    setPreviewing(true);
+    setAgentError("");
+    try {
+      const session = await previewAgent(token, id);
+      setAgentSession(session);
+    } catch (err: unknown) {
+      setAgentError(err instanceof Error ? err.message : "Error en vista previa");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  async function handleConfirmSubmit() {
+    if (!token || !id) return;
+    setConfirming(true);
+    setAgentError("");
+    try {
+      const session = await submitAgent(token, id, true);
+      setAgentSession(session);
+      if (session.status === "submitted") {
+        setSubmitDone(true);
+        await addEvent(token, id, "applied", "Enviado con agente");
+        const updated = await getApplication(token, id);
+        setApp(updated);
+      }
+    } catch (err: unknown) {
+      setAgentError(err instanceof Error ? err.message : "Error al enviar");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -298,6 +419,217 @@ export default function ApplicationDetailPage() {
             <BrainIcon size={15} />
             Preparación entrevista
           </Link>
+        </div>
+
+        {/* Browser Agent */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <h3 className="font-semibold text-slate-200 mb-1 flex items-center gap-2">
+            <BotIcon size={16} className="text-blue-400" />
+            Agente de postulación
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">
+            El agente abre el formulario, lo completa con tu perfil y espera tu confirmación antes de enviarlo.
+          </p>
+
+          {agentError && (
+            <div className="mb-3 flex items-start gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2.5">
+              <AlertTriangleIcon size={14} className="flex-shrink-0 mt-0.5" />
+              {agentError}
+            </div>
+          )}
+
+          {/* Step 1: URL input */}
+          {!agentSession && (
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={agentFormUrl}
+                onChange={(e) => setAgentFormUrl(e.target.value)}
+                placeholder="https://jobs.greenhouse.io/…"
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+              />
+              <button
+                onClick={handleStartAgent}
+                disabled={agentLoading || !agentFormUrl.trim()}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+              >
+                {agentLoading ? (
+                  <RefreshCwIcon size={14} className="animate-spin" />
+                ) : (
+                  <BotIcon size={14} />
+                )}
+                {agentLoading ? "Iniciando…" : "Iniciar agente"}
+              </button>
+            </div>
+          )}
+
+          {/* Session status */}
+          {agentSession && !submitDone && (
+            <div className="space-y-4">
+              {/* Status bar */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-sm font-medium text-slate-200">
+                  {AGENT_STATUS_LABEL[agentSession.status] ?? agentSession.status}
+                </span>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>{agentSession.fields_auto_filled} auto · {agentSession.fields_human_pending} pendiente</span>
+                  {agentSession.ats_name && (
+                    <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-400">
+                      {agentSession.ats_name}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Polling spinner for in-progress states */}
+              {["initializing", "discovering", "mapping", "filling", "previewing", "submitting"].includes(agentSession.status) && (
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                  <RefreshCwIcon size={14} className="animate-spin" />
+                  <span>Procesando, no cierres esta página…</span>
+                </div>
+              )}
+
+              {/* HUMAN_REQUIRED fields */}
+              {agentSession.status === "awaiting_human" && agentSession.fields && (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-400">
+                    Completá los campos que el agente no pudo resolver automáticamente:
+                  </p>
+                  {(agentSession.fields as AgentField[])
+                    .filter((f) => f.human_required)
+                    .map((field) => (
+                    <div key={field.id} className="bg-slate-800 rounded-lg p-3">
+                      <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                        {field.label}
+                        {field.is_required && <span className="text-red-400 ml-1">*</span>}
+                      </label>
+                      {field.options && field.options.length > 0 ? (
+                        <select
+                          value={fieldAnswers[field.id] ?? field.human_answer ?? ""}
+                          onChange={(e) => setFieldAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-600"
+                        >
+                          <option value="">Seleccioná…</option>
+                          {field.options.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={fieldAnswers[field.id] ?? field.human_answer ?? ""}
+                          onChange={(e) => setFieldAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                          placeholder={field.auto_fill_value ? `Sugerido: ${field.auto_fill_value}` : "Tu respuesta…"}
+                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                        />
+                      )}
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        {field.auto_fill_value && !fieldAnswers[field.id] && (
+                          <button
+                            type="button"
+                            onClick={() => setFieldAnswers((prev) => ({ ...prev, [field.id]: field.auto_fill_value! }))}
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            Usar sugerencia
+                          </button>
+                        )}
+                        <span />
+                        <button
+                          onClick={() => handleAnswerField(field)}
+                          disabled={savingField === field.id || !fieldAnswers[field.id]?.trim()}
+                          className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded transition-colors"
+                        >
+                          {savingField === field.id ? (
+                            <RefreshCwIcon size={11} className="animate-spin" />
+                          ) : (
+                            <CheckIcon size={11} />
+                          )}
+                          Guardar
+                        </button>
+                      </div>
+                      {field.human_answer && (
+                        <p className="text-xs text-emerald-400 mt-1">
+                          Guardado: {field.human_answer}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={handlePreview}
+                    disabled={previewing}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold transition-colors mt-2"
+                  >
+                    {previewing ? (
+                      <RefreshCwIcon size={14} className="animate-spin" />
+                    ) : (
+                      <ZapIcon size={14} />
+                    )}
+                    {previewing ? "Procesando…" : "Completar formulario"}
+                  </button>
+                </div>
+              )}
+
+              {/* Ready to fill / preview */}
+              {(agentSession.status === "ready_to_fill" || agentSession.confirmation_id) && !submitDone && (
+                <div className="space-y-3">
+                  <div className="bg-yellow-900/20 border border-yellow-800 rounded-lg px-4 py-3">
+                    <p className="text-sm font-semibold text-yellow-300 mb-1 flex items-center gap-2">
+                      <AlertTriangleIcon size={14} />
+                      Confirmación requerida
+                    </p>
+                    <p className="text-xs text-yellow-200/70">
+                      El agente completó el formulario y está esperando tu aprobación explícita para enviarlo.
+                      Revisá los datos antes de confirmar.
+                    </p>
+                    {agentSession.avg_confidence != null && (
+                      <p className="text-xs text-yellow-300 mt-1.5">
+                        Confianza promedio: {Math.round(agentSession.avg_confidence * 100)}%
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleConfirmSubmit}
+                    disabled={confirming}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    {confirming ? (
+                      <RefreshCwIcon size={14} className="animate-spin" />
+                    ) : (
+                      <SendIcon size={14} />
+                    )}
+                    {confirming ? "Enviando…" : "Confirmar y enviar postulación"}
+                  </button>
+                </div>
+              )}
+
+              {/* Error state */}
+              {agentSession.status === "failed" && agentSession.error_message && (
+                <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+                  {agentSession.error_message}
+                </div>
+              )}
+
+              {/* Reset */}
+              {["failed", "submitted"].includes(agentSession.status) && (
+                <button
+                  onClick={() => { setAgentSession(null); setAgentFormUrl(""); setFieldAnswers({}); }}
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  Iniciar nueva sesión
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Submitted */}
+          {submitDone && (
+            <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+              <CheckIcon size={16} />
+              ¡Postulación enviada exitosamente!
+            </div>
+          )}
         </div>
 
         {/* Notes + Follow-up date */}
