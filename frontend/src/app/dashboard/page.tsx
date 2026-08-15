@@ -2,196 +2,297 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Navbar from "@/components/Navbar";
 import { useAuth } from "@/lib/auth";
-import { listJobs, createJob, type Job } from "@/lib/api-v2";
-import { BriefcaseIcon, PlusIcon, LogOutIcon } from "lucide-react";
+import {
+  listApplications,
+  getApplicationStats,
+  getProfileHealth,
+  getRecommendations,
+  type Application,
+  type ApplicationStats,
+  type ProfileHealth,
+  type Recommendation,
+} from "@/lib/api-v2";
+import {
+  ZapIcon,
+  BriefcaseIcon,
+  TrendingUpIcon,
+  LinkedinIcon,
+  ArrowRightIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  XCircleIcon,
+  SparklesIcon,
+} from "lucide-react";
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Pendiente",
-  analyzing: "Analizando…",
-  analyzed: "Analizado",
-  error: "Error",
+const STATUS_COLOR: Record<string, string> = {
+  applied: "bg-blue-500/15 text-blue-400",
+  interview: "bg-emerald-500/15 text-emerald-400",
+  offer: "bg-yellow-500/15 text-yellow-400",
+  rejected: "bg-red-500/15 text-red-400",
+  withdrawn: "bg-slate-500/15 text-slate-400",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  applied: "Aplicado",
+  interview: "Entrevista",
+  offer: "Oferta",
+  rejected: "Rechazado",
+  withdrawn: "Retirado",
+};
+
+function StatCard({ label, value, sub, icon: Icon, color }: {
+  label: string; value: string | number; sub?: string; icon: React.ElementType; color: string;
+}) {
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+      <div className="flex items-start justify-between mb-3">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
+          <Icon className="w-4.5 h-4.5" />
+        </div>
+      </div>
+      <p className="text-2xl font-bold text-white tabular-nums">{value}</p>
+      <p className="text-sm font-medium text-white mt-0.5">{label}</p>
+      {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function HealthBar({ score, passed, total }: { score: number; passed: number; total: number }) {
+  const pct = Math.round(score * 100);
+  const color = pct >= 75 ? "bg-emerald-500" : pct >= 50 ? "bg-yellow-500" : "bg-red-500";
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-slate-300">Completitud del perfil</span>
+        <span className="text-sm font-bold text-white">{pct}%</span>
+      </div>
+      <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-xs text-slate-500 mt-1.5">{passed}/{total} checks pasados</p>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
-  const { token, logout, isLoading } = useAuth();
+  const { token, isLoading } = useAuth();
   const router = useRouter();
-  const [jobs, setJobs] = useState<Job[]>([]);
+
+  const [apps, setApps] = useState<Application[]>([]);
+  const [stats, setStats] = useState<ApplicationStats | null>(null);
+  const [health, setHealth] = useState<ProfileHealth | null>(null);
+  const [recs, setRecs] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [jd, setJd] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState("");
 
   useEffect(() => {
-    if (!isLoading && !token) {
-      router.replace("/login");
-    }
+    if (!isLoading && !token) router.replace("/login");
   }, [token, isLoading, router]);
 
   useEffect(() => {
     if (!token) return;
-    listJobs(token)
-      .then(setJobs)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.allSettled([
+      listApplications(token).then(setApps),
+      getApplicationStats(token).then(setStats),
+      getProfileHealth(token).then(setHealth),
+      getRecommendations(token, "", []).then((r) => setRecs(r.slice(0, 4))),
+    ]).finally(() => setLoading(false));
   }, [token]);
-
-  async function handleCreateJob(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token || !jd.trim()) return;
-    setCreating(true);
-    setCreateError("");
-    try {
-      const job = await createJob(token, jd.trim());
-      setJobs((prev) => [job, ...prev]);
-      setJd("");
-      setShowCreate(false);
-    } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : "Error al crear");
-    } finally {
-      setCreating(false);
-    }
-  }
 
   if (isLoading || loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Cargando…</div>
+        <div className="text-slate-400 animate-pulse">Cargando dashboard…</div>
       </div>
     );
   }
 
+  const recentApps = apps.slice(0, 5);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-lg font-bold text-white">LinkedIn Intelligence</h1>
-          <div className="flex items-center gap-4">
-            <Link href="/profile" className="text-sm text-slate-400 hover:text-white transition-colors">
-              Mi Perfil
-            </Link>
-            <Link href="/recommendations" className="text-sm text-slate-400 hover:text-white transition-colors">
-              Recomendados
-            </Link>
-            <Link href="/applications" className="text-sm text-slate-400 hover:text-white transition-colors">
-              Postulaciones
-            </Link>
-            <Link href="/analytics" className="text-sm text-slate-400 hover:text-white transition-colors">
-              Analytics
-            </Link>
-            <button
-              onClick={() => { logout(); router.push("/login"); }}
-              className="text-slate-400 hover:text-white transition-colors"
-              aria-label="Cerrar sesión"
-            >
-              <LogOutIcon size={18} />
-            </button>
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold">Mis Trabajos</h2>
-            <p className="text-slate-400 text-sm mt-1">{jobs.length} oferta{jobs.length !== 1 ? "s" : ""} agregada{jobs.length !== 1 ? "s" : ""}</p>
-          </div>
-          <button
-            onClick={() => setShowCreate(!showCreate)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-          >
-            <PlusIcon size={16} />
-            Agregar trabajo
-          </button>
+      <main className="max-w-6xl mx-auto px-6 pt-10 pb-24">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-slate-500 text-sm mt-1">Tu panorama completo de búsqueda de empleo</p>
         </div>
 
-        {showCreate && (
-          <form onSubmit={handleCreateJob} className="mb-6 bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="font-semibold text-slate-200 mb-3">Pegá la descripción del trabajo</h3>
-            {createError && (
-              <div className="mb-3 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">
-                {createError}
+        {/* Stats row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <StatCard
+            label="Postulaciones"
+            value={stats?.total ?? 0}
+            sub={`${stats?.active ?? 0} activas`}
+            icon={BriefcaseIcon}
+            color="bg-blue-600/20 text-blue-400"
+          />
+          <StatCard
+            label="Entrevistas"
+            value={stats?.funnel?.["interview"] ?? 0}
+            sub="en proceso"
+            icon={CheckCircleIcon}
+            color="bg-emerald-600/20 text-emerald-400"
+          />
+          <StatCard
+            label="Ofertas"
+            value={stats?.offers ?? 0}
+            sub="recibidas"
+            icon={SparklesIcon}
+            color="bg-yellow-600/20 text-yellow-400"
+          />
+          <StatCard
+            label="Rechazos"
+            value={stats?.rejected ?? 0}
+            sub="registrados"
+            icon={XCircleIcon}
+            color="bg-slate-600/20 text-slate-400"
+          />
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Left: Recent applications */}
+          <div className="md:col-span-2 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Postulaciones recientes</h2>
+              <Link href="/applications" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                Ver todas <ArrowRightIcon className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {recentApps.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
+                <BriefcaseIcon className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+                <p className="text-slate-400 text-sm">Todavía no tenés postulaciones registradas.</p>
+                <Link
+                  href="/recommendations"
+                  className="inline-flex items-center gap-1.5 mt-4 text-sm text-blue-400 hover:text-blue-300"
+                >
+                  Ver ofertas recomendadas <ArrowRightIcon className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {recentApps.map((app) => (
+                  <Link
+                    key={app.id}
+                    href={`/applications/${app.id}`}
+                    className="flex items-center justify-between bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl px-5 py-3.5 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">
+                        {app.job_title ?? "Trabajo sin título"}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {app.job_company ?? "Empresa desconocida"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 ml-4 shrink-0">
+                      {app.follow_up_date && (
+                        <span className="flex items-center gap-1 text-xs text-slate-500">
+                          <ClockIcon className="w-3 h-3" />
+                          {new Date(app.follow_up_date).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                        </span>
+                      )}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[app.status] ?? "bg-slate-800 text-slate-400"}`}>
+                        {STATUS_LABEL[app.status] ?? app.status}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
               </div>
             )}
-            <textarea
-              value={jd}
-              onChange={(e) => setJd(e.target.value)}
-              rows={8}
-              required
-              placeholder="Pegá aquí la descripción completa del trabajo…"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none mb-3"
-            />
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={creating || !jd.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-semibold rounded-lg transition-colors"
-              >
-                {creating ? "Analizando…" : "Analizar trabajo"}
-              </button>
-            </div>
-          </form>
-        )}
 
-        {jobs.length === 0 ? (
-          <div className="text-center py-20">
-            <BriefcaseIcon size={48} className="mx-auto text-slate-700 mb-4" />
-            <p className="text-slate-400">No tenés trabajos agregados todavía.</p>
-            <p className="text-slate-500 text-sm mt-1">Hacé click en "Agregar trabajo" para empezar.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {jobs.map((job) => (
-              <Link
-                key={job.id}
-                href={`/jobs/${job.id}`}
-                className="block bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-white">
-                      {job.title ?? "Trabajo sin título"}
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-0.5">
-                      {job.company ?? "Empresa desconocida"}
-                      {job.location ? ` · ${job.location}` : ""}
-                      {job.remote_type ? ` · ${job.remote_type}` : ""}
-                    </p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    job.status === "analyzed"
-                      ? "bg-emerald-900/40 text-emerald-400"
-                      : job.status === "error"
-                      ? "bg-red-900/40 text-red-400"
-                      : "bg-slate-800 text-slate-400"
-                  }`}>
-                    {STATUS_LABEL[job.status] ?? job.status}
-                  </span>
+            {/* Recommended jobs */}
+            {recs.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mt-6">
+                  <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Ofertas para vos</h2>
+                  <Link href="/recommendations" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                    Ver más <ArrowRightIcon className="w-3 h-3" />
+                  </Link>
                 </div>
-                {job.tech_stack && job.tech_stack.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {job.tech_stack.slice(0, 6).map((t) => (
-                      <span key={t} className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">
-                        {t}
+                <div className="space-y-2">
+                  {recs.map((rec) => (
+                    <a
+                      key={rec.external_id}
+                      href={rec.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl px-5 py-3.5 transition-colors group"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white group-hover:text-blue-300 transition-colors truncate">
+                          {rec.title}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">{rec.company} · {rec.location}</p>
+                      </div>
+                      <span className="ml-4 shrink-0 text-xs font-bold text-emerald-400 tabular-nums">
+                        {rec.score}%
                       </span>
-                    ))}
-                    {job.tech_stack.length > 6 && (
-                      <span className="text-xs text-slate-500">+{job.tech_stack.length - 6}</span>
-                    )}
-                  </div>
-                )}
-              </Link>
-            ))}
+                    </a>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        )}
+
+          {/* Right: Profile + quick actions */}
+          <div className="space-y-4">
+            {/* Profile health */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Perfil</h2>
+              {health ? (
+                <>
+                  <HealthBar score={health.score} passed={health.passed} total={health.total} />
+                  {health.tips.length > 0 && (
+                    <ul className="mt-4 space-y-1.5">
+                      {health.tips.slice(0, 3).map((tip, i) => (
+                        <li key={i} className="text-xs text-slate-400 flex items-start gap-2">
+                          <span className="text-yellow-500 mt-0.5 shrink-0">▸</span>
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">Cargando…</p>
+              )}
+              <Link
+                href="/profile"
+                className="mt-4 flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 border border-slate-700 hover:border-blue-500/50 rounded-lg py-2 transition-colors"
+              >
+                Ir a mi perfil <ArrowRightIcon className="w-3 h-3" />
+              </Link>
+            </div>
+
+            {/* Quick actions */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Herramientas</h2>
+              <div className="space-y-2">
+                {[
+                  { href: "/analyze", icon: LinkedinIcon, label: "Analizar LinkedIn", color: "text-blue-400" },
+                  { href: "/skills", icon: TrendingUpIcon, label: "Skills Radar", color: "text-emerald-400" },
+                  { href: "/market", icon: ZapIcon, label: "Mercado", color: "text-yellow-400" },
+                ].map(({ href, icon: Icon, label, color }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors group"
+                  >
+                    <Icon className={`w-4 h-4 ${color}`} />
+                    <span className="text-sm text-slate-300 group-hover:text-white transition-colors">{label}</span>
+                    <ArrowRightIcon className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 ml-auto transition-colors" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );

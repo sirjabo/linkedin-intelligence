@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@media print {
+  header, nav, .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print-white {
+    background: white !important;
+    color: black !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

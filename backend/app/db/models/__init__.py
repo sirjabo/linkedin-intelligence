@@ -7,6 +7,7 @@ from app.db.models.interview import InterviewPrep
 from app.db.models.cv_session import CVSession, ChatMessage
 from app.db.models.form import ApplicationForm, ApplicationFormField
 from app.db.models.agent_session import ApplicationAgentSession
+from app.db.models.market import SkillSnapshot
 
 __all__ = [
     "User",
@@ -29,4 +30,5 @@ __all__ = [
     "ApplicationForm",
     "ApplicationFormField",
     "ApplicationAgentSession",
+    "SkillSnapshot",
 ]

@@ -466,6 +466,88 @@ async def get_profile_optimizer(
     }
 
 
+@router.get("/me/benchmark")
+async def get_profile_benchmark(
+    role: str = "ai_engineer",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Compare candidate's skills against live market demand for a given role.
+
+    Returns a percentile ranking and per-skill comparison showing how many
+    market-demanded skills the candidate has vs. is missing.
+    """
+    from app.api.routes.market import _aggregate_skills, ROLE_QUERIES, _VALID_ROLES, _slugify
+    from app.db.models.candidate import CandidateProfile
+
+    if role not in ROLE_QUERIES:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=f"role must be one of: {', '.join(_VALID_ROLES)}")
+
+    candidate = await _get_candidate_or_404(current_user, db)
+
+    profile_result = await db.execute(
+        select(CandidateProfile).where(CandidateProfile.candidate_id == candidate.id)
+    )
+    profile = profile_result.scalar_one_or_none()
+
+    candidate_skills: set[str] = set()
+    if profile and profile.skills:
+        skills_data = profile.skills
+        if isinstance(skills_data, list):
+            for s in skills_data:
+                name = s.get("name") or s.get("skill") or (s if isinstance(s, str) else "")
+                if name:
+                    candidate_skills.add(_slugify(str(name)))
+        elif isinstance(skills_data, dict):
+            for skill_list in skills_data.values():
+                if isinstance(skill_list, list):
+                    for s in skill_list:
+                        if isinstance(s, str):
+                            candidate_skills.add(_slugify(s))
+
+    _jobs, tag_counter = await _aggregate_skills(role, limit=30)
+    n = max(sum(tag_counter.values()), 1)
+
+    top_market = tag_counter.most_common(30)
+    matched = []
+    missing = []
+
+    for slug, count in top_market:
+        freq_pct = round(count / len(_jobs) * 100, 1) if _jobs else 0
+        entry = {"skill": slug, "frequency_pct": freq_pct, "job_count": count}
+        if slug in candidate_skills or any(slug in cs or cs in slug for cs in candidate_skills if len(cs) >= 3):
+            matched.append(entry)
+        else:
+            missing.append(entry)
+
+    total = len(top_market)
+    match_count = len(matched)
+    percentile = round(match_count / total * 100) if total else 0
+
+    tier = (
+        "Excelente" if percentile >= 75
+        else "Bueno" if percentile >= 50
+        else "En desarrollo" if percentile >= 25
+        else "Inicial"
+    )
+
+    return {
+        "role": role,
+        "percentile": percentile,
+        "tier": tier,
+        "matched_count": match_count,
+        "total_checked": total,
+        "matched_skills": matched,
+        "missing_skills": missing,
+        "profile_has_skills": len(candidate_skills) > 0,
+        "message": (
+            f"Tenés {match_count} de las {total} skills más demandadas para {role}. "
+            f"Estás en el percentil {percentile}."
+        ),
+    }
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_account(
     current_user: User = Depends(get_current_user),

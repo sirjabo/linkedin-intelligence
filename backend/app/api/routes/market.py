@@ -3,8 +3,10 @@ import asyncio
 import re
 import time
 from collections import Counter
-from datetime import date, datetime
-from fastapi import APIRouter, Query
+from datetime import date, datetime, timedelta
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.market import (
     SkillFrequency, SkillsRadarResponse,
@@ -14,6 +16,8 @@ from app.services.job_sources.base import JobRaw
 from app.services.job_sources.remotive import RemotiveSource
 from app.services.job_sources.arbeitnow import ArbeitnowSource
 from app.services.job_sources.remoteok import RemoteOKSource
+from app.db.session import get_db
+from app.db.models.market import SkillSnapshot
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -61,6 +65,58 @@ _TECH_CATEGORIES: dict[str, str] = {
     "git": "tools", "github": "tools", "gitlab": "tools", "jira": "tools",
 }
 
+# Salary ranges by role (USD/month, remote LATAM-international market)
+_SALARY_RANGES: dict[str, dict] = {
+    "ai_engineer": {
+        "min_usd": 4000, "max_usd": 12000, "median_usd": 7000,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $2k–$4k · Mid: $4k–$7k · Senior/Lead: $7k–$12k+",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+    "data_engineer": {
+        "min_usd": 3500, "max_usd": 10000, "median_usd": 6000,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $2k–$3.5k · Mid: $3.5k–$6k · Senior: $6k–$10k",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+    "analytics_engineer": {
+        "min_usd": 3000, "max_usd": 9000, "median_usd": 5500,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $2k–$3k · Mid: $3k–$5.5k · Senior: $5.5k–$9k",
+        "sources": ["Remotive", "LinkedIn Jobs", "dbt community survey 2025"],
+    },
+    "ml_engineer": {
+        "min_usd": 4500, "max_usd": 14000, "median_usd": 8000,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $2.5k–$4.5k · Mid: $4.5k–$8k · Senior: $8k–$14k+",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+    "backend_engineer": {
+        "min_usd": 3000, "max_usd": 10000, "median_usd": 5500,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $1.5k–$3k · Mid: $3k–$5.5k · Senior: $5.5k–$10k",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+    "frontend_engineer": {
+        "min_usd": 2500, "max_usd": 9000, "median_usd": 5000,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $1.5k–$2.5k · Mid: $2.5k–$5k · Senior: $5k–$9k",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+    "devops_engineer": {
+        "min_usd": 3500, "max_usd": 11000, "median_usd": 6500,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $2k–$3.5k · Mid: $3.5k–$6.5k · Senior/SRE: $6.5k–$11k",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+    "data_scientist": {
+        "min_usd": 3500, "max_usd": 11000, "median_usd": 6500,
+        "currency": "USD", "period": "month",
+        "notes": "Seniority junior: $2k–$3.5k · Mid: $3.5k–$6.5k · Senior/Staff: $6.5k–$11k",
+        "sources": ["Remotive", "LinkedIn Jobs", "Glassdoor LATAM 2025"],
+    },
+}
+
 _SLUG_RE = re.compile(r"[^a-z0-9+#.]")
 
 # In-memory TTL cache: key → (payload, expires_at)
@@ -85,10 +141,8 @@ def _slugify(name: str) -> str:
 
 
 def _categorize(slug: str) -> str:
-    # Exact match first
     if slug in _TECH_CATEGORIES:
         return _TECH_CATEGORIES[slug]
-    # Substring match — only for keys >= 4 chars to avoid false positives ("r", "go")
     for key, cat in _TECH_CATEGORIES.items():
         if len(key) >= 4 and (key in slug or slug in key):
             return cat
@@ -106,9 +160,7 @@ async def _fetch_safe(source_name: str, source_cls, query: str, limit: int) -> l
 
 async def _aggregate_skills(role: str, limit: int = 50) -> tuple[list[JobRaw], Counter]:
     """Fetch jobs for role from all sources and count tech tag frequencies.
-
-    Results are cached in-memory for 30 minutes per role to avoid hammering
-    external job boards on every request.
+    Results are cached in-memory for 30 minutes per role.
     """
     cache_key = f"skills:{role}"
     cached = _cache_get(cache_key)
@@ -124,7 +176,6 @@ async def _aggregate_skills(role: str, limit: int = 50) -> tuple[list[JobRaw], C
     ]
     batches = await asyncio.gather(*tasks)
 
-    # Deduplicate by URL
     seen: set[str] = set()
     jobs: list[JobRaw] = []
     for batch in batches:
@@ -143,6 +194,75 @@ async def _aggregate_skills(role: str, limit: int = 50) -> tuple[list[JobRaw], C
     return result
 
 
+async def save_skill_snapshot(role: str, db: AsyncSession) -> None:
+    """Persist today's skill frequencies to DB (idempotent — uses upsert logic)."""
+    import uuid as _uuid
+    jobs, tag_counter = await _aggregate_skills(role)
+    n = max(len(jobs), 1)
+    today = date.today()
+
+    for slug, count in tag_counter.most_common(50):
+        display = slug.replace("+", "++").title().replace("++", "+").replace("Js", "JS")
+        existing = await db.execute(
+            select(SkillSnapshot).where(
+                SkillSnapshot.role == role,
+                SkillSnapshot.skill_slug == slug,
+                SkillSnapshot.snapshot_date == today,
+            )
+        )
+        row = existing.scalar_one_or_none()
+        if row:
+            row.frequency_pct = round(count / n * 100, 1)
+            row.job_count = count
+        else:
+            db.add(SkillSnapshot(
+                id=_uuid.uuid4(),
+                role=role,
+                skill_slug=slug,
+                skill_name=display,
+                category=_categorize(slug),
+                frequency_pct=round(count / n * 100, 1),
+                job_count=count,
+                snapshot_date=today,
+            ))
+    await db.commit()
+
+
+async def _get_skill_trends(role: str, db: AsyncSession, days: int = 7) -> dict[str, str]:
+    """Return trend direction for each skill by comparing today vs N days ago."""
+    today = date.today()
+    past = today - timedelta(days=days)
+
+    today_result = await db.execute(
+        select(SkillSnapshot.skill_slug, SkillSnapshot.frequency_pct).where(
+            SkillSnapshot.role == role,
+            SkillSnapshot.snapshot_date == today,
+        )
+    )
+    today_map = {row.skill_slug: row.frequency_pct for row in today_result}
+
+    past_result = await db.execute(
+        select(SkillSnapshot.skill_slug, SkillSnapshot.frequency_pct).where(
+            SkillSnapshot.role == role,
+            SkillSnapshot.snapshot_date == past,
+        )
+    )
+    past_map = {row.skill_slug: row.frequency_pct for row in past_result}
+
+    trends: dict[str, str] = {}
+    for slug, freq in today_map.items():
+        old = past_map.get(slug)
+        if old is None:
+            trends[slug] = "new"
+        elif freq > old + 2:
+            trends[slug] = "rising"
+        elif freq < old - 2:
+            trends[slug] = "falling"
+        else:
+            trends[slug] = "stable"
+    return trends
+
+
 @router.get("/roles")
 async def list_roles() -> dict:
     """Return supported role slugs."""
@@ -153,15 +273,17 @@ async def list_roles() -> dict:
 async def get_skills_radar(
     role: str,
     limit: int = Query(default=30, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
 ) -> SkillsRadarResponse:
-    """Top skills by frequency for a given role, sourced live from job boards."""
+    """Top skills by frequency for a given role, with historical trend direction."""
     jobs, tag_counter = await _aggregate_skills(role, limit)
     n = max(len(jobs), 1)
     today = date.today().isoformat()
 
+    trends = await _get_skill_trends(role, db)
+
     skills: list[SkillFrequency] = []
     for rank, (slug, count) in enumerate(tag_counter.most_common(limit), start=1):
-        # Rebuild a display name: capitalize each token
         display = slug.replace("+", "++").title().replace("++", "+").replace("Js", "JS")
         skills.append(SkillFrequency(
             rank=rank,
@@ -170,7 +292,7 @@ async def get_skills_radar(
             category=_categorize(slug),
             frequency_pct=round(count / n * 100, 1),
             job_count=count,
-            trend="stable",
+            trend=trends.get(slug, "stable"),
         ))
 
     return SkillsRadarResponse(
@@ -202,7 +324,6 @@ async def get_market_trends(
         for slug, count in tag_counter.most_common(limit)
     ]
 
-    # Company frequency
     company_counter: Counter = Counter()
     for job in jobs:
         if job.company:
@@ -220,3 +341,45 @@ async def get_market_trends(
         top_skills=top_skills,
         top_companies=top_companies,
     )
+
+
+@router.get("/salary/{role}")
+async def get_salary_range(role: str) -> dict:
+    """Salary ranges by role for remote LATAM-international market (USD/month).
+
+    Data sourced from Remotive job listings, LinkedIn Jobs, and Glassdoor surveys.
+    Ranges are approximate and based on 2025 market data.
+    """
+    data = _SALARY_RANGES.get(role)
+    if not data:
+        return {
+            "role": role,
+            "available": False,
+            "message": f"No salary data for role '{role}'. Supported: {', '.join(_SALARY_RANGES)}",
+        }
+    return {
+        "role": role,
+        "available": True,
+        "as_of": "2025",
+        **data,
+    }
+
+
+@router.get("/salary")
+async def list_salary_ranges() -> dict:
+    """All salary ranges for all supported roles."""
+    return {
+        "as_of": "2025",
+        "currency": "USD",
+        "period": "month",
+        "market": "Remote / LATAM-international",
+        "roles": {
+            role: {
+                "min_usd": data["min_usd"],
+                "max_usd": data["max_usd"],
+                "median_usd": data["median_usd"],
+                "notes": data["notes"],
+            }
+            for role, data in _SALARY_RANGES.items()
+        },
+    }

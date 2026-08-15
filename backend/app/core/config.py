@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev-secret-change-in-production"
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
+    # Email (SMTP) — optional, required for weekly digest
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
     ENVIRONMENT: str = "development"
     UPLOAD_DIR: str = "/tmp/cv_uploads"
 

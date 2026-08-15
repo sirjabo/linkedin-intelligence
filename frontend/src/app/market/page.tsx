@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import { getMarketTrends, getMarketRoles, type MarketTrendsResponse } from "@/lib/api-v2";
-import { TrendingUpIcon, ArrowLeftIcon, RefreshCwIcon, BuildingIcon, ZapIcon } from "lucide-react";
+import { getMarketTrends, getMarketRoles, getSalaryRange, type MarketTrendsResponse, type SalaryRange } from "@/lib/api-v2";
+import { TrendingUpIcon, ArrowLeftIcon, RefreshCwIcon, BuildingIcon, ZapIcon, DollarSignIcon } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
   ai_engineer: "AI Engineer",
@@ -16,10 +16,51 @@ const ROLE_LABELS: Record<string, string> = {
   data_scientist: "Data Scientist",
 };
 
+function SalaryCard({ salary }: { salary: SalaryRange }) {
+  return (
+    <div className="rounded-2xl border border-emerald-800/30 bg-emerald-950/10 p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <DollarSignIcon className="w-4 h-4 text-emerald-400" />
+        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+          Rango salarial — {ROLE_LABELS[salary.role] ?? salary.role}
+        </h2>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="text-center">
+          <p className="text-xs text-slate-500 mb-1">Mínimo</p>
+          <p className="text-lg font-bold text-white">${salary.min_usd.toLocaleString()}</p>
+          <p className="text-xs text-slate-600">USD/mes</p>
+        </div>
+        <div className="text-center border-x border-emerald-800/20">
+          <p className="text-xs text-slate-500 mb-1">Mediana</p>
+          <p className="text-xl font-bold text-emerald-400">${salary.median_usd.toLocaleString()}</p>
+          <p className="text-xs text-slate-600">USD/mes</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xs text-slate-500 mb-1">Máximo</p>
+          <p className="text-lg font-bold text-white">${salary.max_usd.toLocaleString()}</p>
+          <p className="text-xs text-slate-600">USD/mes</p>
+        </div>
+      </div>
+      {salary.notes && (
+        <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-800">
+          {salary.notes}
+        </p>
+      )}
+      {salary.sources && salary.sources.length > 0 && (
+        <p className="text-xs text-slate-600 mt-1">
+          Fuentes: {salary.sources.join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function MarketPage() {
   const [roles, setRoles] = useState<string[]>([]);
   const [selectedRole, setSelectedRole] = useState("ai_engineer");
   const [data, setData] = useState<MarketTrendsResponse | null>(null);
+  const [salary, setSalary] = useState<SalaryRange | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -32,9 +73,15 @@ export default function MarketPage() {
   async function load(role: string) {
     setLoading(true);
     setError("");
+    setSalary(null);
     try {
-      const result = await getMarketTrends(role);
-      setData(result);
+      const [trendsResult, salaryResult] = await Promise.allSettled([
+        getMarketTrends(role),
+        getSalaryRange(role),
+      ]);
+      if (trendsResult.status === "fulfilled") setData(trendsResult.value);
+      else throw new Error(trendsResult.reason?.message ?? "Error al cargar datos");
+      if (salaryResult.status === "fulfilled") setSalary(salaryResult.value);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al cargar datos");
     } finally {
@@ -66,7 +113,7 @@ export default function MarketPage() {
           <div>
             <h1 className="text-2xl font-bold">Inteligencia de Mercado</h1>
             <p className="text-sm text-slate-500">
-              Skills más demandadas y empresas que contratan tech
+              Skills más demandadas, salarios y empresas que contratan tech
               {data && ` · ${data.total_jobs_analyzed} ofertas analizadas`}
             </p>
           </div>
@@ -115,6 +162,9 @@ export default function MarketPage() {
                 <p className="text-xs text-slate-500 mt-0.5">para {ROLE_LABELS[selectedRole] ?? selectedRole}</p>
               </div>
             </div>
+
+            {/* Salary range */}
+            {salary && <SalaryCard salary={salary} />}
 
             {/* Top skills */}
             {data.top_skills.length > 0 && (
@@ -168,7 +218,7 @@ export default function MarketPage() {
             )}
 
             <p className="text-xs text-slate-600 text-center">
-              Datos en tiempo real de Remotive, Arbeitnow y RemoteOK
+              Datos en tiempo real de Remotive, Arbeitnow y RemoteOK · Salarios: referencia mercado remoto USD
             </p>
           </div>
         ) : null}

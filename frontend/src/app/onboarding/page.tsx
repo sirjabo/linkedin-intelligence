@@ -3,14 +3,36 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { updateCandidate, ingestTextSource, rebuildProfile } from "@/lib/api-v2";
-import { CheckIcon, ArrowRightIcon, ZapIcon, RefreshCwIcon, UserIcon, FileTextIcon, SparklesIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ArrowRightIcon,
+  ZapIcon,
+  RefreshCwIcon,
+  UserIcon,
+  FileTextIcon,
+  SparklesIcon,
+  BarChart2Icon,
+  BriefcaseIcon,
+  LinkedinIcon,
+} from "lucide-react";
 
 const STEPS = ["Bienvenida", "Tu perfil", "Tu CV", "Procesando", "¡Listo!"];
 
+const ROLE_OPTIONS = [
+  { value: "ai_engineer", label: "AI Engineer" },
+  { value: "data_engineer", label: "Data Engineer" },
+  { value: "analytics_engineer", label: "Analytics Engineer" },
+  { value: "ml_engineer", label: "ML Engineer" },
+  { value: "backend_engineer", label: "Backend Engineer" },
+  { value: "frontend_engineer", label: "Frontend Engineer" },
+  { value: "devops_engineer", label: "DevOps Engineer" },
+  { value: "data_scientist", label: "Data Scientist" },
+];
+
 const SOURCE_TYPES = [
-  { value: "cv", label: "CV / Currículum" },
-  { value: "linkedin", label: "LinkedIn (texto pegado)" },
-  { value: "manual", label: "Texto libre" },
+  { value: "cv", label: "CV / Currículum", icon: FileTextIcon },
+  { value: "linkedin", label: "LinkedIn (texto pegado)", icon: LinkedinIcon },
+  { value: "manual", label: "Descripción libre", icon: UserIcon },
 ];
 
 function StepIndicator({ current }: { current: number }) {
@@ -18,13 +40,16 @@ function StepIndicator({ current }: { current: number }) {
     <div className="flex items-center gap-2 justify-center mb-8">
       {STEPS.map((label, i) => (
         <div key={i} className="flex items-center gap-2">
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-            i < current
-              ? "bg-emerald-600 text-white"
-              : i === current
-              ? "bg-blue-600 text-white"
-              : "bg-slate-800 text-slate-500"
-          }`}>
+          <div
+            title={label}
+            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+              i < current
+                ? "bg-emerald-600 text-white"
+                : i === current
+                ? "bg-blue-600 text-white"
+                : "bg-slate-800 text-slate-500"
+            }`}
+          >
             {i < current ? <CheckIcon size={13} /> : i + 1}
           </div>
           {i < STEPS.length - 1 && (
@@ -45,7 +70,7 @@ export default function OnboardingPage() {
   // Step 1 — profile info
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
-  const [roles, setRoles] = useState("");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   // Step 2 — source
   const [sourceType, setSourceType] = useState("cv");
@@ -61,6 +86,12 @@ export default function OnboardingPage() {
     }
   }, [token, isLoading, router]);
 
+  function toggleRole(role: string) {
+    setSelectedRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    );
+  }
+
   async function handleProfileSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -69,7 +100,7 @@ export default function OnboardingPage() {
       await updateCandidate(token, {
         name: name.trim() || undefined,
         location: location.trim() || undefined,
-        target_roles: roles ? roles.split(",").map((r) => r.trim()).filter(Boolean) : [],
+        target_roles: selectedRoles,
       });
       setStep(2);
     } catch (err: unknown) {
@@ -133,18 +164,21 @@ export default function OnboardingPage() {
             <SparklesIcon size={40} className="mx-auto text-blue-400 mb-4" />
             <h1 className="text-2xl font-bold text-white mb-3">Bienvenido a LinkedIn Intelligence</h1>
             <p className="text-slate-400 leading-relaxed mb-6">
-              Te vamos a ayudar a optimizar tu perfil para el mercado tech de Latam. En menos de 2 minutos vas a tener tu inteligencia de candidato lista.
+              Tu plataforma de inteligencia para el mercado tech. En 2 minutos configuramos tu perfil
+              y empezás a recibir insights accionables.
             </p>
             <ul className="text-left space-y-3 mb-8">
               {[
-                "Analizamos tu CV y LinkedIn con IA",
-                "Encontramos los mejores trabajos para vos",
-                "Generamos CVs y cartas personalizadas",
-                "Te preparamos para cada entrevista",
-              ].map((item, i) => (
+                { icon: BarChart2Icon, text: "Skills radar: qué pide el mercado para tu rol" },
+                { icon: ZapIcon, text: "Score de tu perfil de LinkedIn con recomendaciones IA" },
+                { icon: BriefcaseIcon, text: "Match con ofertas y generación automática de CVs" },
+                { icon: LinkedinIcon, text: "About Writer: tu sección 'Acerca de' optimizada con IA" },
+              ].map(({ icon: Icon, text }, i) => (
                 <li key={i} className="flex items-center gap-3 text-sm text-slate-300">
-                  <CheckIcon size={15} className="text-emerald-400 flex-shrink-0" />
-                  {item}
+                  <div className="w-6 h-6 rounded-md bg-blue-600/20 flex items-center justify-center shrink-0">
+                    <Icon size={13} className="text-blue-400" />
+                  </div>
+                  {text}
                 </li>
               ))}
             </ul>
@@ -152,7 +186,7 @@ export default function OnboardingPage() {
               onClick={() => setStep(1)}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-semibold transition-colors"
             >
-              Empezar <ArrowRightIcon size={16} />
+              Empezar configuración <ArrowRightIcon size={16} />
             </button>
           </div>
         )}
@@ -161,40 +195,52 @@ export default function OnboardingPage() {
         {step === 1 && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8">
             <UserIcon size={32} className="text-blue-400 mb-4" />
-            <h2 className="text-xl font-bold text-white mb-1">¿Cómo te llamás?</h2>
-            <p className="text-slate-400 text-sm mb-6">Completá tu información básica. Podés editarla después.</p>
-            <form onSubmit={handleProfileSubmit} className="space-y-4">
+            <h2 className="text-xl font-bold text-white mb-1">Tu información básica</h2>
+            <p className="text-slate-400 text-sm mb-6">Completá tu perfil para recibir contenido personalizado.</p>
+            <form onSubmit={handleProfileSubmit} className="space-y-5">
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Nombre completo</label>
+                <label className="text-xs text-slate-500 block mb-1.5">Nombre completo</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Juan García"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Ubicación</label>
+                <label className="text-xs text-slate-500 block mb-1.5">Ubicación</label>
                 <input
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   placeholder="Buenos Aires, Argentina"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Roles objetivo (separados por coma)</label>
-                <input
-                  type="text"
-                  value={roles}
-                  onChange={(e) => setRoles(e.target.value)}
-                  placeholder="Data Engineer, ML Engineer"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
-                />
+                <label className="text-xs text-slate-500 block mb-2">
+                  Roles objetivo{" "}
+                  <span className="text-slate-600 font-normal">(seleccioná uno o más)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {ROLE_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => toggleRole(value)}
+                      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                        selectedRoles.includes(value)
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
@@ -220,29 +266,46 @@ export default function OnboardingPage() {
             <h2 className="text-xl font-bold text-white mb-1">Cargá tu CV o LinkedIn</h2>
             <p className="text-slate-400 text-sm mb-6">
               Pegá el texto de tu CV, tu perfil de LinkedIn, o cualquier descripción de tu experiencia.
+              La IA extrae tu experiencia, skills y logros automáticamente.
             </p>
             <form onSubmit={handleSourceSubmit} className="space-y-4">
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Tipo de contenido</label>
-                <select
-                  value={sourceType}
-                  onChange={(e) => setSourceType(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600"
-                >
-                  {SOURCE_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                <label className="text-xs text-slate-500 block mb-2">Tipo de contenido</label>
+                <div className="flex gap-2">
+                  {SOURCE_TYPES.map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSourceType(value)}
+                      className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors ${
+                        sourceType === value
+                          ? "bg-blue-600/20 border-blue-600 text-blue-300"
+                          : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500"
+                      }`}
+                    >
+                      <Icon size={12} /> {label}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Contenido</label>
+                <label className="text-xs text-slate-500 block mb-1.5">Contenido</label>
                 <textarea
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
-                  rows={8}
-                  placeholder="Pegá aquí el texto de tu CV, perfil de LinkedIn, o describí tu experiencia…"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none"
+                  rows={9}
+                  placeholder={
+                    sourceType === "linkedin"
+                      ? "Copiá todo el texto visible de tu perfil de LinkedIn: nombre, título, extracto, experiencia, skills..."
+                      : sourceType === "cv"
+                      ? "Pegá el texto de tu CV aquí (experiencia, educación, skills, logros)..."
+                      : "Describí tu trayectoria: roles, años de experiencia, tecnologías, logros..."
+                  }
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none transition-colors"
                 />
+                <p className="text-xs text-slate-600 mt-1 text-right">
+                  {rawText.trim().split(/\s+/).filter(Boolean).length} palabras
+                </p>
               </div>
               <div className="flex gap-3">
                 <button
@@ -267,11 +330,27 @@ export default function OnboardingPage() {
         {/* Step 3 — Processing */}
         {step === 3 && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
-            <RefreshCwIcon size={40} className={`mx-auto text-blue-400 mb-4 ${processing ? "animate-spin" : ""}`} />
+            <RefreshCwIcon
+              size={40}
+              className={`mx-auto text-blue-400 mb-4 ${processing ? "animate-spin" : ""}`}
+            />
             <h2 className="text-xl font-bold text-white mb-2">Analizando tu perfil…</h2>
-            <p className="text-slate-400 text-sm">
-              Nuestra IA está extrayendo tu experiencia, skills y logros. Esto puede tomar unos segundos.
+            <p className="text-slate-400 text-sm mb-6">
+              La IA está extrayendo tu experiencia, skills y logros. Esto toma unos segundos.
             </p>
+            <div className="space-y-2 text-left">
+              {[
+                "Extrayendo experiencia laboral",
+                "Identificando skills técnicas",
+                "Analizando logros y métricas",
+                "Construyendo tu perfil de candidato",
+              ].map((step, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm text-slate-500">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+                  {step}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -282,9 +361,21 @@ export default function OnboardingPage() {
               <CheckIcon size={32} className="text-emerald-400" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">¡Tu perfil está listo!</h2>
-            <p className="text-slate-400 text-sm mb-8">
-              Ya podés empezar a buscar trabajos y generar postulaciones personalizadas.
+            <p className="text-slate-400 text-sm mb-6">
+              Analizamos tu experiencia y construimos tu perfil inteligente.
             </p>
+            <div className="space-y-2 mb-8 text-left">
+              {[
+                "Skills extraídas y categorizadas",
+                "Perfil listo para match con ofertas",
+                "Score de LinkedIn disponible",
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm text-slate-300">
+                  <CheckIcon size={14} className="text-emerald-400 shrink-0" />
+                  {item}
+                </div>
+              ))}
+            </div>
             <button
               onClick={finish}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-semibold transition-colors"

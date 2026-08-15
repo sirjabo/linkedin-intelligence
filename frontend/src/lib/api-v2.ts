@@ -556,3 +556,69 @@ export function analyzeLinkedIn(token: string, profile_text: string, target_role
 export function getAnalyzeRoles() {
   return req<{ roles: string[] }>("GET", "/analyze/linkedin/roles", undefined);
 }
+
+// About Writer
+export interface AboutVariant {
+  id: number;
+  tone: string;
+  text: string;
+}
+
+export interface AboutWriterResult {
+  writer_id: string;
+  target_role: string;
+  variants: AboutVariant[];
+  tips: string[];
+}
+
+export function generateAbout(
+  token: string,
+  target_role: string,
+  profile_summary: string,
+  current_about?: string,
+  key_skills?: string[],
+  achievements?: string[],
+) {
+  return req<AboutWriterResult>("POST", "/analyze/about-writer", token, {
+    target_role,
+    profile_summary,
+    current_about,
+    key_skills,
+    achievements,
+  });
+}
+
+// Benchmark
+export interface BenchmarkResult {
+  role: string;
+  percentile: number;
+  tier: string;
+  matched_count: number;
+  total_checked: number;
+  matched_skills: { skill: string; frequency_pct: number; job_count: number }[];
+  missing_skills: { skill: string; frequency_pct: number; job_count: number }[];
+  profile_has_skills: boolean;
+  message: string;
+}
+
+export function getProfileBenchmark(token: string, role: string) {
+  return req<BenchmarkResult>("GET", `/candidates/me/benchmark?role=${role}`, token);
+}
+
+// Salary data
+export interface SalaryRange {
+  role: string;
+  available: boolean;
+  min_usd?: number;
+  max_usd?: number;
+  median_usd?: number;
+  currency?: string;
+  period?: string;
+  notes?: string;
+  sources?: string[];
+  as_of?: string;
+}
+
+export function getSalaryRange(role: string) {
+  return req<SalaryRange>("GET", `/market/salary/${role}`, undefined);
+}

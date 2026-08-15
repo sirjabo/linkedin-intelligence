@@ -18,6 +18,7 @@ import {
   CheckCircleIcon,
   AlertTriangleIcon,
   ChevronRightIcon,
+  DownloadIcon,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -153,7 +154,7 @@ export default function AnalyzePage() {
           <ArrowLeftIcon className="w-3.5 h-3.5" /> Volver al inicio
         </Link>
 
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center">
             <LinkedinIcon className="w-5 h-5 text-blue-400" />
           </div>
@@ -163,6 +164,16 @@ export default function AnalyzePage() {
               Pegá el texto de tu perfil y recibí un score por sección + variantes de título optimizadas
             </p>
           </div>
+        </div>
+
+        {/* Secondary tool link */}
+        <div className="mb-8 flex gap-3">
+          <Link
+            href="/analyze/about"
+            className="flex items-center gap-2 text-sm px-4 py-2 rounded-xl border border-purple-800/40 bg-purple-950/20 text-purple-300 hover:bg-purple-950/40 transition-colors"
+          >
+            <ZapIcon className="w-3.5 h-3.5" /> About Writer — generá tu sección "Acerca de"
+          </Link>
         </div>
 
         {/* Form */}
@@ -319,13 +330,21 @@ export default function AnalyzePage() {
               </section>
             )}
 
-            {/* Redo */}
-            <button
-              onClick={() => setResult(null)}
-              className="w-full py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              Analizar otro perfil
-            </button>
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setResult(null)}
+                className="flex-1 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                Analizar otro perfil
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="no-print flex items-center gap-2 px-4 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                <DownloadIcon className="w-4 h-4" /> Exportar PDF
+              </button>
+            </div>
           </div>
         )}
       </div>
