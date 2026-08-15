@@ -4,17 +4,20 @@ Uses the pre-installed Chromium at PLAYWRIGHT_BROWSERS_PATH.
 Never import this directly in domain logic — depend on the BrowserAutomationAdapter Protocol.
 """
 import os
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext, Frame
 
+from playwright.async_api import Browser, BrowserContext, Frame, Page, Playwright, async_playwright
+
+from app.core.logging import get_logger
 from app.services.browser.adapter import (
-    BrowserAutomationAdapter,
-    RawForm, RawFormField, RawFormSection,
-    PageState, SubmissionResult,
+    PageState,
+    RawForm,
+    RawFormField,
+    RawFormSection,
 )
 from app.services.browser.form_extractor import (
-    FORM_EXTRACTOR_JS, CONFIRMATION_DETECTOR_JS,
+    CONFIRMATION_DETECTOR_JS,
+    FORM_EXTRACTOR_JS,
 )
-from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -49,7 +52,7 @@ class PlaywrightAdapter:
     def __init__(self, headless: bool = True, slow_mo: int = 0):
         self._headless = headless
         self._slow_mo = slow_mo
-        self._playwright = None
+        self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
@@ -200,7 +203,7 @@ class PlaywrightAdapter:
 
     async def click_submit(self) -> PageState:
         assert self._page
-        submit_url = self._page.url
+        _submit_url = self._page.url
         try:
             async with self._page.expect_navigation(wait_until="domcontentloaded", timeout=15_000):
                 await self._page.locator("button[type='submit'], input[type='submit']").first.click(timeout=10_000)
@@ -234,10 +237,12 @@ class PlaywrightAdapter:
         return await self._page.inner_text("body")
 
     async def is_confirmation_page(self) -> bool:
+        assert self._page  # noqa: S101
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return bool(result.get("is_confirmation", False))
 
     async def extract_confirmation_id(self) -> str | None:
+        assert self._page  # noqa: S101
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return result.get("confirmation_id")
 

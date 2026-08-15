@@ -128,7 +128,7 @@ def compute_calibration(
     ) if total_apps_with_tier else 0
 
     calibration_score = (
-        overall_interview_rate / weighted_expected
+        overall_interview_rate / weighted_expected  # type: ignore[operator]
         if weighted_expected > 0 else None
     )
 

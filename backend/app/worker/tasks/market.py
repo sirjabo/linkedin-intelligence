@@ -1,7 +1,8 @@
 """Celery tasks for market data pipeline — nightly skill snapshots."""
 import asyncio
-from app.worker.celery_app import celery_app
+
 from app.core.logging import get_logger
+from app.worker.celery_app import celery_app
 
 logger = get_logger(__name__)
 
@@ -19,9 +20,10 @@ def snapshot_all_roles(self):
     async market pipeline within the sync Celery task context.
     """
     async def _run():
-        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+        from app.api.routes.market import _CACHE, save_skill_snapshot
         from app.core.config import settings
-        from app.api.routes.market import save_skill_snapshot, _CACHE
 
         engine = create_async_engine(settings.DATABASE_URL, echo=False)
         Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -47,4 +49,4 @@ def snapshot_all_roles(self):
         return asyncio.run(_run())
     except Exception as exc:
         logger.error("snapshot_all_roles_failed", error=str(exc))
-        raise self.retry(exc=exc, countdown=300)
+        raise self.retry(exc=exc, countdown=300) from exc

@@ -2,7 +2,7 @@
 import re
 from typing import Protocol, runtime_checkable
 
-from app.services.browser.adapter import BrowserAutomationAdapter, RawForm, RawFormField
+from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 
 @runtime_checkable

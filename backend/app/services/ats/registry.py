@@ -1,13 +1,14 @@
 """ATSRegistry: detect which ATS a URL belongs to and return the right adapter."""
+from app.services.ats.adapter import ATSAdapter
+from app.services.ats.ashby import AshbyAdapter
+from app.services.ats.generic import GenericFormAgent
 from app.services.ats.greenhouse import GreenhouseAdapter
 from app.services.ats.lever import LeverAdapter
-from app.services.ats.ashby import AshbyAdapter
-from app.services.ats.workday import WorkdayAdapter
 from app.services.ats.smart_recruiters import SmartRecruitersAdapter
-from app.services.ats.generic import GenericFormAgent
+from app.services.ats.workday import WorkdayAdapter
 
 # Ordered: more specific patterns first
-_ADAPTERS = [
+_ADAPTERS: list[ATSAdapter] = [
     GreenhouseAdapter(),
     LeverAdapter(),
     AshbyAdapter(),

@@ -3,14 +3,15 @@
 URL pattern: boards.greenhouse.io/[company]/jobs/[id]
 """
 import re
+
 from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 
 class GreenhouseAdapter:
     ats_name = "greenhouse"
     url_patterns = [
-        re.compile(r"boards\.greenhouse\.io", re.I),
-        re.compile(r"greenhouse\.io/.*jobs", re.I),
+        re.compile(r"boards\.greenhouse\.io", re.IGNORECASE),
+        re.compile(r"greenhouse\.io/.*jobs", re.IGNORECASE),
     ]
 
     # Greenhouse-specific label normalization (their labels are usually clean)
@@ -61,4 +62,4 @@ class GreenhouseAdapter:
         return await browser.is_confirmation_page()
 
     def extract_confirmation_id_pattern(self) -> re.Pattern | None:
-        return re.compile(r"application\s+(?:id|number|#)[:\s]+([A-Z0-9-]{4,})", re.I)
+        return re.compile(r"application\s+(?:id|number|#)[:\s]+([A-Z0-9-]{4,})", re.IGNORECASE)

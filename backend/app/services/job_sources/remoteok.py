@@ -43,8 +43,7 @@ class RemoteOKSource:
             params["tag"] = tag
 
         async with (
-            self._client if self._client
-            else httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, headers={"User-Agent": "JobRadar/1.0"})
+            self._client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, headers={"User-Agent": "JobRadar/1.0"})
         ) as client:
             resp = await client.get(REMOTEOK_URL, params=params)
             resp.raise_for_status()

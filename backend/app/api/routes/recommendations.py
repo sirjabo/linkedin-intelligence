@@ -3,22 +3,23 @@
 Supports multiple job sources (Remotive, Arbeitnow, RemoteOK) queried in parallel.
 """
 import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.core.logging import get_logger
 from app.db.models.candidate import Candidate
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.recommendation import RecommendationRequest, RecommendedJobResponse
 from app.services.job_recommender import rank_jobs
-from app.services.job_sources.base import JobRaw
-from app.services.job_sources.remotive import RemotiveSource
 from app.services.job_sources.arbeitnow import ArbeitnowSource
+from app.services.job_sources.base import JobRaw
 from app.services.job_sources.remoteok import RemoteOKSource
-from app.core.logging import get_logger
+from app.services.job_sources.remotive import RemotiveSource
 
 logger = get_logger(__name__)
 

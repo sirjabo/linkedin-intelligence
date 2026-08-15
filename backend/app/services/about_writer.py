@@ -1,7 +1,9 @@
 """LinkedIn About section writer — generates 3 optimized variants via LLM."""
 import json
 import uuid
+
 import anthropic
+
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -73,7 +75,7 @@ async def write_about_section(
     if key_skills:
         context_parts.append(f"Skills clave: {', '.join(key_skills)}")
     if achievements:
-        context_parts.append(f"Logros destacados:\n" + "\n".join(f"- {a}" for a in achievements))
+        context_parts.append("Logros destacados:\n" + "\n".join(f"- {a}" for a in achievements))
 
     user_prompt = "\n\n".join(context_parts)
 

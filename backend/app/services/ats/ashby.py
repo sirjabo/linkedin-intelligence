@@ -5,8 +5,8 @@ Ashby embeds the application form directly on the job page.
 Some jobs redirect to a separate /application page with a full form.
 """
 import re
-from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
+from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 _APPLY_SELECTORS = [
     "a:has-text('Apply for this job')",
@@ -19,8 +19,8 @@ _APPLY_SELECTORS = [
 class AshbyAdapter:
     ats_name = "ashby"
     url_patterns = [
-        re.compile(r"jobs\.ashbyhq\.com", re.I),
-        re.compile(r"ashbyhq\.com", re.I),
+        re.compile(r"jobs\.ashbyhq\.com", re.IGNORECASE),
+        re.compile(r"ashbyhq\.com", re.IGNORECASE),
     ]
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:

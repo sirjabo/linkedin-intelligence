@@ -8,10 +8,12 @@ Path convention: {UPLOAD_DIR}/cv_pdfs/{candidate_id}/{application_id}.pdf
 import os
 import uuid
 
+import aiofiles
+
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models.candidate import Candidate, CandidateProfile
 from app.db.models.application import Application, CVVersion
+from app.db.models.candidate import Candidate, CandidateProfile
 from app.services.pdf_generator import generate_cv_pdf
 
 logger = get_logger(__name__)
@@ -49,8 +51,8 @@ async def generate_cv_file(
     cv_data = _build_cv_dict(candidate, profile, cv_version)
 
     pdf_bytes = await generate_cv_pdf(cv_data)
-    with open(file_path, "wb") as f:
-        f.write(pdf_bytes)
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(pdf_bytes)
 
     logger.info(
         "cv_pdf_generated",
@@ -66,7 +68,7 @@ def _latest_cv_version(application: Application) -> CVVersion | None:
     versions = getattr(application, "cv_versions", None) or []
     if not versions:
         return None
-    return sorted(versions, key=lambda v: v.created_at, reverse=True)[0]
+    return max(versions, key=lambda v: v.created_at)
 
 
 def _build_cv_dict(

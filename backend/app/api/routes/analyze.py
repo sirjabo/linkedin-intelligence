@@ -1,14 +1,14 @@
 """Profile analysis endpoints — stateless, no DB writes."""
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
-from typing import Optional
 
 from app.api.deps import get_current_user
-from app.db.models.user import User
-from app.services.linkedin_analyzer import analyze_linkedin_profile, ROLE_LABELS
-from app.services.about_writer import write_about_section
 from app.core.limiter import limiter
 from app.core.logging import get_logger
+from app.db.models.user import User
+from app.services.about_writer import write_about_section
+from app.services.linkedin_analyzer import ROLE_LABELS, analyze_linkedin_profile
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/analyze", tags=["analyze"])
@@ -39,9 +39,9 @@ class LinkedInAnalyzeRequest(BaseModel):
 class AboutWriterRequest(BaseModel):
     target_role: str = "ai_engineer"
     profile_summary: str = ""
-    current_about: Optional[str] = None
-    key_skills: Optional[list[str]] = None
-    achievements: Optional[list[str]] = None
+    current_about: str | None = None
+    key_skills: list[str] | None = None
+    achievements: list[str] | None = None
 
     @field_validator("target_role")
     @classmethod
@@ -72,7 +72,7 @@ async def analyze_linkedin(
             target_role=payload.target_role,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     logger.info(
         "linkedin_analyzed",
@@ -111,7 +111,7 @@ async def generate_about_section(
             achievements=payload.achievements,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     logger.info(
         "about_written",

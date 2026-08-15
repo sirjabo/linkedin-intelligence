@@ -6,7 +6,6 @@ The PlaywrightAdapter (playwright_adapter.py) is the concrete implementation.
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-
 # ── RawForm data model ────────────────────────────────────────────────────────
 
 @dataclass

@@ -178,14 +178,7 @@ def _score_experience(candidate_level: str | None, job_seniority: str | None) ->
     j = SENIORITY_RANK.get(_norm(job_seniority), 3)
     distance = abs(c - j)
 
-    if distance == 0:
-        return 1.00
-    elif distance == 1:
-        return 0.85
-    elif distance == 2:
-        return 0.60
-    else:
-        return 0.30
+    return {0: 1.00, 1: 0.85, 2: 0.60}.get(distance, 0.30)
 
 
 def _score_location(
@@ -267,13 +260,17 @@ def check_hard_constraints(
             )
 
     # Salary blocker (> 30% below minimum)
-    if job_salary_max is not None and candidate_salary_pref_min is not None and candidate_salary_pref_min > 0:
-        if job_salary_max < candidate_salary_pref_min * 0.70:
-            gap_pct = round((1 - job_salary_max / candidate_salary_pref_min) * 100, 1)
-            blockers.append(
-                f"Salary gap: job max ${job_salary_max:,} is {gap_pct}% below "
-                f"candidate minimum ${candidate_salary_pref_min:,}"
-            )
+    if (
+        job_salary_max is not None
+        and candidate_salary_pref_min is not None
+        and candidate_salary_pref_min > 0
+        and job_salary_max < candidate_salary_pref_min * 0.70
+    ):
+        gap_pct = round((1 - job_salary_max / candidate_salary_pref_min) * 100, 1)
+        blockers.append(
+            f"Salary gap: job max ${job_salary_max:,} is {gap_pct}% below "
+            f"candidate minimum ${candidate_salary_pref_min:,}"
+        )
 
     # Work authorization blocker
     # Blocked only when candidate explicitly needs sponsorship AND job explicitly does not offer it

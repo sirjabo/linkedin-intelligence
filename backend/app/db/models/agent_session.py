@@ -7,8 +7,10 @@ State machine:
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey, Float, Uuid
+
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
 
 

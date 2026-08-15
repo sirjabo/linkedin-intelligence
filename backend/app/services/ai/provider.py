@@ -2,15 +2,19 @@
 
 All agents must use this layer — never import the anthropic SDK directly in agent code.
 """
-from typing import Any, AsyncGenerator, Protocol, runtime_checkable
+from collections.abc import AsyncGenerator
+from typing import Any, Protocol, TypeVar, cast, runtime_checkable
+
 import anthropic
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.services.ai.cost_tracker import track_call, COST_PER_MILLION_TOKENS
+from app.services.ai.cost_tracker import COST_PER_MILLION_TOKENS, track_call
 
 logger = get_logger(__name__)
+
+_T = TypeVar("_T", bound=BaseModel)
 
 
 @runtime_checkable
@@ -27,12 +31,12 @@ class LLMProvider(Protocol):
         self,
         system: str,
         messages: list[dict[str, str]],
-        schema: type[BaseModel],
+        schema: type[_T],
         model: str,
         max_tokens: int = 4096,
-    ) -> BaseModel: ...
+    ) -> _T: ...
 
-    async def stream(
+    def stream(
         self,
         system: str,
         messages: list[dict[str, str]],
@@ -56,7 +60,7 @@ class AnthropicProvider:
             model=model,
             max_tokens=max_tokens,
             system=system,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
         )
         input_tok = response.usage.input_tokens
         output_tok = response.usage.output_tokens
@@ -75,17 +79,17 @@ class AnthropicProvider:
         self,
         system: str,
         messages: list[dict[str, str]],
-        schema: type[BaseModel],
+        schema: type[_T],
         model: str,
         max_tokens: int = 4096,
-    ) -> BaseModel:
+    ) -> _T:
         """Use Anthropic tool_use to return a validated Pydantic model."""
         tool_def = _pydantic_to_tool(schema)
-        response = await self._client.messages.create(
+        response = await self._client.messages.create(  # type: ignore[call-overload]
             model=model,
             max_tokens=max_tokens,
             system=system,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
             tools=[tool_def],
             tool_choice={"type": "tool", "name": tool_def["name"]},
         )
@@ -102,7 +106,7 @@ class AnthropicProvider:
         )
         for block in response.content:
             if block.type == "tool_use":
-                return schema.model_validate(block.input)
+                return cast(_T, schema.model_validate(block.input))
         raise RuntimeError(f"No tool_use block in response for schema {schema.__name__}")
 
     async def stream(
@@ -116,7 +120,7 @@ class AnthropicProvider:
             model=model,
             max_tokens=max_tokens,
             system=system,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
         ) as stream:
             async for chunk in stream.text_stream:
                 yield chunk

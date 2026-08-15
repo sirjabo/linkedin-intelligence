@@ -3,15 +3,17 @@
 URL pattern: jobs.lever.co/[company]/[uuid]
 Lever job pages embed the application form in an iframe or behind an /apply sub-URL.
 """
+import contextlib
 import re
+
 from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 
 class LeverAdapter:
     ats_name = "lever"
     url_patterns = [
-        re.compile(r"jobs\.lever\.co", re.I),
-        re.compile(r"lever\.co/.*apply", re.I),
+        re.compile(r"jobs\.lever\.co", re.IGNORECASE),
+        re.compile(r"lever\.co/.*apply", re.IGNORECASE),
     ]
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
@@ -21,10 +23,8 @@ class LeverAdapter:
         # If we're on a listing page (not yet on /apply), navigate there
         if "/apply" not in current_url:
             apply_url = current_url.rstrip("/") + "/apply"
-            try:
+            with contextlib.suppress(Exception):
                 await browser.open_url(apply_url)
-            except Exception:
-                pass  # If /apply doesn't exist, stay on current page
 
         # Lever sometimes renders the form inside an <iframe> — switch into it
         for selector in [

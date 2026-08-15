@@ -3,8 +3,9 @@
 Provides criterion-based evaluation of agent outputs without requiring
 ground-truth labels. Used in smoke tests and offline evaluation runs.
 """
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass

@@ -5,8 +5,8 @@ Workday renders job pages that require clicking "Apply Now" to open the wizard.
 The application wizard is a multi-step flow with page-level navigation.
 """
 import re
-from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
+from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 _APPLY_SELECTORS = [
     "[data-automation-id='applyButton']",
@@ -27,8 +27,8 @@ _NEXT_SELECTORS = [
 class WorkdayAdapter:
     ats_name = "workday"
     url_patterns = [
-        re.compile(r"myworkdayjobs\.com", re.I),
-        re.compile(r"workday\.com", re.I),
+        re.compile(r"myworkdayjobs\.com", re.IGNORECASE),
+        re.compile(r"workday\.com", re.IGNORECASE),
     ]
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
@@ -76,4 +76,4 @@ class WorkdayAdapter:
         return await browser.is_confirmation_page()
 
     def extract_confirmation_id_pattern(self) -> re.Pattern | None:
-        return re.compile(r"WD[-]?(\d{7,})", re.I)
+        return re.compile(r"WD[-]?(\d{7,})", re.IGNORECASE)

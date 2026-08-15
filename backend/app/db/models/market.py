@@ -1,9 +1,11 @@
 """Market intelligence persistence — daily skill frequency snapshots."""
 import uuid
 from datetime import date, datetime
-from sqlalchemy import String, Integer, Float, Date, DateTime, UniqueConstraint
+
+from sqlalchemy import Date, DateTime, Float, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db.base import Base
 
 

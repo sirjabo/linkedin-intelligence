@@ -1,26 +1,31 @@
+import contextlib
 import os
 import uuid
-import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
-from app.db.session import get_db
-from app.db.models.user import User
-from app.db.models.candidate import Candidate, CandidateSource, CandidateProfile, EvidenceRecord
+import aiofiles
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
-from app.schemas.candidate import (
-    CandidateCreate, CandidateUpdate, CandidateResponse,
-    SourceIngest, SourceResponse, ProfileResponse, ConflictResolution,
-)
-from app.services.pdf_extractor import extract_pdf_text
-from app.services.agents.profile_agent import extract_from_source, consolidate_profiles
-from app.services.learning_loop import compute_calibration
-from app.services.profile_optimizer import generate_optimization_report
-from app.db.models.match import MatchAnalysis
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.ssrf import validate_url_not_private
+from app.db.models.candidate import Candidate, CandidateProfile, CandidateSource, EvidenceRecord
+from app.db.models.match import MatchAnalysis
+from app.db.models.user import User
+from app.db.session import get_db
+from app.schemas.candidate import (
+    CandidateResponse,
+    CandidateUpdate,
+    ProfileResponse,
+    SourceIngest,
+    SourceResponse,
+)
+from app.services.agents.profile_agent import consolidate_profiles, extract_from_source
+from app.services.learning_loop import compute_calibration
+from app.services.pdf_extractor import extract_pdf_text
+from app.services.profile_optimizer import generate_optimization_report
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 logger = get_logger(__name__)
@@ -79,7 +84,7 @@ async def upload_cv_source(
             await f.write(content)
         raw_text = await extract_pdf_text(tmp_path)
     finally:
-        if os.path.exists(tmp_path):
+        with contextlib.suppress(OSError):
             os.remove(tmp_path)
 
     if not raw_text.strip():
@@ -224,7 +229,7 @@ async def rebuild_profile(
 
     # Rebuild evidence records
     await db.execute(
-        EvidenceRecord.__table__.delete().where(EvidenceRecord.candidate_id == candidate.id)
+        EvidenceRecord.__table__.delete().where(EvidenceRecord.candidate_id == candidate.id)  # type: ignore[attr-defined]
     )
     for skill in consolidated.skills:
         for ev in skill.get("evidence", []):
@@ -239,7 +244,7 @@ async def rebuild_profile(
     for exp in consolidated.experience:
         title = exp.get("title") or exp.get("role") or ""
         company = exp.get("company", "")
-        claim = f"{title} at {company}".strip(" at ")
+        claim = " at ".join(filter(None, [title, company]))
         if claim:
             db.add(EvidenceRecord(
                 candidate_id=candidate.id,
@@ -478,7 +483,7 @@ async def get_profile_benchmark(
     for speed and reliability. Falls back to a live aggregate when no snapshot
     data exists yet (first day of deployment).
     """
-    from app.api.routes.market import _aggregate_skills, ROLE_QUERIES, _VALID_ROLES, _slugify
+    from app.api.routes.market import _VALID_ROLES, ROLE_QUERIES, _aggregate_skills, _slugify
     from app.db.models.market import SkillSnapshot
 
     if role not in ROLE_QUERIES:

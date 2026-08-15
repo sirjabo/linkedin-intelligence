@@ -7,29 +7,30 @@ POST /applications/{id}/agent/preview     — get all fields for review before s
 POST /applications/{id}/agent/submit      — submit (requires human_confirmed=True)
 """
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_db
-from app.db.models.user import User
-from app.db.models.candidate import Candidate
-from app.db.models.application import Application, ApplicationAnswer
-from app.db.models.form import ApplicationForm, ApplicationFormField
-from app.db.models.agent_session import ApplicationAgentSession
 from app.api.deps import get_current_user
+from app.core.limiter import limiter
+from app.core.logging import get_logger
+from app.db.models.agent_session import ApplicationAgentSession
+from app.db.models.application import Application, ApplicationAnswer
+from app.db.models.candidate import Candidate
+from app.db.models.form import ApplicationForm, ApplicationFormField
+from app.db.models.user import User
+from app.db.session import get_db
 from app.schemas.agent import (
-    AgentStartRequest,
     AgentFieldAnswerRequest,
-    AgentSubmitRequest,
     AgentSessionResponse,
+    AgentStartRequest,
+    AgentSubmitRequest,
     ApplicationAnswerResponse,
     ApplicationAnswerUpdateRequest,
 )
-from app.services.application_agent_orchestrator import ApplicationAgentOrchestrator, AgentError
-from app.core.limiter import limiter
-from app.core.logging import get_logger
+from app.services.application_agent_orchestrator import AgentError, ApplicationAgentOrchestrator
 
 router = APIRouter(prefix="/applications", tags=["agent"])
 logger = get_logger(__name__)
@@ -94,7 +95,7 @@ async def start_agent(
             db=db,
         )
     except AgentError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     fields = await _get_session_fields(application_id, db)
     return AgentSessionResponse.from_session(session, fields)
@@ -224,7 +225,7 @@ async def submit_agent(
             db=db,
         )
     except AgentError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     fields = await _get_session_fields(application_id, db)
     return AgentSessionResponse.from_session(session, fields)

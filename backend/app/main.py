@@ -1,16 +1,31 @@
 import os
 import uuid
 from contextlib import asynccontextmanager
+
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-import structlog
 
+from app.api.routes import (
+    agent,
+    analyze,
+    applications,
+    auth,
+    candidates,
+    chat,
+    cv,
+    forms,
+    interview,
+    jobs,
+    market,
+    match,
+    recommendations,
+)
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
-from app.api.routes import cv, chat, auth, candidates, jobs, match, applications, recommendations, interview, forms, agent, market, analyze
 
 configure_logging()
 logger = get_logger(__name__)
@@ -27,7 +42,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LinkedIn Intelligence API", version="2.0.0", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 _cors_origins_env = os.environ.get("CORS_ORIGINS", "")
 _default_origins = ["http://localhost:3000", "http://frontend:3000"]

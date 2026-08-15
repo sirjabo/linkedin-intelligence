@@ -1,17 +1,18 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_db
-from app.db.models.user import User
+from app.api.deps import get_current_user
+from app.core.logging import get_logger
 from app.db.models.candidate import Candidate
 from app.db.models.job import Job, JobRequirement
-from app.api.deps import get_current_user
-from app.schemas.job import JobCreate, JobAnalyze, JobResponse, ParsedJobResponse
+from app.db.models.user import User
+from app.db.session import get_db
+from app.schemas.job import JobAnalyze, JobCreate, JobResponse, ParsedJobResponse
 from app.services.agents.job_agent import parse_job_description
-from app.core.logging import get_logger
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger(__name__)

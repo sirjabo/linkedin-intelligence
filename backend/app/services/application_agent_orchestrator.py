@@ -15,30 +15,30 @@ import os
 import uuid
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models.application import Application, ApplicationSubmission, CVVersion, CoverLetter
-from app.db.models.candidate import Candidate, CandidateProfile
-from app.db.models.form import ApplicationForm, ApplicationFormField
-from app.db.models.agent_session import ApplicationAgentSession
-from app.db.models.job import Job
-from app.services.browser.playwright_adapter import PlaywrightAdapter
-from app.services.browser.adapter import RawFormField
-from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
-from app.services.cv_storage import generate_cv_file, cv_exists, get_cv_path
-from app.services.ats.registry import detect_ats
-from app.services.form_intelligence import classify_field, classify_field_llm
-from app.services.matching.engine import compute_deterministic, tier_from_score, DET_WEIGHT
-from app.services.agents.match_agent import reason_about_match
-from app.services.agents.application_agent import generate_strategy
-from app.services.agents.cv_agent import personalize_cv
-from app.services.agents.communication_agent import generate_cover_letter
-from app.services.claim_validator import validate_claims
-from app.services.ai.provider import LLMProvider, default_provider
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.models.agent_session import ApplicationAgentSession
+from app.db.models.application import Application, ApplicationSubmission, CoverLetter, CVVersion
+from app.db.models.candidate import Candidate, CandidateProfile
+from app.db.models.form import ApplicationForm, ApplicationFormField
+from app.db.models.job import Job
+from app.services.agents.application_agent import generate_strategy
+from app.services.agents.communication_agent import generate_cover_letter
+from app.services.agents.cv_agent import personalize_cv
+from app.services.agents.match_agent import reason_about_match
+from app.services.ai.provider import LLMProvider, default_provider
+from app.services.ats.registry import detect_ats
+from app.services.browser.adapter import RawFormField
+from app.services.browser.playwright_adapter import PlaywrightAdapter
+from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
+from app.services.claim_validator import validate_claims
+from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
+from app.services.form_intelligence import classify_field, classify_field_llm
+from app.services.matching.engine import DET_WEIGHT, compute_deterministic, tier_from_score
 
 logger = get_logger(__name__)
 
@@ -200,7 +200,7 @@ class ApplicationAgentOrchestrator:
             form.status = "ready" if human_count == 0 else "mapped"
 
             # Handle CV file
-            cv_path = await _ensure_cv_file(candidate, profile, app)
+            _cv_path = await _ensure_cv_file(candidate, profile, app)
 
             # Persist before-fill screenshot
             session.screenshot_before_path = _save_screenshot(_before_bytes, str(session.id), "before")
@@ -268,7 +268,7 @@ class ApplicationAgentOrchestrator:
             raise AgentError("submit() requires human_confirmed=True — the user must explicitly confirm before submission")
 
         session = await _load_session(session_id, db)
-        if session.status not in ("ready_to_fill",):
+        if session.status != "ready_to_fill":
             raise AgentError(f"Cannot submit from session status '{session.status}' — must be 'ready_to_fill'")
 
         form = await _load_form(session.application_id, db)
@@ -281,11 +281,11 @@ class ApplicationAgentOrchestrator:
             cv_path = await _ensure_cv_file(candidate, profile, app)
 
             async with PlaywrightAdapter(headless=True) as browser:
-                await browser.open_url(session.form_url)
+                await browser.open_url(session.form_url or "")
                 raw_form = await browser.discover_form()
 
                 # Build name → RawFormField map for selector lookup
-                field_map: dict[str, RawFormField] = {f.name: f for f in raw_form.fields}
+                _field_map: dict[str, RawFormField] = {f.name: f for f in raw_form.fields}
 
                 # Fill each field
                 filled = 0
@@ -316,7 +316,7 @@ class ApplicationAgentOrchestrator:
                             await browser.select_option(selector, value)
                             filled += 1
                     elif ftype == "checkbox":
-                        checked = bool(value) and value.lower() not in ("false", "0", "no", "")
+                        checked = bool(value) and (value or "").lower() not in ("false", "0", "no", "")
                         await browser.check_checkbox(selector, checked)
                         filled += 1
                     elif ftype == "number":
@@ -326,7 +326,7 @@ class ApplicationAgentOrchestrator:
                             filled += 1
                     elif ftype == "url":
                         # Only fill if value is a well-formed URL; invalid URLs trigger browser validation
-                        if value and (value.startswith("http://") or value.startswith("https://")):
+                        if value and value.startswith(("http://", "https://")):
                             await browser.fill_text(selector, value)
                             filled += 1
                     elif value:
@@ -350,7 +350,7 @@ class ApplicationAgentOrchestrator:
                 session.status = "submitting"
                 await db.commit()
 
-                ats_adapter = detect_ats(session.form_url)
+                ats_adapter = detect_ats(session.form_url or "")
                 success = await ats_adapter.submit(browser)
 
                 if not success:
@@ -362,7 +362,7 @@ class ApplicationAgentOrchestrator:
 
                 final_url = None
                 try:
-                    state = await browser.open_url(browser._page.url if browser._page else session.form_url)
+                    state = await browser.open_url(browser._page.url if browser._page else (session.form_url or ""))
                     final_url = state.url
                 except Exception:
                     pass

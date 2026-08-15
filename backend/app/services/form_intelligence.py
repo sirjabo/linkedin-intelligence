@@ -4,7 +4,7 @@ Deterministic first, LLM fallback for unrecognized fields.
 Human-in-the-loop for custom essays and fields with no auto-fill source.
 """
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, get_args
 
 SemanticType = Literal[
@@ -24,25 +24,25 @@ SemanticType = Literal[
 
 # Maps label keywords → semantic type. First match wins.
 _LABEL_RULES: list[tuple[re.Pattern, SemanticType]] = [
-    (re.compile(r"\bfull[\s_-]?name\b", re.I), "full_name"),
-    (re.compile(r"\bfirst[\s_-]?name\b", re.I), "first_name"),
-    (re.compile(r"\blast[\s_-]?name\b|surname\b|family[\s_-]?name\b", re.I), "last_name"),
-    (re.compile(r"\bemail\b|e-mail\b", re.I), "email"),
-    (re.compile(r"\bphone\b|mobile\b|telephone\b", re.I), "phone"),
-    (re.compile(r"\blinkedin\b", re.I), "linkedin_url"),
-    (re.compile(r"\bportfolio\b|personal[\s_-]?site\b|website\b", re.I), "portfolio_url"),
-    (re.compile(r"\bgithub\b|gitlab\b|bitbucket\b", re.I), "github_url"),
-    (re.compile(r"\bcity\b", re.I), "city"),
-    (re.compile(r"\bcountry\b|nation\b", re.I), "country"),
-    (re.compile(r"\blocation\b|address\b|where[\s_-]?are\b", re.I), "location"),
-    (re.compile(r"\bsalary\b|\bcompensation\b|\bexpected\b.*(pay|wage|sal)\b|(pay|wage|sal)\b.*\bexpected\b", re.I), "salary_expectation"),
-    (re.compile(r"\byears?\b.*(experience|exp)\b|\b(experience|exp).*\byears?\b", re.I), "years_experience"),
-    (re.compile(r"\bwork[\s_-]?auth(orization)?\b|\bvisa\b|\bsponsorship\b|\bauthorized\b.*(work|us)\b", re.I), "work_authorization"),
-    (re.compile(r"\bcover[\s_-]?letter\b", re.I), "cover_letter"),
-    (re.compile(r"\bresume\b|curriculum\b|cv\b", re.I), "cv_file"),
-    (re.compile(r"\bstart[\s_-]?date\b|earliest\b.*start\b", re.I), "start_date"),
-    (re.compile(r"\bavailability\b|available[\s_-]?to[\s_-]?start\b", re.I), "availability"),
-    (re.compile(r"\bwhy\b.*(company|role|interest|join|work|here|us|this)\b|(describe|tell|explain)\b", re.I), "custom_essay"),
+    (re.compile(r"\bfull[\s_-]?name\b", re.IGNORECASE), "full_name"),
+    (re.compile(r"\bfirst[\s_-]?name\b", re.IGNORECASE), "first_name"),
+    (re.compile(r"\blast[\s_-]?name\b|surname\b|family[\s_-]?name\b", re.IGNORECASE), "last_name"),
+    (re.compile(r"\bemail\b|e-mail\b", re.IGNORECASE), "email"),
+    (re.compile(r"\bphone\b|mobile\b|telephone\b", re.IGNORECASE), "phone"),
+    (re.compile(r"\blinkedin\b", re.IGNORECASE), "linkedin_url"),
+    (re.compile(r"\bportfolio\b|personal[\s_-]?site\b|website\b", re.IGNORECASE), "portfolio_url"),
+    (re.compile(r"\bgithub\b|gitlab\b|bitbucket\b", re.IGNORECASE), "github_url"),
+    (re.compile(r"\bcity\b", re.IGNORECASE), "city"),
+    (re.compile(r"\bcountry\b|nation\b", re.IGNORECASE), "country"),
+    (re.compile(r"\blocation\b|address\b|where[\s_-]?are\b", re.IGNORECASE), "location"),
+    (re.compile(r"\bsalary\b|\bcompensation\b|\bexpected\b.*(pay|wage|sal)\b|(pay|wage|sal)\b.*\bexpected\b", re.IGNORECASE), "salary_expectation"),
+    (re.compile(r"\byears?\b.*(experience|exp)\b|\b(experience|exp).*\byears?\b", re.IGNORECASE), "years_experience"),
+    (re.compile(r"\bwork[\s_-]?auth(orization)?\b|\bvisa\b|\bsponsorship\b|\bauthorized\b.*(work|us)\b", re.IGNORECASE), "work_authorization"),
+    (re.compile(r"\bcover[\s_-]?letter\b", re.IGNORECASE), "cover_letter"),
+    (re.compile(r"\bresume\b|curriculum\b|cv\b", re.IGNORECASE), "cv_file"),
+    (re.compile(r"\bstart[\s_-]?date\b|earliest\b.*start\b", re.IGNORECASE), "start_date"),
+    (re.compile(r"\bavailability\b|available[\s_-]?to[\s_-]?start\b", re.IGNORECASE), "availability"),
+    (re.compile(r"\bwhy\b.*(company|role|interest|join|work|here|us|this)\b|(describe|tell|explain)\b", re.IGNORECASE), "custom_essay"),
 ]
 
 # Semantic types that can never be auto-filled — always require human input
@@ -102,6 +102,7 @@ async def classify_field_llm(
     """
     try:
         import anthropic
+
         from app.core.config import settings
 
         client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -124,7 +125,10 @@ async def classify_field_llm(
                 ),
             }],
         )
-        candidate = resp.content[0].text.strip().lower().replace("-", "_")
+        block = resp.content[0]
+        if not hasattr(block, "text"):
+            return "unknown"
+        candidate = block.text.strip().lower().replace("-", "_")  # type: ignore[union-attr]
         if candidate in _ALL_SEMANTIC_TYPES:
             return candidate  # type: ignore[return-value]
     except Exception:
@@ -154,7 +158,7 @@ def map_candidate_to_form(
     }
 
     result: list[MappedField] = []
-    for i, spec in enumerate(fields):
+    for _i, spec in enumerate(fields):
         sem_type = classify_field(spec.label)
         auto_fill: str | None = None
         human_required = sem_type in _ALWAYS_HUMAN

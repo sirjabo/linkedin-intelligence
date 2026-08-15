@@ -16,9 +16,8 @@ import anthropic
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.models.application import Application
 from app.db.models.candidate import Candidate, CandidateProfile
-from app.db.models.application import Application, CoverLetter
-from app.services.form_intelligence import classify_field
 
 logger = get_logger(__name__)
 
@@ -139,7 +138,7 @@ class CandidateKnowledgeResolver:
     async def _resolve_linkedin_url(self, *, candidate: Candidate, **_) -> FieldResolution:
         for src in (candidate.sources or []):
             if src.source_type == "linkedin" and src.source_url:
-                return FieldResolution("linkedin_url", src.source_url, "DIRECT", 0.99, f"candidate_sources[type=linkedin].source_url")
+                return FieldResolution("linkedin_url", src.source_url, "DIRECT", 0.99, "candidate_sources[type=linkedin].source_url")
         return FieldResolution("linkedin_url", None, "HUMAN_REQUIRED", 0.9, "no LinkedIn source found", "Your LinkedIn profile URL")
 
     async def _resolve_portfolio_url(self, *, candidate: Candidate, **_) -> FieldResolution:
@@ -255,7 +254,8 @@ class CandidateKnowledgeResolver:
                     }
                 ],
             )
-            answer = msg.content[0].text.strip()
+            _blk = msg.content[0]
+            answer = (_blk.text if hasattr(_blk, "text") else "").strip()  # type: ignore[union-attr]
             logger.info("custom_essay_generated", label=field_label, chars=len(answer))
             return FieldResolution(
                 "custom_essay", answer, "GENERATED", 0.70,

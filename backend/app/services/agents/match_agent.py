@@ -4,8 +4,9 @@ Pure function — takes structured data, returns structured reasoning.
 No DB I/O; no side effects.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 

@@ -2,8 +2,8 @@
 import ipaddress
 import socket
 from urllib.parse import urlparse
-from fastapi import HTTPException
 
+from fastapi import HTTPException
 
 _PRIVATE_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -31,7 +31,7 @@ def validate_url_not_private(url: str) -> None:
     try:
         addr_info = socket.getaddrinfo(hostname, None)
     except socket.gaierror:
-        raise HTTPException(status_code=422, detail=f"Cannot resolve hostname: {hostname!r}")
+        raise HTTPException(status_code=422, detail=f"Cannot resolve hostname: {hostname!r}") from None
 
     for _family, _type, _proto, _canonname, sockaddr in addr_info:
         ip_str = sockaddr[0]
@@ -43,5 +43,5 @@ def validate_url_not_private(url: str) -> None:
             if ip in network:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"URL resolves to a private/internal address — not allowed for security reasons",
+                    detail="URL resolves to a private/internal address — not allowed for security reasons",
                 )

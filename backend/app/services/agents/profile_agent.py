@@ -3,8 +3,9 @@
 Uses structured output (tool_use) — never XML tag parsing.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 
@@ -186,7 +187,7 @@ async def consolidate_profiles(
         extracted_profiles: List of (source_type, profile) tuples
     """
     if len(extracted_profiles) == 1:
-        source_type, profile = extracted_profiles[0]
+        _source_type, profile = extracted_profiles[0]
         return _single_to_consolidated(profile)
 
     sources_text = "\n\n".join(

@@ -4,8 +4,9 @@ Given candidate + job + match analysis, returns actionable guidance for
 CV personalization and cover letter writing.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 

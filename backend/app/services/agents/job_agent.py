@@ -3,8 +3,9 @@
 Uses structured output (tool_use) — never XML tag parsing.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 

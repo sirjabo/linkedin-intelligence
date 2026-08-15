@@ -1,5 +1,6 @@
 """Phase 6 — Interview preparation agent."""
 import json
+
 from pydantic import BaseModel
 
 from app.services.ai.provider import LLMProvider

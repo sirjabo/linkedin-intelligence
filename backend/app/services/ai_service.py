@@ -1,6 +1,8 @@
 import json
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 import httpx
+
 from app.core.config import settings
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -149,8 +151,7 @@ async def parse_cv_text(raw_text: str) -> dict:
         content = response.json()["choices"][0]["message"]["content"].strip()
     if content.startswith("```"):
         content = content.split("```")[1]
-        if content.startswith("json"):
-            content = content[4:]
+        content = content.removeprefix("json")
     return json.loads(content)
 
 
@@ -175,63 +176,44 @@ async def stream_cv_chat(
     cv_buffer = ""
     in_update = False
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        async with client.stream(
-            "POST",
-            OPENROUTER_URL,
-            headers=_headers(),
-            json={
-                "model": CHAT_MODEL,
-                "max_tokens": 4096,
-                "messages": messages,
-                "stream": True,
-            },
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                    chunk_text = chunk["choices"][0]["delta"].get("content") or ""
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
+    async with httpx.AsyncClient(timeout=120.0) as client, client.stream(
+        "POST",
+        OPENROUTER_URL,
+        headers=_headers(),
+        json={
+            "model": CHAT_MODEL,
+            "max_tokens": 4096,
+            "messages": messages,
+            "stream": True,
+        },
+    ) as response:
+        response.raise_for_status()
+        async for line in response.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data = line[6:]
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+                chunk_text = chunk["choices"][0]["delta"].get("content") or ""
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
 
-                if not chunk_text:
-                    continue
+            if not chunk_text:
+                continue
 
-                if not in_update:
-                    text_buffer += chunk_text
+            if not in_update:
+                text_buffer += chunk_text
 
-                    while TAG_OPEN in text_buffer:
-                        before, _, after = text_buffer.partition(TAG_OPEN)
-                        if before:
-                            yield f"data: {json.dumps({'type': 'text', 'content': before})}\n\n"
-                        in_update = True
-                        cv_buffer = after
-                        text_buffer = ""
+                while TAG_OPEN in text_buffer:
+                    before, _, after = text_buffer.partition(TAG_OPEN)
+                    if before:
+                        yield f"data: {json.dumps({'type': 'text', 'content': before})}\n\n"
+                    in_update = True
+                    cv_buffer = after
+                    text_buffer = ""
 
-                        if TAG_CLOSE in cv_buffer:
-                            json_str, _, rest = cv_buffer.partition(TAG_CLOSE)
-                            try:
-                                update = json.loads(json_str.strip())
-                                yield f"data: {json.dumps({'type': 'cv_update', **update})}\n\n"
-                            except json.JSONDecodeError:
-                                pass
-                            in_update = False
-                            text_buffer = rest
-                            cv_buffer = ""
-
-                    if not in_update:
-                        safe_len = max(0, len(text_buffer) - len(TAG_OPEN))
-                        if safe_len > 0:
-                            yield f"data: {json.dumps({'type': 'text', 'content': text_buffer[:safe_len]})}\n\n"
-                            text_buffer = text_buffer[safe_len:]
-                else:
-                    cv_buffer += chunk_text
                     if TAG_CLOSE in cv_buffer:
                         json_str, _, rest = cv_buffer.partition(TAG_CLOSE)
                         try:
@@ -242,6 +224,24 @@ async def stream_cv_chat(
                         in_update = False
                         text_buffer = rest
                         cv_buffer = ""
+
+                if not in_update:
+                    safe_len = max(0, len(text_buffer) - len(TAG_OPEN))
+                    if safe_len > 0:
+                        yield f"data: {json.dumps({'type': 'text', 'content': text_buffer[:safe_len]})}\n\n"
+                        text_buffer = text_buffer[safe_len:]
+            else:
+                cv_buffer += chunk_text
+                if TAG_CLOSE in cv_buffer:
+                    json_str, _, rest = cv_buffer.partition(TAG_CLOSE)
+                    try:
+                        update = json.loads(json_str.strip())
+                        yield f"data: {json.dumps({'type': 'cv_update', **update})}\n\n"
+                    except json.JSONDecodeError:
+                        pass
+                    in_update = False
+                    text_buffer = rest
+                    cv_buffer = ""
 
     if text_buffer:
         yield f"data: {json.dumps({'type': 'text', 'content': text_buffer})}\n\n"

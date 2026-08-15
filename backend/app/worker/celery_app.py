@@ -1,6 +1,7 @@
 """Celery application — task broker and beat scheduler."""
 from celery import Celery
 from celery.schedules import crontab
+
 from app.core.config import settings
 
 celery_app = Celery(

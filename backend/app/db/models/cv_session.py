@@ -6,8 +6,10 @@ the Candidate + CandidateSource + CVVersion model.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, DateTime, ForeignKey, JSON, Uuid
+
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
 
 

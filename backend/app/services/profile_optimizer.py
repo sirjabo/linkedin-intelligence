@@ -4,6 +4,7 @@ Reads all MatchAnalysis rows for a candidate, aggregates which skills appear
 most often in missing_skills, then uses an LLM to produce a prioritized
 improvement plan.
 """
+import contextlib
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -120,10 +121,8 @@ async def generate_optimization_report(
     # Build a short LLM summary if we have enough data
     summary = _default_summary(len(analyses), skill_gaps, tips)
     if analyses and skill_gaps:
-        try:
+        with contextlib.suppress(Exception):
             summary = await _llm_summary(analyses, skill_gaps, tips, model)
-        except Exception:
-            pass  # fallback to deterministic summary
 
     return OptimizationReport(
         total_analyses_reviewed=len(analyses),
@@ -157,6 +156,7 @@ async def _llm_summary(
     model: str,
 ) -> str:
     import anthropic
+
     from app.core.config import settings
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)

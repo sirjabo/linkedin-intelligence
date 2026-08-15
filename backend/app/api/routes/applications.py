@@ -1,30 +1,49 @@
 """Application routes: full application lifecycle management."""
 import uuid
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_db
+from app.api.deps import get_current_user
+from app.core.logging import get_logger
+from app.db.models.application import (
+    Application,
+    ApplicationAnswer,
+    ApplicationEvent,
+    ApplicationSubmission,
+    CoverLetter,
+    CVVersion,
+)
 from app.db.models.candidate import Candidate, CandidateProfile
+from app.db.models.form import ApplicationForm
 from app.db.models.job import Job
 from app.db.models.match import MatchAnalysis
-from app.db.models.application import Application, CVVersion, CoverLetter, ApplicationAnswer, ApplicationEvent, ApplicationSubmission
-from app.db.models.form import ApplicationForm
-from app.api.deps import get_current_user
 from app.db.models.user import User
+from app.db.session import get_db
 from app.schemas.application import (
-    ApplicationCreate, ApplicationUpdate, ApplicationResponse, ApplicationListResponse,
-    CVVersionResponse, CoverLetterResponse, ApplicationAnswerResponse, ApplicationEventResponse,
-    AnswersRequest, EventCreate, SubmissionCreate, SubmissionResponse,
-    FitAnalysisResponse, DecisionResponse, OutcomeCreate,
+    AnswersRequest,
+    ApplicationAnswerResponse,
+    ApplicationCreate,
+    ApplicationEventResponse,
+    ApplicationListResponse,
+    ApplicationResponse,
+    ApplicationUpdate,
+    CoverLetterResponse,
+    CVVersionResponse,
+    DecisionResponse,
+    EventCreate,
+    FitAnalysisResponse,
+    OutcomeCreate,
+    SubmissionCreate,
+    SubmissionResponse,
 )
 from app.services.agents.application_agent import generate_strategy
+from app.services.agents.communication_agent import generate_application_answers, generate_cover_letter
 from app.services.agents.cv_agent import personalize_cv
-from app.services.agents.communication_agent import generate_cover_letter, generate_application_answers
 from app.services.claim_validator import validate_claims
-from app.core.logging import get_logger
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 logger = get_logger(__name__)
@@ -238,12 +257,12 @@ async def generate_cv(
     ) or (profile.summary if profile else "")
 
     must_have = [r.description for r in job.requirements if r.requirement_type == "must_have"]
-    nice_to_have = [r.description for r in job.requirements if r.requirement_type == "nice_to_have"]
+    _nice_to_have = [r.description for r in job.requirements if r.requirement_type == "nice_to_have"]
 
     # ── Step 1: strategy (generate and cache) ─────────────────────────────────
     if not application.strategy:
         strategy_obj = await generate_strategy(
-            candidate_summary=candidate_summary,
+            candidate_summary=candidate_summary,  # type: ignore[arg-type]
             candidate_skills=skill_names,
             candidate_career_level=profile.career_level if profile else None,
             candidate_location=candidate.location,
@@ -266,7 +285,7 @@ async def generate_cv(
 
     # ── Step 2: personalize CV ─────────────────────────────────────────────────
     cv_result = await personalize_cv(
-        candidate_summary=candidate_summary,
+        candidate_summary=candidate_summary,  # type: ignore[arg-type]
         candidate_headline=None,
         candidate_skills=skill_names,
         candidate_career_level=profile.career_level if profile else None,
@@ -285,7 +304,7 @@ async def generate_cv(
         c.get("adapted", "") if isinstance(c, dict) else c.adapted
         for c in cv_result.changes
     )
-    evidence_records = []  # Will be populated when EvidenceRecord is filled
+    evidence_records: list = []  # Will be populated when EvidenceRecord is filled
     validation = validate_claims(all_generated_text, evidence_records)
 
     cv_version = CVVersion(
@@ -333,7 +352,7 @@ async def generate_cover_letter_route(
     ) or (profile.summary if profile else "")
 
     cl_result = await generate_cover_letter(
-        candidate_summary=candidate_summary,
+        candidate_summary=candidate_summary,  # type: ignore[arg-type]
         candidate_skills=skill_names,
         candidate_career_level=profile.career_level if profile else None,
         candidate_location=candidate.location,
@@ -381,7 +400,7 @@ async def generate_answers(
     ) or (profile.summary if profile else "")
 
     answer_results = await generate_application_answers(
-        candidate_summary=candidate_summary,
+        candidate_summary=candidate_summary,  # type: ignore[arg-type]
         candidate_skills=skill_names,
         candidate_career_level=profile.career_level if profile else None,
         candidate_experience=profile.experience if profile else None,
@@ -630,7 +649,7 @@ async def get_stats(
         .where(Application.candidate_id == candidate.id)
         .group_by(Application.status)
     )
-    by_status: dict[str, int] = {r.status: r.count for r in rows}
+    by_status: dict[str, int] = {r.status: int(r.count) for r in rows}  # type: ignore[call-overload,arg-type]
 
     total = sum(by_status.values())
 
