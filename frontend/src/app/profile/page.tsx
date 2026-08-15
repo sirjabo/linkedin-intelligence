@@ -12,16 +12,37 @@ import {
   getProfile,
   getProfileHealth,
   getProfileOptimizer,
+  getProfileBenchmark,
   type Candidate,
   type CandidateSource,
   type CandidateProfile,
   type ProfileHealth,
   type OptimizationReport,
+  type BenchmarkResult,
 } from "@/lib/api-v2";
 import {
   ArrowLeftIcon, UserIcon, PlusIcon, RefreshCwIcon,
   ZapIcon, CheckCircleIcon, AlertCircleIcon, TrendingUpIcon,
+  BarChart2Icon, ChevronDownIcon,
 } from "lucide-react";
+
+const ROLE_LABELS: Record<string, string> = {
+  ai_engineer: "AI Engineer",
+  data_engineer: "Data Engineer",
+  analytics_engineer: "Analytics Engineer",
+  ml_engineer: "ML Engineer",
+  backend_engineer: "Backend Engineer",
+  frontend_engineer: "Frontend Engineer",
+  devops_engineer: "DevOps Engineer",
+  data_scientist: "Data Scientist",
+};
+
+const TIER_STYLE: Record<string, string> = {
+  Excelente: "text-emerald-400 bg-emerald-950/30 border-emerald-800/40",
+  Bueno: "text-blue-400 bg-blue-950/30 border-blue-800/40",
+  "En desarrollo": "text-yellow-400 bg-yellow-950/30 border-yellow-800/40",
+  Inicial: "text-red-400 bg-red-950/30 border-red-800/40",
+};
 
 const IMPACT_COLOR: Record<string, string> = {
   high: "text-red-400",
@@ -58,6 +79,12 @@ export default function ProfilePage() {
   const [health, setHealth] = useState<ProfileHealth | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Benchmark state
+  const [benchmark, setBenchmark] = useState<BenchmarkResult | null>(null);
+  const [benchmarkRole, setBenchmarkRole] = useState("");
+  const [loadingBenchmark, setLoadingBenchmark] = useState(false);
+  const [benchmarkError, setBenchmarkError] = useState("");
 
   // Profile Optimizer state
   const [optimizer, setOptimizer] = useState<OptimizationReport | null>(null);
@@ -170,6 +197,21 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleLoadBenchmark(role: string) {
+    if (!token) return;
+    setLoadingBenchmark(true);
+    setBenchmarkError("");
+    try {
+      const data = await getProfileBenchmark(token, role);
+      setBenchmark(data);
+      setBenchmarkRole(role);
+    } catch (err: unknown) {
+      setBenchmarkError(err instanceof Error ? err.message : "Error al cargar benchmark");
+    } finally {
+      setLoadingBenchmark(false);
+    }
+  }
+
   async function handleLoadOptimizer() {
     if (!token) return;
     setLoadingOptimizer(true);
@@ -237,6 +279,127 @@ export default function ProfilePage() {
         {error && (
           <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
+          </div>
+        )}
+
+        {/* Benchmark vs mercado */}
+        {candidate?.target_roles && candidate.target_roles.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                <BarChart2Icon size={16} className="text-cyan-400" />
+                Benchmark vs mercado
+              </h3>
+              {!loadingBenchmark && (
+                <div className="flex items-center gap-2">
+                  {candidate.target_roles.length > 1 && (
+                    <div className="relative">
+                      <select
+                        value={benchmarkRole || candidate.target_roles[0]}
+                        onChange={(e) => handleLoadBenchmark(e.target.value)}
+                        className="appearance-none bg-slate-800 border border-slate-700 text-xs text-slate-300 rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-cyan-600 cursor-pointer"
+                      >
+                        {candidate.target_roles.map((r) => (
+                          <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>
+                        ))}
+                      </select>
+                      <ChevronDownIcon size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                    </div>
+                  )}
+                  <button
+                    onClick={() => handleLoadBenchmark(benchmarkRole || candidate.target_roles![0])}
+                    className="flex items-center gap-1.5 text-xs bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-800/50 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <BarChart2Icon size={12} />
+                    {benchmark ? "Actualizar" : "Ver benchmark"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {loadingBenchmark && (
+              <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                <RefreshCwIcon size={12} className="animate-spin" />
+                Comparando tus skills con el mercado…
+              </div>
+            )}
+
+            {benchmarkError && (
+              <p className="text-xs text-red-400">{benchmarkError}</p>
+            )}
+
+            {!benchmark && !loadingBenchmark && !benchmarkError && (
+              <p className="text-xs text-slate-500">
+                Compará tus skills contra las más demandadas en el mercado para tu rol objetivo.
+              </p>
+            )}
+
+            {benchmark && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <p className="text-3xl font-bold text-white tabular-nums">{benchmark.percentile}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">percentil</p>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-500">
+                        {ROLE_LABELS[benchmark.role] ?? benchmark.role}
+                      </span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_STYLE[benchmark.tier] ?? "text-slate-400 bg-slate-800 border-slate-700"}`}>
+                        {benchmark.tier}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          benchmark.percentile >= 75 ? "bg-emerald-500" :
+                          benchmark.percentile >= 50 ? "bg-blue-500" :
+                          benchmark.percentile >= 25 ? "bg-yellow-500" : "bg-red-500"
+                        }`}
+                        style={{ width: `${benchmark.percentile}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">{benchmark.message}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {benchmark.matched_skills.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-emerald-400 mb-1.5">
+                        ✓ Skills que tenés ({benchmark.matched_skills.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {benchmark.matched_skills.slice(0, 8).map((s) => (
+                          <span key={s} className="text-xs bg-emerald-950/30 text-emerald-300 border border-emerald-800/40 px-2 py-0.5 rounded">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {benchmark.missing_skills.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-red-400 mb-1.5">
+                        ✗ Skills faltantes ({benchmark.missing_skills.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {benchmark.missing_skills.slice(0, 8).map((s) => (
+                          <span key={s} className="text-xs bg-red-950/30 text-red-300 border border-red-800/40 px-2 py-0.5 rounded">
+                            + {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-600">
+                  {benchmark.matched_count} de {benchmark.total_checked} skills clave del mercado · Datos en tiempo real
+                </p>
+              </div>
+            )}
           </div>
         )}
 

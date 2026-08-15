@@ -84,7 +84,10 @@ async def write_about_section(
         messages=[{"role": "user", "content": user_prompt}],
     )
 
-    raw = msg.content[0].text
+    block = msg.content[0]
+    if not hasattr(block, "text"):
+        raise ValueError("Unexpected response type from LLM")
+    raw = block.text  # type: ignore[union-attr]
     data = _parse_json(raw)
 
     return {
