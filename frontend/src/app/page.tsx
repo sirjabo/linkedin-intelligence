@@ -18,18 +18,18 @@ const features = [
   {
     icon: BarChart2,
     label: "Skills Radar",
-    desc: "Las 50 skills más demandadas para tu rol objetivo, actualizadas cada semana desde miles de ofertas en Latam y el mundo.",
+    desc: "Las 50 skills más demandadas para tu rol objetivo, en tiempo real desde cientos de ofertas en Remotive, Arbeitnow y RemoteOK.",
     href: "/skills",
-    available: false,
-    badge: "Próximamente",
+    available: true,
+    badge: "Disponible ahora",
   },
   {
     icon: TrendingUp,
     label: "Inteligencia de Mercado",
-    desc: "Tendencias de skills, salarios por rol y región, y qué empresas tech están contratando activamente.",
+    desc: "Skills trending y empresas tech contratando activamente, actualizados en tiempo real desde las principales bolsas de empleo.",
     href: "/market",
-    available: false,
-    badge: "Próximamente",
+    available: true,
+    badge: "Disponible ahora",
   },
 ];
 
@@ -115,16 +115,12 @@ export default function HomePage() {
                 <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
               </div>
 
-              {available ? (
-                <Link
-                  href={href}
-                  className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
-                >
-                  Empezar <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              ) : (
-                <span className="text-sm text-slate-600 font-medium">En desarrollo</span>
-              )}
+              <Link
+                href={href}
+                className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+              >
+                Empezar <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           ))}
         </div>

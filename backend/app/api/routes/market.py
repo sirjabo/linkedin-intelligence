@@ -1,6 +1,7 @@
 """Market intelligence endpoints — live skill frequencies from external job sources."""
 import asyncio
 import re
+import time
 from collections import Counter
 from datetime import date, datetime
 from fastapi import APIRouter, Query
@@ -62,6 +63,22 @@ _TECH_CATEGORIES: dict[str, str] = {
 
 _SLUG_RE = re.compile(r"[^a-z0-9+#.]")
 
+# In-memory TTL cache: key → (payload, expires_at)
+_CACHE: dict[str, tuple[object, float]] = {}
+_CACHE_TTL = 1800  # 30 minutes
+
+
+def _cache_get(key: str) -> object | None:
+    entry = _CACHE.get(key)
+    if entry and time.monotonic() < entry[1]:
+        return entry[0]
+    _CACHE.pop(key, None)
+    return None
+
+
+def _cache_set(key: str, value: object) -> None:
+    _CACHE[key] = (value, time.monotonic() + _CACHE_TTL)
+
 
 def _slugify(name: str) -> str:
     return _SLUG_RE.sub("", name.lower().replace(" ", ""))
@@ -88,7 +105,16 @@ async def _fetch_safe(source_name: str, source_cls, query: str, limit: int) -> l
 
 
 async def _aggregate_skills(role: str, limit: int = 50) -> tuple[list[JobRaw], Counter]:
-    """Fetch jobs for role from all sources and count tech tag frequencies."""
+    """Fetch jobs for role from all sources and count tech tag frequencies.
+
+    Results are cached in-memory for 30 minutes per role to avoid hammering
+    external job boards on every request.
+    """
+    cache_key = f"skills:{role}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
     query = ROLE_QUERIES.get(role, role.replace("_", " ").title())
     per_source = max(40, limit)
 
@@ -112,7 +138,9 @@ async def _aggregate_skills(role: str, limit: int = 50) -> tuple[list[JobRaw], C
         for tag in job.tech_tags:
             tag_counter[_slugify(tag)] += 1
 
-    return jobs, tag_counter
+    result = (jobs, tag_counter)
+    _cache_set(cache_key, result)
+    return result
 
 
 @router.get("/roles")

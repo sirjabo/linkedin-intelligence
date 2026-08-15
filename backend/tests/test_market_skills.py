@@ -7,6 +7,15 @@ from unittest.mock import AsyncMock, patch
 from app.main import app
 from app.services.job_sources.base import JobRaw
 from app.api.routes.market import _slugify, _categorize, _aggregate_skills
+import app.api.routes.market as market_module
+
+
+@pytest.fixture(autouse=True)
+def clear_market_cache():
+    """Clear the in-memory market cache before every test to prevent state bleed."""
+    market_module._CACHE.clear()
+    yield
+    market_module._CACHE.clear()
 
 
 def _make_job(title="Python Engineer", company="Acme", tech_tags: list[str] | None = None) -> JobRaw:
@@ -158,6 +167,27 @@ async def test_trends_endpoint():
     # Anthropic appears in 2 of 3 jobs → should be rank 1 company
     companies = {c["name"]: c["job_count"] for c in data["top_companies"]}
     assert companies.get("Anthropic", 0) == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_serves_second_request_without_fetch():
+    """Second identical request should be served from cache (fetch not called again)."""
+    fake_jobs = [_make_job(company="CacheCo", tech_tags=["python"])]
+    fetch_call_count = 0
+
+    async def counting_fetch(*args, **kwargs):
+        nonlocal fetch_call_count
+        fetch_call_count += 1
+        return fake_jobs
+
+    with patch("app.api.routes.market._fetch_safe", new=counting_fetch):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.get("/api/v2/market/skills/ai_engineer")
+            await client.get("/api/v2/market/skills/ai_engineer")
+
+    # _fetch_safe called 3× on first request (one per source), 0× on second
+    assert fetch_call_count == 3
 
 
 @pytest.mark.asyncio

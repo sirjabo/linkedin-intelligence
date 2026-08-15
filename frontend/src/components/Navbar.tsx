@@ -7,6 +7,7 @@ const links = [
   { href: "/profile", label: "Mi Perfil" },
   { href: "/skills", label: "Skills Radar" },
   { href: "/market", label: "Mercado" },
+  { href: "/recommendations", label: "Ofertas" },
   { href: "/applications", label: "Postulaciones" },
 ];
 
