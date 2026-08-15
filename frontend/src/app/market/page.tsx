@@ -1,15 +1,52 @@
-import Navbar from "@/components/Navbar";
+"use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { TrendingUp, ArrowLeft, Zap } from "lucide-react";
+import Navbar from "@/components/Navbar";
+import { getMarketTrends, getMarketRoles, type MarketTrendsResponse } from "@/lib/api-v2";
+import { TrendingUpIcon, ArrowLeftIcon, RefreshCwIcon, BuildingIcon, ZapIcon } from "lucide-react";
 
-const mockStats = [
-  { label: "Ofertas analizadas", value: "12.400+", sub: "últimas 4 semanas" },
-  { label: "Roles tracked", value: "8", sub: "AI, Data, Analytics, ML..." },
-  { label: "Empresas activas", value: "340+", sub: "contratando ahora" },
-  { label: "Skills indexadas", value: "2.100+", sub: "actualizadas semanalmente" },
-];
+const ROLE_LABELS: Record<string, string> = {
+  ai_engineer: "AI Engineer",
+  data_engineer: "Data Engineer",
+  analytics_engineer: "Analytics Engineer",
+  ml_engineer: "ML Engineer",
+  backend_engineer: "Backend Engineer",
+  frontend_engineer: "Frontend Engineer",
+  devops_engineer: "DevOps Engineer",
+  data_scientist: "Data Scientist",
+};
 
 export default function MarketPage() {
+  const [roles, setRoles] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState("ai_engineer");
+  const [data, setData] = useState<MarketTrendsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getMarketRoles()
+      .then((d) => setRoles(d.roles))
+      .catch(() => setRoles(["ai_engineer", "data_engineer", "analytics_engineer"]));
+  }, []);
+
+  async function load(role: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await getMarketTrends(role);
+      setData(result);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al cargar datos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load(selectedRole);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRole]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
@@ -19,52 +56,122 @@ export default function MarketPage() {
           href="/"
           className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
+          <ArrowLeftIcon className="w-3.5 h-3.5" /> Volver al inicio
         </Link>
 
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-xl bg-white/8 flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-slate-400" />
+            <TrendingUpIcon className="w-5 h-5 text-slate-400" />
           </div>
           <div>
             <h1 className="text-2xl font-bold">Inteligencia de Mercado</h1>
-            <p className="text-sm text-slate-500">Tendencias, salarios y empresas que contratan tech</p>
-          </div>
-        </div>
-
-        {/* Coming soon banner */}
-        <div className="mt-8 rounded-2xl border border-blue-500/20 bg-blue-950/20 p-6 mb-10 flex items-start gap-4">
-          <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center shrink-0 mt-0.5">
-            <Zap className="w-4 h-4 text-blue-400" />
-          </div>
-          <div>
-            <p className="font-medium text-blue-300 mb-1">En desarrollo</p>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              El dashboard de mercado laboral tech estará disponible en las próximas semanas.
-              Incluirá tendencias de skills en tiempo real, comparación de salarios por rol y región,
-              y alertas de oportunidades que encajan con tu perfil.
+            <p className="text-sm text-slate-500">
+              Skills más demandadas y empresas que contratan tech
+              {data && ` · ${data.total_jobs_analyzed} ofertas analizadas`}
             </p>
           </div>
         </div>
 
-        {/* Stats preview (blurred) */}
-        <div className="relative">
-          <div className="grid grid-cols-2 gap-4 blur-sm pointer-events-none">
-            {mockStats.map(({ label, value, sub }) => (
-              <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                <p className="text-2xl font-bold text-white mb-0.5">{value}</p>
-                <p className="text-sm font-medium text-slate-300">{label}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
-              </div>
-            ))}
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center bg-slate-950/80 rounded-2xl px-8 py-5 border border-white/10 backdrop-blur-sm">
-              <p className="font-semibold text-white mb-1">Próximamente</p>
-              <p className="text-sm text-slate-400">Dashboard de mercado laboral tech en Latam</p>
-            </div>
-          </div>
+        {/* Role tabs */}
+        <div className="flex flex-wrap gap-2 mt-6 mb-8">
+          {(roles.length > 0 ? roles : Object.keys(ROLE_LABELS)).map((role) => (
+            <button
+              key={role}
+              onClick={() => setSelectedRole(role)}
+              className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${
+                selectedRole === role
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+              }`}
+            >
+              {ROLE_LABELS[role] ?? role}
+            </button>
+          ))}
         </div>
+
+        {error && (
+          <div className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20 gap-3 text-slate-400">
+            <RefreshCwIcon className="w-5 h-5 animate-spin" />
+            <span>Analizando mercado…</span>
+          </div>
+        ) : data ? (
+          <div className="space-y-8">
+            {/* Stats row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                <p className="text-2xl font-bold text-white mb-0.5">{data.total_jobs_analyzed}</p>
+                <p className="text-sm font-medium text-slate-300">Ofertas analizadas</p>
+                <p className="text-xs text-slate-500 mt-0.5">hoy en tiempo real</p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                <p className="text-2xl font-bold text-white mb-0.5">{data.top_skills.length}</p>
+                <p className="text-sm font-medium text-slate-300">Skills indexadas</p>
+                <p className="text-xs text-slate-500 mt-0.5">para {ROLE_LABELS[selectedRole] ?? selectedRole}</p>
+              </div>
+            </div>
+
+            {/* Top skills */}
+            {data.top_skills.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <ZapIcon className="w-4 h-4 text-blue-400" />
+                  Skills más demandadas
+                </h2>
+                <div className="space-y-2.5">
+                  {data.top_skills.slice(0, 10).map((skill, i) => (
+                    <div
+                      key={skill.skill}
+                      className="flex items-center gap-4 bg-slate-900 border border-slate-800 rounded-xl px-5 py-3"
+                    >
+                      <span className="text-xs text-slate-600 w-5 text-right">{i + 1}</span>
+                      <span className="flex-1 text-sm font-medium text-white">{skill.skill}</span>
+                      <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full"
+                          style={{ width: `${skill.frequency_pct}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-400 w-10 text-right">{skill.frequency_pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Top companies */}
+            {data.top_companies.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <BuildingIcon className="w-4 h-4 text-emerald-400" />
+                  Empresas que más contratan
+                </h2>
+                <div className="grid grid-cols-2 gap-2">
+                  {data.top_companies.map((company) => (
+                    <div
+                      key={company.name}
+                      className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-4 py-3"
+                    >
+                      <span className="text-sm text-slate-200 truncate">{company.name}</span>
+                      <span className="text-xs text-slate-500 ml-2 shrink-0">
+                        {company.job_count} oferta{company.job_count !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <p className="text-xs text-slate-600 text-center">
+              Datos en tiempo real de Remotive, Arbeitnow y RemoteOK
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   );

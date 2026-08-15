@@ -463,3 +463,55 @@ export function getRecommendations(
     sources: sources ?? null,
   });
 }
+
+// Market Intelligence
+export interface SkillFrequency {
+  rank: number;
+  name: string;
+  slug: string;
+  category: string;
+  frequency_pct: number;
+  job_count: number;
+  trend: string;
+}
+
+export interface SkillsRadarResponse {
+  role: string;
+  period: string;
+  total_jobs_analyzed: number;
+  skills: SkillFrequency[];
+}
+
+export interface CompanyHiring {
+  rank: number;
+  name: string;
+  job_count: number;
+}
+
+export interface MarketTrendItem {
+  skill: string;
+  frequency_pct: number;
+  job_count: number;
+  message: string;
+}
+
+export interface MarketTrendsResponse {
+  generated_at: string;
+  role: string | null;
+  total_jobs_analyzed: number;
+  top_skills: MarketTrendItem[];
+  top_companies: CompanyHiring[];
+}
+
+export function getMarketRoles() {
+  return req<{ roles: string[] }>("GET", "/market/roles", undefined);
+}
+
+export function getSkillsRadar(role: string, limit = 30) {
+  return req<SkillsRadarResponse>("GET", `/market/skills/${role}?limit=${limit}`, undefined);
+}
+
+export function getMarketTrends(role?: string) {
+  const qs = role ? `?role=${role}` : "";
+  return req<MarketTrendsResponse>("GET", `/market/trends${qs}`, undefined);
+}
