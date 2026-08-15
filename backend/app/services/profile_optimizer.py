@@ -176,4 +176,7 @@ async def _llm_summary(
             ),
         }],
     )
-    return resp.content[0].text.strip()
+    block = resp.content[0]
+    if not hasattr(block, "text"):
+        return ""
+    return block.text.strip()  # type: ignore[union-attr]

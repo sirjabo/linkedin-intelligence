@@ -68,7 +68,8 @@ class AnthropicProvider:
             output_tokens=output_tok,
             cost_usd=_estimate_cost(model, input_tok, output_tok),
         )
-        return response.content[0].text
+        block = response.content[0]
+        return block.text if hasattr(block, "text") else ""  # type: ignore[union-attr]
 
     async def structured_output(
         self,
