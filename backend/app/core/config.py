@@ -8,8 +8,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://linkedin_user:changeme@localhost:5432/linkedin_intelligence"
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
     REDIS_URL: str = "redis://localhost:6379"
     SECRET_KEY: str = "dev-secret-change-in-production"
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
     ENVIRONMENT: str = "development"
     UPLOAD_DIR: str = "/tmp/cv_uploads"
 

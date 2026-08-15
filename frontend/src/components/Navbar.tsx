@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Zap } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Zap, LogOut, User } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getSupabase } from "@/lib/supabase";
 
 const links = [
   { href: "/profile", label: "Mi Perfil" },
@@ -14,6 +16,24 @@ const links = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    getSupabase().auth.getSession().then(({ data: { session } }) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+    const { data: { subscription } } = getSupabase().auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await getSupabase().auth.signOut();
+    router.push("/auth");
+  };
+
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur-sm">
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -39,6 +59,21 @@ export default function Navbar() {
               {label}
             </Link>
           ))}
+          {userEmail && (
+            <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/10">
+              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                <User className="w-3.5 h-3.5" />
+                <span className="hidden sm:block max-w-[120px] truncate">{userEmail}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Cerrar sesión"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-white/5 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </nav>
       </div>
     </header>

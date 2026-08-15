@@ -1,10 +1,11 @@
 import json
-import asyncio
 from typing import AsyncGenerator
-import anthropic
+import httpx
 from app.core.config import settings
 
-client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+PARSE_MODEL = "openrouter/auto"
+CHAT_MODEL = "openrouter/auto"
 
 PARSE_SYSTEM = """Extract CV/resume data from the provided text and return ONLY a valid JSON object with this exact structure. No explanations, just JSON.
 
@@ -60,7 +61,7 @@ Rules:
 - Infer target_role from job titles if not explicitly stated
 - Separate skills by category as best you can"""
 
-CHAT_SYSTEM_TEMPLATE = """Sos un experto coach de CVs y consultor de carrera especializado en roles tech en Argentina y Latinoamérica. Tu misión es ayudar a candidatos a crear CVs que sean excelentes tanto para sistemas ATS como para reclutadores humanos.
+CHAT_SYSTEM_TEMPLATE = """Sos un Director de Adquisición de Talento Tech (Headhunter) con 15 años de experiencia en Silicon Valley, combinado con expertise en UX/UI de interfaces de lectura rápida. Tu misión: ayudar al candidato a construir un CV que supere filtros ATS Y conquiste al ojo humano en los primeros 6 segundos de escaneo.
 
 ## CV Actual del Candidato
 
@@ -68,14 +69,28 @@ CHAT_SYSTEM_TEMPLATE = """Sos un experto coach de CVs y consultor de carrera esp
 {cv_json}
 ```
 
-## Tus capacidades
+## Tus 4 pilares de acción
 
-1. **Analizar** el CV y dar feedback específico y accionable
-2. **Reescribir** secciones cuando te lo pidan
-3. **Optimizar** keywords para roles/empresas específicas
-4. **Mejorar** bullet points usando la metodología ATR (Acción → Tarea → Resultado)
-5. **Garantizar** compatibilidad ATS (sin tablas, fuentes estándar, secciones bien nombradas)
-6. **Cuantificar** logros (%, números, impacto del negocio)
+### 1. ESTRATEGIA DE CONTENIDO (Copywriting de impacto)
+- **Summary**: 3-4 líneas que definan un "Perfil Híbrido". Qué problema resuelve el candidato, con qué tecnologías, con qué impacto.
+- **Bullets de experiencia**: NUNCA tareas ("Hacía reportes"). SIEMPRE logros con esta fórmula:
+  `[Verbo de acción fuerte] + [qué hizo] + [con qué herramienta] + [impacto/resultado medible]`
+  Ejemplo: "Arquitecté pipeline de datos en AWS Glue + dbt que redujo tiempo de procesamiento un 70%, habilitando reportes en tiempo real para 3 áreas de negocio"
+- **Proyectos**: Destacar proof-of-work con stack moderno (IA, APIs, cloud, automatización)
+
+### 2. OPTIMIZACIÓN ATS (Para los robots)
+- Keywords del rol target distribuidas naturalmente en todo el CV
+- Nombres de sección estándar (Experience, Education, Skills — no inventar nombres creativos)
+- Sin tablas complejas, sin caracteres especiales raros, sin emojis
+- Flujo lineal de lectura (una columna lógica en el DOM)
+
+### 3. ESCANEABILIDAD VISUAL (Para los humanos)
+- Skills agrupadas por categoría: Lenguajes, Frameworks, Cloud, Databases, Tools, AI & Automation
+- Verbos de acción fuertes al inicio de cada bullet: Lideré, Arquitecté, Optimicé, Implementé, Automaticé, Diseñé, Reduje, Escalé
+- Cuantificar siempre: %, tiempos, usuarios, $, equipo
+
+### 4. PERFIL HÍBRIDO
+Identificar y comunicar la combinación única del candidato (ej: "Data Engineer con mentalidad de producto" o "Full-Stack con foco en performance y ML")
 
 ## Protocolo de actualización del CV
 
@@ -98,36 +113,40 @@ Para skills:
 
 Secciones válidas: "name", "summary", "experience", "skills", "education", "projects", "certifications", "target_role"
 
-## Principios de calidad
+## Capacidades adicionales
 
-**Para bullet points:**
-- Comenzar con verbo de acción fuerte (Lideré, Desarrollé, Arquitecté, Optimicé, Implementé)
-- Cuantificar: "Reduje tiempo de deploy en 60% implementando CI/CD con GitHub Actions"
-- Formato: Verbo + Contexto + Impacto medible
-
-**Para el Summary:**
-- 3-4 oraciones máximo
-- Sin pronombres personales al inicio
-- Incluir: experiencia + especialidad + skills clave + logro destacado
-
-**Para ATS compliance:**
-- Usar keywords naturalmente, sin stuffing
-- Nombres de secciones estándar
-- Sin caracteres especiales raros
+- Si el usuario pide **exportar el CV como HTML**, generá un archivo HTML completo con CSS integrado, estética Stripe/Vercel (fondo #f1f5f9, contenedor blanco con sombra, tipografía sistema), skills como píldoras visuales, y `@media print` para exportar a PDF con alto contraste.
+- Si el usuario menciona una empresa o rol específico, optimizá keywords para ese contexto.
+- Si el usuario no sabe qué mejorar, hacé un diagnóstico de los 3 puntos más críticos del CV.
 
 Respondé SIEMPRE en el idioma en que el usuario te escribe (español o inglés).
-Sé conversacional, específico y alentador. Explicá el POR QUÉ de cada cambio."""
+Sé directo, específico y orientado al resultado. Explicá el POR QUÉ de cada cambio propuesto."""
+
+
+def _headers() -> dict:
+    return {
+        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
 
 
 async def parse_cv_text(raw_text: str) -> dict:
-    response = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=4096,
-        system=PARSE_SYSTEM,
-        messages=[{"role": "user", "content": f"Extract CV data from:\n\n{raw_text}"}],
-    )
-    content = response.content[0].text.strip()
-    # Strip markdown code fences if present
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            OPENROUTER_URL,
+            headers=_headers(),
+            json={
+                "model": PARSE_MODEL,
+                "max_tokens": 4096,
+                "messages": [
+                    {"role": "system", "content": PARSE_SYSTEM},
+                    {"role": "user", "content": f"Extract CV data from:\n\n{raw_text}"},
+                ],
+            },
+        )
+        if not response.is_success:
+            raise ValueError(f"OpenRouter error {response.status_code}: {response.text}")
+        content = response.json()["choices"][0]["message"]["content"].strip()
     if content.startswith("```"):
         content = content.split("```")[1]
         if content.startswith("json"):
@@ -140,9 +159,12 @@ async def stream_cv_chat(
     history: list[dict],
     user_message: str,
 ) -> AsyncGenerator[str, None]:
-    system_prompt = CHAT_SYSTEM_TEMPLATE.replace("{cv_json}", json.dumps(cv_data, ensure_ascii=False, indent=2))
+    system_prompt = CHAT_SYSTEM_TEMPLATE.replace(
+        "{cv_json}", json.dumps(cv_data, ensure_ascii=False, indent=2)
+    )
 
     messages = [
+        {"role": "system", "content": system_prompt},
         *[{"role": m["role"], "content": m["content"]} for m in history[-8:]],
         {"role": "user", "content": user_message},
     ]
@@ -153,24 +175,63 @@ async def stream_cv_chat(
     cv_buffer = ""
     in_update = False
 
-    async with client.messages.stream(
-        model="claude-sonnet-5",
-        max_tokens=4096,
-        system=system_prompt,
-        messages=messages,
-    ) as stream:
-        async for chunk in stream.text_stream:
-            if not in_update:
-                text_buffer += chunk
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            OPENROUTER_URL,
+            headers=_headers(),
+            json={
+                "model": CHAT_MODEL,
+                "max_tokens": 4096,
+                "messages": messages,
+                "stream": True,
+            },
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    chunk_text = chunk["choices"][0]["delta"].get("content") or ""
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
 
-                while TAG_OPEN in text_buffer:
-                    before, _, after = text_buffer.partition(TAG_OPEN)
-                    if before:
-                        yield f"data: {json.dumps({'type': 'text', 'content': before})}\n\n"
-                    in_update = True
-                    cv_buffer = after
-                    text_buffer = ""
+                if not chunk_text:
+                    continue
 
+                if not in_update:
+                    text_buffer += chunk_text
+
+                    while TAG_OPEN in text_buffer:
+                        before, _, after = text_buffer.partition(TAG_OPEN)
+                        if before:
+                            yield f"data: {json.dumps({'type': 'text', 'content': before})}\n\n"
+                        in_update = True
+                        cv_buffer = after
+                        text_buffer = ""
+
+                        if TAG_CLOSE in cv_buffer:
+                            json_str, _, rest = cv_buffer.partition(TAG_CLOSE)
+                            try:
+                                update = json.loads(json_str.strip())
+                                yield f"data: {json.dumps({'type': 'cv_update', **update})}\n\n"
+                            except json.JSONDecodeError:
+                                pass
+                            in_update = False
+                            text_buffer = rest
+                            cv_buffer = ""
+
+                    if not in_update:
+                        safe_len = max(0, len(text_buffer) - len(TAG_OPEN))
+                        if safe_len > 0:
+                            yield f"data: {json.dumps({'type': 'text', 'content': text_buffer[:safe_len]})}\n\n"
+                            text_buffer = text_buffer[safe_len:]
+                else:
+                    cv_buffer += chunk_text
                     if TAG_CLOSE in cv_buffer:
                         json_str, _, rest = cv_buffer.partition(TAG_CLOSE)
                         try:
@@ -181,24 +242,6 @@ async def stream_cv_chat(
                         in_update = False
                         text_buffer = rest
                         cv_buffer = ""
-
-                if not in_update:
-                    safe_len = max(0, len(text_buffer) - len(TAG_OPEN))
-                    if safe_len > 0:
-                        yield f"data: {json.dumps({'type': 'text', 'content': text_buffer[:safe_len]})}\n\n"
-                        text_buffer = text_buffer[safe_len:]
-            else:
-                cv_buffer += chunk
-                if TAG_CLOSE in cv_buffer:
-                    json_str, _, rest = cv_buffer.partition(TAG_CLOSE)
-                    try:
-                        update = json.loads(json_str.strip())
-                        yield f"data: {json.dumps({'type': 'cv_update', **update})}\n\n"
-                    except json.JSONDecodeError:
-                        pass
-                    in_update = False
-                    text_buffer = rest
-                    cv_buffer = ""
 
     if text_buffer:
         yield f"data: {json.dumps({'type': 'text', 'content': text_buffer})}\n\n"
