@@ -32,6 +32,7 @@ class EvidenceRecord:
     source_type: str  # experience | education | skill | project | certification
     content: str      # free text describing the evidence
     skills_mentioned: list[str] = field(default_factory=list)
+    embedding: list[float] | None = field(default=None, repr=False)
     # backward-compat aliases used by _classify_claim
     claim: str = field(init=False)
     source_text: str = field(init=False)

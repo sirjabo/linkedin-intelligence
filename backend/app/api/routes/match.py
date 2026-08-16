@@ -17,13 +17,15 @@ from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.match import MatchFeedback, MatchResponse
 from app.services.agents.match_agent import reason_about_match
+from app.services.ai.embeddings import default_embedding_provider
+from app.services.claim_validator import EvidenceBuilder
 from app.services.matching.engine import (
-    DET_WEIGHT,
     check_hard_constraints,
     compute_deterministic,
     decide_application,
     tier_from_score,
 )
+from app.services.matching.semantic import compute_hybrid_score, compute_semantic
 
 router = APIRouter(prefix="/jobs", tags=["match"])
 logger = get_logger(__name__)
@@ -155,10 +157,25 @@ async def run_match(
         missing_skills=det_result.missing_skills,
     )
 
-    # ── Hybrid score ──────────────────────────────────────────────────────────
-    hybrid_score = round(
-        det_result.overall_score * DET_WEIGHT + llm_result.score * (1 - DET_WEIGHT), 3
+    # ── Semantic scoring ───────────────────────────────────────────────────────
+    profile_experience: list = profile.experience if profile else []
+    profile_projects: list = profile.projects if profile else []
+    evidence_records = EvidenceBuilder.build_from_profile(profile)
+
+    sem_result = await compute_semantic(
+        profile_skills=profile_skills,
+        profile_experience=profile_experience,
+        profile_projects=profile_projects,
+        job_title=job.title,
+        job_company=job.company,
+        job_description=getattr(job, "description", None),
+        requirements=job.requirements,
+        evidence_records=evidence_records,
+        embedding_provider=default_embedding_provider(),
     )
+
+    # ── Hybrid score ──────────────────────────────────────────────────────────
+    hybrid_score = compute_hybrid_score(det_result.overall_score, llm_result.score, sem_result)
     match_tier = tier_from_score(hybrid_score)
     application_decision = decide_application(hybrid_score, hard_constraint, det_result.missing_skills)
 
@@ -168,6 +185,7 @@ async def run_match(
         candidate_id=str(candidate.id),
         det_score=det_result.overall_score,
         llm_score=llm_result.score,
+        sem_score=sem_result.score if sem_result else None,
         hybrid=hybrid_score,
         tier=match_tier,
         decision=application_decision,
@@ -203,6 +221,8 @@ async def run_match(
         existing.application_decision = application_decision
         existing.hard_blockers = hard_constraint.blockers or None
         existing.requirement_matches = [dataclasses.asdict(rm) for rm in det_result.requirement_matches] or None
+        existing.semantic_score = sem_result.score if sem_result else None
+        existing.top_evidence = sem_result.top_evidence if sem_result else None
         existing.updated_at = now
         analysis = existing
     else:
@@ -227,6 +247,8 @@ async def run_match(
             application_decision=application_decision,
             hard_blockers=hard_constraint.blockers or None,
             requirement_matches=[dataclasses.asdict(rm) for rm in det_result.requirement_matches] or None,
+            semantic_score=sem_result.score if sem_result else None,
+            top_evidence=sem_result.top_evidence if sem_result else None,
             created_at=now,
             updated_at=now,
         )

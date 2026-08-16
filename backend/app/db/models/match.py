@@ -43,6 +43,9 @@ class MatchAnalysis(Base):
     hard_blockers: Mapped[list | None] = mapped_column(JSON)
     # Per-requirement match breakdown (Sprint D)
     requirement_matches: Mapped[list | None] = mapped_column(JSON)
+    # Semantic matching (Sprint Semantic)
+    semantic_score: Mapped[float | None] = mapped_column(Float)
+    top_evidence: Mapped[list | None] = mapped_column(JSON)
     # Learning loop: actual outcome recorded by the user after applying
     # Values: "offer" | "interview" | "phone_screen" | "rejected" | "no_response" | None
     outcome: Mapped[str | None] = mapped_column(String(50))

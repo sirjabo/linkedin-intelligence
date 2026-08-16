@@ -31,6 +31,7 @@ from app.services.agents.application_agent import generate_strategy
 from app.services.agents.communication_agent import generate_cover_letter
 from app.services.agents.cv_agent import personalize_cv
 from app.services.agents.match_agent import reason_about_match
+from app.services.ai.embeddings import default_embedding_provider
 from app.services.ai.provider import LLMProvider, default_provider
 from app.services.ats.registry import detect_ats
 from app.services.browser.adapter import RawFormField
@@ -39,7 +40,8 @@ from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
 from app.services.claim_validator import EvidenceBuilder, validate_claims
 from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
 from app.services.form_intelligence import classify_field, classify_field_llm
-from app.services.matching.engine import DET_WEIGHT, compute_deterministic, tier_from_score
+from app.services.matching.engine import compute_deterministic, tier_from_score
+from app.services.matching.semantic import compute_hybrid_score, compute_semantic
 
 logger = get_logger(__name__)
 
@@ -601,7 +603,18 @@ async def _run_intelligence_phase(
             provider=provider,
         )
 
-        hybrid_score = det.overall_score * DET_WEIGHT + llm_match.score * (1 - DET_WEIGHT)
+        sem = await compute_semantic(
+            profile_skills=_profile_skills,
+            profile_experience=_experience,
+            profile_projects=_projects,
+            job_title=job.title,
+            job_company=job.company,
+            job_description=getattr(job, "description", None),
+            requirements=job.requirements,
+            evidence_records=EvidenceBuilder.build_from_profile(profile),
+            embedding_provider=default_embedding_provider(),
+        )
+        hybrid_score = compute_hybrid_score(det.overall_score, llm_match.score, sem)
         match_tier = tier_from_score(hybrid_score)
 
         # Application strategy
