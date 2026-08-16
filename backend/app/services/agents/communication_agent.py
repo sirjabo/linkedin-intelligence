@@ -5,11 +5,12 @@ All output includes evidence_refs so ClaimValidator can cross-check.
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
+from app.services.ai.model_router import route_model
 from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = route_model("cover_letter")
 
 
 # ── Output schemas ─────────────────────────────────────────────────────────────

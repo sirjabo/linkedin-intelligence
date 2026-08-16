@@ -8,6 +8,8 @@ import contextlib
 from collections import Counter
 from dataclasses import dataclass, field
 
+from app.services.ai.model_router import route_model
+
 
 @dataclass
 class SkillGap:
@@ -109,7 +111,7 @@ def _deterministic_tips(
 async def generate_optimization_report(
     analyses: list[dict],
     profile_data: dict,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = route_model("evaluation"),
 ) -> OptimizationReport:
     """Generate a full optimization report.
 

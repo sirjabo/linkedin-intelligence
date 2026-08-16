@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal, get_args
 
+from app.services.ai.model_router import route_model
+
 SemanticType = Literal[
     "full_name", "first_name", "last_name",
     "email", "phone",
@@ -119,7 +121,7 @@ async def classify_field_llm(
     placeholder: str | None = None,
     options: list[str] | None = None,
     field_type: str = "text",
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = route_model("field_classify"),
 ) -> SemanticType:
     """LLM fallback for fields that didn't match any regex rule.
 
@@ -166,7 +168,7 @@ async def classify_field_llm_with_confidence(
     placeholder: str | None = None,
     options: list[str] | None = None,
     field_type: str = "text",
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = route_model("field_classify"),
 ) -> tuple[SemanticType, float]:
     """LLM classification returning (semantic_type, confidence).
 
