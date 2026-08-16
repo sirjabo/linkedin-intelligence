@@ -124,12 +124,44 @@ export interface Application {
   strategy: Record<string, unknown> | null;
 }
 
+export interface BulletChange {
+  original: string;
+  adapted: string;
+  reason: string;
+  job_requirement: string;
+  confidence: number;
+}
+
+export interface ExperiencePersonalized {
+  company: string;
+  title: string;
+  bullets_original: string[];
+  bullets_adapted: BulletChange[];
+}
+
+export interface ProjectPersonalized {
+  name: string;
+  description_original: string;
+  description_adapted: string;
+  reason: string;
+  highlights_adapted: string[];
+}
+
 export interface CVVersion {
   id: string;
   summary_adapted: string | null;
   headline_adapted: string | null;
   changes: unknown[];
+  skills_ordered: string[] | null;
+  ats_keywords: string[] | null;
+  validation_result: Record<string, unknown> | null;
+  experience_personalized: ExperiencePersonalized[] | null;
+  projects_personalized: ProjectPersonalized[] | null;
   created_at: string;
+}
+
+export function downloadCVUrl(appId: string): string {
+  return `${BASE}/applications/${appId}/cv/download`;
 }
 
 export interface CoverLetter {
@@ -376,6 +408,15 @@ export function submitAgent(token: string, appId: string, humanConfirmed: boolea
 }
 
 // Fit analysis, decision, outcome
+export interface RequirementMatch {
+  text: string;
+  requirement_type: string;
+  importance: "MUST" | "NICE_TO_HAVE";
+  candidate_status: "MATCHED" | "PARTIAL" | "MISSING" | "BLOCKER" | "UNCERTAIN";
+  match_score: number;
+  evidence_ref: string | null;
+}
+
 export interface FitAnalysis {
   job_fit_score: number;
   match_tier: string;
@@ -388,6 +429,7 @@ export interface FitAnalysis {
   llm_reasoning: string | null;
   llm_strengths: string[];
   llm_gaps: string[];
+  requirement_matches: RequirementMatch[] | null;
 }
 
 export interface DecisionResult {

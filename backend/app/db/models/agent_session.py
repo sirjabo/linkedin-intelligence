@@ -3,12 +3,15 @@
 State machine:
   initializing → discovering → mapping → awaiting_human → ready_to_fill
     → filling → awaiting_confirm → submitting → submitted
+    → paused (resumable from filling | awaiting_human | ready_to_fill | awaiting_confirm)
     → failed (terminal error from any state)
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey, Float, Uuid
+
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
 
 

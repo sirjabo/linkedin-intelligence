@@ -1,7 +1,8 @@
 """Celery tasks for email — weekly market digest."""
 import asyncio
-from app.worker.celery_app import celery_app
+
 from app.core.logging import get_logger
+from app.worker.celery_app import celery_app
 
 logger = get_logger(__name__)
 
@@ -13,13 +14,14 @@ def send_weekly_digests(self):
     Runs every Monday at 8 AM ART via Celery Beat. Skips users without SMTP configured.
     """
     async def _run():
-        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
         from sqlalchemy import select
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+        from app.api.routes.market import _aggregate_skills
         from app.core.config import settings
         from app.db.models.candidate import Candidate
         from app.db.models.user import User
-        from app.api.routes.market import _aggregate_skills, _CACHE
-        from app.services.email_service import send_email, _digest_html
+        from app.services.email_service import _digest_html, send_email
 
         engine = create_async_engine(settings.DATABASE_URL, echo=False)
         Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -86,4 +88,4 @@ def send_weekly_digests(self):
         return asyncio.run(_run())
     except Exception as exc:
         logger.error("send_weekly_digests_failed", error=str(exc))
-        raise self.retry(exc=exc, countdown=600)
+        raise self.retry(exc=exc, countdown=600) from exc

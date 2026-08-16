@@ -1,7 +1,8 @@
-from pydantic import BaseModel, ConfigDict, field_validator
-from uuid import UUID
 from datetime import datetime
 from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class Contact(BaseModel):

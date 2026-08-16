@@ -1,24 +1,28 @@
 import logging
+from typing import Any
+
 import structlog
+
 from app.core.config import settings
 
 
 def configure_logging() -> None:
     log_level = logging.DEBUG if settings.ENVIRONMENT == "development" else logging.INFO
 
-    shared_processors = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
     ]
 
     if settings.ENVIRONMENT == "development":
-        renderer = structlog.dev.ConsoleRenderer()
+        renderer: Any = structlog.dev.ConsoleRenderer()
     else:
         renderer = structlog.processors.JSONRenderer()
 
     structlog.configure(
-        processors=shared_processors + [
+        processors=[
+            *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),

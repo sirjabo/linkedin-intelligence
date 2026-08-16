@@ -1,5 +1,6 @@
-from fastapi import HTTPException, Header
 import httpx
+from fastapi import Header, HTTPException
+
 from app.core.config import settings
 
 

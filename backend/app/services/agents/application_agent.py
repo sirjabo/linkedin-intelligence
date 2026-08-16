@@ -4,12 +4,14 @@ Given candidate + job + match analysis, returns actionable guidance for
 CV personalization and cover letter writing.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.model_router import route_model
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = route_model("strategy")
 
 
 # ── Output schema ─────────────────────────────────────────────────────────────
@@ -43,6 +45,58 @@ class ApplicationStrategy(BaseModel):
     # apply_as_is | apply_with_tailoring | stretch | pass
     recommendation: str
 
+    # Sprint E: enriched strategy fields
+    positioning: str = Field(
+        default="",
+        description=(
+            "1-sentence candidate positioning statement: how they should frame themselves "
+            "for THIS specific role (e.g. 'Senior backend engineer moving into platform engineering')"
+        ),
+    )
+    target_narrative: str = Field(
+        default="",
+        description=(
+            "2-3 sentence narrative arc: where the candidate has been, "
+            "where they are, why THIS role is the natural next step"
+        ),
+    )
+    keywords_for_form: list[str] = Field(
+        default_factory=list,
+        description=(
+            "ATS-critical keywords from the job posting that the candidate legitimately has "
+            "and should include verbatim in form essays (max 10)"
+        ),
+    )
+    answer_strategy: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Mapping of common custom-essay questions to a 1-sentence answer angle. "
+            "Keys are question patterns, values are the specific angle to take. "
+            "E.g. {'Why do you want to join us?': 'Emphasize their open-source commitment and the team size.'}"
+        ),
+    )
+    interview_preparation_strategy: list[str] = Field(
+        default_factory=list,
+        description=(
+            "3-5 interview preparation tips specific to this role and company. "
+            "Reference actual technologies or requirements from the job description."
+        ),
+    )
+    claims_to_avoid: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Skills or accomplishments the candidate should NOT claim because "
+            "they cannot defend them in an interview (max 5)"
+        ),
+    )
+    company_specific_angle: str = Field(
+        default="",
+        description=(
+            "1-2 sentences on what makes THIS company interesting to this candidate, "
+            "grounded in publicly known facts (product, culture, mission)"
+        ),
+    )
+
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -50,13 +104,22 @@ STRATEGY_SYSTEM = """You are a senior career coach and hiring strategist.
 
 Given a candidate's profile, a job opening, and the match analysis, create a concrete application strategy.
 
-Rules:
+Core rules:
 - Be direct. No vague advice like "highlight your experience."
 - Every guidance item must reference something specific in the candidate's profile or the job requirements.
 - NEVER suggest inventing skills, changing dates, inventing metrics, or misrepresenting experience.
 - Allowed personalizations: reorder content, rewrite summaries, emphasize relevant projects, keyword optimization.
 - If the gap is a fundamental dealbreaker, say so honestly in risks_to_address.
-- recommendation options: apply_as_is | apply_with_tailoring | stretch | pass"""
+- recommendation options: apply_as_is | apply_with_tailoring | stretch | pass
+
+For the enriched strategy fields:
+- positioning: one crisp sentence, role-specific, no buzzwords
+- target_narrative: tells a coherent career story leading to THIS role
+- keywords_for_form: only real skills the candidate has, verbatim from the job description
+- answer_strategy: practical essay angles; key = question pattern, value = 1-sentence angle
+- interview_preparation_strategy: concrete, role-specific (e.g. "Prepare a STAR story for Kubernetes migrations")
+- claims_to_avoid: skills or metrics the candidate cannot defend under probing questions
+- company_specific_angle: grounded in public information (product direction, engineering blog, mission)"""
 
 
 # ── Agent function ─────────────────────────────────────────────────────────────
@@ -105,7 +168,8 @@ async def generate_strategy(
 - Missing skills: {missing_text}
 - Assessment: {llm_reasoning or "No qualitative assessment available"}
 
-Generate a concrete application strategy for this candidate."""
+Generate a complete application strategy including positioning, narrative, keywords_for_form, \
+answer_strategy, interview_preparation_strategy, claims_to_avoid, and company_specific_angle."""
 
     result = await provider.structured_output(
         system=STRATEGY_SYSTEM,

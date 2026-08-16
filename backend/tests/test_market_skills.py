@@ -18,6 +18,13 @@ def clear_market_cache():
     market_module._CACHE.clear()
 
 
+@pytest.fixture(autouse=True)
+def mock_skill_trends():
+    """Mock DB trend lookup so tests don't need a real PostgreSQL connection."""
+    with patch("app.api.routes.market._get_skill_trends", new_callable=AsyncMock, return_value={}):
+        yield
+
+
 def _make_job(title="Python Engineer", company="Acme", tech_tags: list[str] | None = None) -> JobRaw:
     return JobRaw(
         external_id="jid-1",

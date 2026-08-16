@@ -1,8 +1,41 @@
 """ATSAdapter Protocol — specialized knowledge for a specific ATS platform."""
+import asyncio
 import re
-from typing import Protocol, runtime_checkable
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from app.services.browser.adapter import BrowserAutomationAdapter, RawForm, RawFormField
+from app.core.logging import get_logger
+from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
+
+_log = get_logger(__name__)
+_T = TypeVar("_T")
+
+
+async def retry_with_backoff(
+    fn: Callable[[], Coroutine[Any, Any, _T]],
+    *,
+    max_attempts: int = 3,
+    base_delay: float = 1.0,
+    label: str = "operation",
+) -> _T:
+    """Retry an async callable with exponential backoff.
+
+    Raises the last exception if all attempts fail.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await fn()
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_attempts:
+                delay = base_delay * (2 ** (attempt - 1))
+                _log.warning(
+                    "ats.retry", label=label, attempt=attempt,
+                    max_attempts=max_attempts, delay=delay, error=str(exc),
+                )
+                await asyncio.sleep(delay)
+    raise last_exc  # type: ignore[misc]
 
 
 @runtime_checkable

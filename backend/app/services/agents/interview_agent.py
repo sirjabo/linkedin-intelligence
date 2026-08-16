@@ -1,10 +1,12 @@
 """Phase 6 — Interview preparation agent."""
 import json
+
 from pydantic import BaseModel
 
+from app.services.ai.model_router import route_model
 from app.services.ai.provider import LLMProvider
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = route_model("interview_prep")
 
 
 class TechnicalQuestion(BaseModel):

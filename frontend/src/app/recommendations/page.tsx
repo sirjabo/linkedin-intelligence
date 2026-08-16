@@ -98,8 +98,8 @@ export default function RecommendationsPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">
-            <ArrowLeftIcon size={20} />
+          <Link href="/dashboard" aria-label="Volver al dashboard" className="text-slate-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+            <ArrowLeftIcon size={20} aria-hidden="true" />
           </Link>
           <h1 className="font-bold text-white">Trabajos Recomendados</h1>
         </div>
@@ -107,22 +107,25 @@ export default function RecommendationsPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         {/* Search + source selector */}
-        <form onSubmit={handleSearch} className="space-y-3">
+        <form onSubmit={handleSearch} className="space-y-3" role="search" aria-label="Buscar trabajos">
           <div className="flex gap-3">
             <div className="flex-1 relative">
-              <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" aria-hidden="true" />
               <input
-                type="text"
+                id="job-search"
+                type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Ej: Python data engineer, ML engineer…"
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                aria-label="Buscar por rol o tecnología"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
               />
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+              aria-busy={loading}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               {loading ? "Buscando…" : "Buscar"}
             </button>
@@ -167,9 +170,9 @@ export default function RecommendationsPage() {
           </div>
         )}
 
-        <div className="space-y-3">
+        <ul className="space-y-3" aria-label="Lista de trabajos recomendados">
           {jobs.map((job) => (
-            <div
+            <li
               key={job.external_id}
               className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 transition-colors"
             >
@@ -207,15 +210,16 @@ export default function RecommendationsPage() {
                     href={job.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+                    aria-label={`Ver oferta de ${job.title} en ${job.company} (abre en nueva pestaña)`}
+                    className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                   >
-                    Ver oferta <ExternalLinkIcon size={13} />
+                    Ver oferta <ExternalLinkIcon size={13} aria-hidden="true" />
                   </a>
                 </div>
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </main>
     </div>
   );

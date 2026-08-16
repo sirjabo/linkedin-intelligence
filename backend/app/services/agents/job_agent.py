@@ -3,12 +3,15 @@
 Uses structured output (tool_use) — never XML tag parsing.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.cache import llm_cache
+from app.services.ai.model_router import route_model
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 
-MODEL_PARSE = "claude-haiku-4-5-20251001"
+MODEL_PARSE = route_model("jd_parse")
 
 
 # ── Output schemas ────────────────────────────────────────────────────────────
@@ -72,6 +75,11 @@ async def parse_job_description(
     provider: LLMProvider = default_provider,
 ) -> ParsedJob:
     """Parse a raw job description into structured requirements and metadata."""
+    cached = llm_cache.get("jd_parse", raw_jd)
+    if cached is not None:
+        logger.info("job_agent.parse_cache_hit", jd_length=len(raw_jd))
+        return ParsedJob.model_validate(cached)
+
     logger.info("job_agent.parse_start", jd_length=len(raw_jd))
     result = await provider.structured_output(
         system=PARSE_SYSTEM,
@@ -82,6 +90,7 @@ async def parse_job_description(
         schema=ParsedJob,
         model=MODEL_PARSE,
     )
+    llm_cache.set("jd_parse", raw_jd, result.model_dump())
     logger.info(
         "job_agent.parse_done",
         title=result.title,

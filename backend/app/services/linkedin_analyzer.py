@@ -1,7 +1,9 @@
 """LinkedIn profile analyzer — stateless LLM-based scoring and recommendations."""
 import json
 import uuid
+
 import anthropic
+
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -102,7 +104,8 @@ async def analyze_linkedin_profile(
         messages=[{"role": "user", "content": _user_prompt(profile_text, role_label)}],
     )
 
-    raw = response.content[0].text
+    _block = response.content[0]
+    raw = _block.text if hasattr(_block, "text") else ""  # type: ignore[union-attr]
     try:
         parsed = _parse_llm_json(raw)
     except Exception as exc:

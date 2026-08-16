@@ -1,17 +1,20 @@
 """CV Storage: generates and stores personalized CV PDF files.
 
 Produces a real PDF via pdf_generator using CVVersion data (adapted summary,
-ordered skills) when available, falling back to raw profile data otherwise.
+ordered skills, personalized experience bullets) when available, falling back
+to raw profile data otherwise.
 
 Path convention: {UPLOAD_DIR}/cv_pdfs/{candidate_id}/{application_id}.pdf
 """
 import os
 import uuid
 
+import aiofiles
+
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models.candidate import Candidate, CandidateProfile
 from app.db.models.application import Application, CVVersion
+from app.db.models.candidate import Candidate, CandidateProfile
 from app.services.pdf_generator import generate_cv_pdf
 
 logger = get_logger(__name__)
@@ -49,8 +52,8 @@ async def generate_cv_file(
     cv_data = _build_cv_dict(candidate, profile, cv_version)
 
     pdf_bytes = await generate_cv_pdf(cv_data)
-    with open(file_path, "wb") as f:
-        f.write(pdf_bytes)
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(pdf_bytes)
 
     logger.info(
         "cv_pdf_generated",
@@ -66,7 +69,7 @@ def _latest_cv_version(application: Application) -> CVVersion | None:
     versions = getattr(application, "cv_versions", None) or []
     if not versions:
         return None
-    return sorted(versions, key=lambda v: v.created_at, reverse=True)[0]
+    return max(versions, key=lambda v: v.created_at)
 
 
 def _build_cv_dict(
@@ -117,19 +120,36 @@ def _build_cv_dict(
         elif isinstance(raw, dict):
             skills = {k: [str(x) for x in v] for k, v in raw.items() if v}
 
-    # Experience
+    # Experience — use personalized bullets from CVVersion when available
     experience: list[dict] = []
+    personalized_bullets: dict[str, list[str]] = {}
+    if cv_version and getattr(cv_version, "experience_personalized", None):
+        for ep in cv_version.experience_personalized:
+            if isinstance(ep, dict):
+                key = (ep.get("company", "") + "|" + ep.get("title", "")).lower()
+                adapted = [
+                    bc.get("adapted", bc.get("original", ""))
+                    for bc in (ep.get("bullets_adapted") or [])
+                    if isinstance(bc, dict)
+                ]
+                if adapted:
+                    personalized_bullets[key] = [s for s in adapted if s is not None]
+
     if profile and profile.experience:
         for exp in (profile.experience or []):
             if not isinstance(exp, dict):
                 continue
+            company = exp.get("company", "")
+            role = exp.get("role") or exp.get("title", "")
+            key = (company + "|" + role).lower()
+            bullets = personalized_bullets.get(key) or exp.get("bullets") or []
             experience.append({
-                "company": exp.get("company", ""),
-                "role": exp.get("role") or exp.get("title", ""),
+                "company": company,
+                "role": role,
                 "start_date": exp.get("start_date", ""),
                 "end_date": exp.get("end_date", "Present"),
                 "location": exp.get("location", ""),
-                "bullets": exp.get("bullets") or [],
+                "bullets": bullets,
             })
 
     # Education
@@ -145,17 +165,30 @@ def _build_cv_dict(
                 "year": edu.get("year") or edu.get("end_year", ""),
             })
 
-    # Projects
+    # Projects — use personalized descriptions from CVVersion when available
     projects: list[dict] = []
+    personalized_proj: dict[str, dict] = {}
+    if cv_version and getattr(cv_version, "projects_personalized", None):
+        for pp in cv_version.projects_personalized:
+            if isinstance(pp, dict) and pp.get("name"):
+                personalized_proj[pp["name"].lower()] = pp
+
     if profile and profile.projects:
         for proj in (profile.projects or []):
             if not isinstance(proj, dict):
                 continue
+            name = proj.get("name", "")
+            pp = personalized_proj.get(name.lower())
+            description = (
+                pp.get("description_adapted") or proj.get("description", "")
+            ) if pp else proj.get("description", "")
+            highlights = (pp.get("highlights_adapted") or []) if pp else []
             projects.append({
-                "name": proj.get("name", ""),
-                "description": proj.get("description", ""),
+                "name": name,
+                "description": description,
                 "tech": proj.get("tech") or proj.get("technologies") or [],
                 "url": proj.get("url", ""),
+                "highlights": highlights,
             })
 
     return {

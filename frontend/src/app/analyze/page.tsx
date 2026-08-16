@@ -149,9 +149,10 @@ export default function AnalyzePage() {
       <div className="max-w-3xl mx-auto px-6 pt-16 pb-24">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors"
+          aria-label="Volver al inicio"
+          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
         >
-          <ArrowLeftIcon className="w-3.5 h-3.5" /> Volver al inicio
+          <ArrowLeftIcon className="w-3.5 h-3.5" aria-hidden="true" /> Volver al inicio
         </Link>
 
         <div className="flex items-center gap-3 mb-6">
@@ -178,19 +179,21 @@ export default function AnalyzePage() {
 
         {/* Form */}
         {!result && (
-          <form onSubmit={handleAnalyze} className="space-y-6">
+          <form onSubmit={handleAnalyze} className="space-y-6" noValidate>
             {/* Role selector */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            <fieldset>
+              <legend className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Rol objetivo
-              </label>
-              <div className="flex flex-wrap gap-2">
+              </legend>
+              <div role="tablist" aria-label="Rol objetivo" className="flex flex-wrap gap-2">
                 {(roles.length > 0 ? roles : Object.keys(ROLE_LABELS)).map((role) => (
                   <button
                     key={role}
                     type="button"
+                    role="tab"
+                    aria-selected={selectedRole === role}
                     onClick={() => setSelectedRole(role)}
-                    className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${
+                    className={`text-sm px-4 py-1.5 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                       selectedRole === role
                         ? "bg-blue-600 border-blue-600 text-white"
                         : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
@@ -200,20 +203,22 @@ export default function AnalyzePage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
 
             {/* Text area */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              <label htmlFor="profile-text" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Texto del perfil de LinkedIn
               </label>
-              <p className="text-xs text-slate-500 mb-3">
+              <p id="profile-text-hint" className="text-xs text-slate-500 mb-3">
                 Copiá todo el texto visible de tu perfil (título, extracto, experiencia, skills).
                 No necesitás la URL — solo el contenido.
               </p>
               <textarea
+                id="profile-text"
                 value={profileText}
                 onChange={(e) => setProfileText(e.target.value)}
+                aria-describedby="profile-text-hint"
                 placeholder="Juan Pérez&#10;AI Engineer | Python · LangChain · FastAPI&#10;Buenos Aires, Argentina&#10;&#10;Sobre mí:&#10;..."
                 rows={14}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500 transition-colors"
@@ -221,7 +226,7 @@ export default function AnalyzePage() {
             </div>
 
             {error && (
-              <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+              <div role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
                 {error}
               </div>
             )}
@@ -229,16 +234,17 @@ export default function AnalyzePage() {
             <button
               type="submit"
               disabled={loading || !profileText.trim()}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
+              aria-busy={loading}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               {loading ? (
                 <>
-                  <RefreshCwIcon className="w-4 h-4 animate-spin" />
+                  <RefreshCwIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
                   Analizando con IA…
                 </>
               ) : (
                 <>
-                  <ZapIcon className="w-4 h-4" />
+                  <ZapIcon className="w-4 h-4" aria-hidden="true" />
                   Analizar perfil
                 </>
               )}
@@ -334,15 +340,16 @@ export default function AnalyzePage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setResult(null)}
-                className="flex-1 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors"
+                className="flex-1 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 Analizar otro perfil
               </button>
               <button
                 onClick={() => window.print()}
-                className="no-print flex items-center gap-2 px-4 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors"
+                aria-label="Exportar análisis como PDF"
+                className="no-print flex items-center gap-2 px-4 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <DownloadIcon className="w-4 h-4" /> Exportar PDF
+                <DownloadIcon className="w-4 h-4" aria-hidden="true" /> Exportar PDF
               </button>
             </div>
           </div>

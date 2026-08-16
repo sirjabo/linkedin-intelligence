@@ -1,26 +1,32 @@
+import contextlib
 import os
 import uuid
-import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.db.session import get_db
-from app.db.models.user import User
-from app.db.models.candidate import Candidate, CandidateSource, CandidateProfile, EvidenceRecord
+import aiofiles
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
-from app.schemas.candidate import (
-    CandidateCreate, CandidateUpdate, CandidateResponse,
-    SourceIngest, SourceResponse, ProfileResponse, ConflictResolution,
-)
-from app.services.pdf_extractor import extract_pdf_text
-from app.services.agents.profile_agent import extract_from_source, consolidate_profiles
-from app.services.learning_loop import compute_calibration
-from app.services.profile_optimizer import generate_optimization_report
-from app.db.models.match import MatchAnalysis
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.ssrf import validate_url_not_private
+from app.db.models.candidate import Candidate, CandidateProfile, CandidateSource, EvidenceRecord
+from app.db.models.match import MatchAnalysis
+from app.db.models.user import User
+from app.db.session import get_db
+from app.schemas.candidate import (
+    CandidateResponse,
+    CandidateUpdate,
+    ProfileResponse,
+    SourceIngest,
+    SourceResponse,
+)
+from app.services.agents.profile_agent import consolidate_profiles, extract_from_source
+from app.services.github_ingestion import fetch_github_profile
+from app.services.learning_loop import compute_calibration
+from app.services.pdf_extractor import extract_pdf_text
+from app.services.profile_optimizer import generate_optimization_report
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 logger = get_logger(__name__)
@@ -79,7 +85,7 @@ async def upload_cv_source(
             await f.write(content)
         raw_text = await extract_pdf_text(tmp_path)
     finally:
-        if os.path.exists(tmp_path):
+        with contextlib.suppress(OSError):
             os.remove(tmp_path)
 
     if not raw_text.strip():
@@ -142,6 +148,58 @@ async def ingest_text_source(
     await db.commit()
     await db.refresh(source)
     logger.info("source_ingested", candidate_id=str(candidate.id), source_type=payload.source_type)
+    return source
+
+
+@router.post("/me/sources/github", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_github_source(
+    payload: SourceIngest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CandidateSource:
+    """Ingest a GitHub profile via the GitHub public API.
+
+    payload.source_url must be a GitHub profile URL (e.g. https://github.com/username)
+    or a plain GitHub username. The API fetches repos, languages, and bio automatically.
+    """
+    if not payload.source_url:
+        raise HTTPException(status_code=400, detail="source_url (GitHub profile URL or username) is required")
+
+    candidate = await _get_candidate_or_404(current_user, db)
+
+    try:
+        profile_data = await fetch_github_profile(payload.source_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc
+
+    # Build a text representation for extraction pipeline compatibility
+    skills_text = ", ".join(s["canonical_name"] for s in profile_data.get("skills", []))
+    projects_text = "; ".join(
+        f"{p['name']}: {p['description']}" for p in profile_data.get("projects", []) if p.get("description")
+    )
+    raw_text = "\n".join(filter(None, [
+        f"Name: {profile_data.get('name', '')}",
+        f"Location: {profile_data.get('location', '')}",
+        f"Bio: {profile_data.get('summary', '')}",
+        f"Skills: {skills_text}",
+        f"Projects: {projects_text}",
+        f"GitHub: {profile_data.get('github_url', '')}",
+    ]))
+
+    source = CandidateSource(
+        candidate_id=candidate.id,
+        source_type="github",
+        source_url=profile_data.get("github_url") or payload.source_url,
+        raw_content=raw_text,
+        extracted_content=profile_data,
+        extraction_confidence=profile_data.get("extraction_confidence", 0.65),
+    )
+    db.add(source)
+    await db.commit()
+    await db.refresh(source)
+    logger.info("github_source_ingested", candidate_id=str(candidate.id))
     return source
 
 
@@ -224,7 +282,7 @@ async def rebuild_profile(
 
     # Rebuild evidence records
     await db.execute(
-        EvidenceRecord.__table__.delete().where(EvidenceRecord.candidate_id == candidate.id)
+        EvidenceRecord.__table__.delete().where(EvidenceRecord.candidate_id == candidate.id)  # type: ignore[attr-defined]
     )
     for skill in consolidated.skills:
         for ev in skill.get("evidence", []):
@@ -239,7 +297,7 @@ async def rebuild_profile(
     for exp in consolidated.experience:
         title = exp.get("title") or exp.get("role") or ""
         company = exp.get("company", "")
-        claim = f"{title} at {company}".strip(" at ")
+        claim = " at ".join(filter(None, [title, company]))
         if claim:
             db.add(EvidenceRecord(
                 candidate_id=candidate.id,
@@ -472,16 +530,16 @@ async def get_profile_benchmark(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Compare candidate's skills against live market demand for a given role.
+    """Compare candidate's skills against market demand for a given role.
 
-    Returns a percentile ranking and per-skill comparison showing how many
-    market-demanded skills the candidate has vs. is missing.
+    Reads from the SkillSnapshot table (populated by the nightly Celery task)
+    for speed and reliability. Falls back to a live aggregate when no snapshot
+    data exists yet (first day of deployment).
     """
-    from app.api.routes.market import _aggregate_skills, ROLE_QUERIES, _VALID_ROLES, _slugify
-    from app.db.models.candidate import CandidateProfile
+    from app.api.routes.market import _VALID_ROLES, ROLE_QUERIES, _aggregate_skills, _slugify
+    from app.db.models.market import SkillSnapshot
 
     if role not in ROLE_QUERIES:
-        from fastapi import HTTPException
         raise HTTPException(status_code=422, detail=f"role must be one of: {', '.join(_VALID_ROLES)}")
 
     candidate = await _get_candidate_or_404(current_user, db)
@@ -506,16 +564,33 @@ async def get_profile_benchmark(
                         if isinstance(s, str):
                             candidate_skills.add(_slugify(s))
 
-    _jobs, tag_counter = await _aggregate_skills(role, limit=30)
-    n = max(sum(tag_counter.values()), 1)
+    # Prefer DB snapshot (fast) over live aggregate (slow, external HTTP)
+    latest_date_result = await db.execute(
+        select(func.max(SkillSnapshot.snapshot_date)).where(SkillSnapshot.role == role)
+    )
+    latest_date = latest_date_result.scalar_one_or_none()
 
-    top_market = tag_counter.most_common(30)
+    top_market: list[tuple[str, float, int]] = []
+
+    if latest_date is not None:
+        snapshots_result = await db.execute(
+            select(SkillSnapshot)
+            .where(SkillSnapshot.role == role, SkillSnapshot.snapshot_date == latest_date)
+            .order_by(SkillSnapshot.frequency_pct.desc())
+            .limit(30)
+        )
+        for row in snapshots_result.scalars().all():
+            top_market.append((row.skill_slug, row.frequency_pct, row.job_count))
+    else:
+        _jobs, tag_counter = await _aggregate_skills(role, limit=30)
+        for slug, count in tag_counter.most_common(30):
+            freq_pct = round(count / len(_jobs) * 100, 1) if _jobs else 0.0
+            top_market.append((slug, freq_pct, count))
+
     matched = []
     missing = []
-
-    for slug, count in top_market:
-        freq_pct = round(count / len(_jobs) * 100, 1) if _jobs else 0
-        entry = {"skill": slug, "frequency_pct": freq_pct, "job_count": count}
+    for slug, freq_pct, job_count in top_market:
+        entry = {"skill": slug, "frequency_pct": freq_pct, "job_count": job_count}
         if slug in candidate_skills or any(slug in cs or cs in slug for cs in candidate_skills if len(cs) >= 3):
             matched.append(entry)
         else:

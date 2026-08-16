@@ -1,28 +1,79 @@
 """CVAgent: personalize a candidate's CV for a specific job.
 
-Allowed: reorder content, rewrite summaries, keyword emphasis, project selection.
+Allowed: reorder content, rewrite summaries, keyword emphasis, project selection,
+         rewrite experience bullets to highlight relevant achievements.
 Prohibited: inventing skills, changing dates/titles, fabricating metrics.
 Every change includes original text, adapted text, rationale, and evidence reference.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.model_router import route_model
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = route_model("cv_personalize")
 
 
 # ── Output schema ─────────────────────────────────────────────────────────────
 
 class CVChange(BaseModel):
     section: str = Field(description="summary | skills | experience | projects | headline")
+    bullet_index: int | None = Field(
+        None, description="0-based index of bullet within the section; None for section-level changes"
+    )
     original: str = Field(description="The original text before adaptation")
     adapted: str = Field(description="The adapted text after personalization")
-    rationale: str = Field(description="Why this change improves fit for this job")
-    evidence_ref: str | None = Field(
-        None, description="Reference to the experience or skill this builds on"
+    reason: str = Field(description="Why this change improves fit for this job")
+    job_requirement: str = Field(
+        default="", description="The specific JD requirement this change addresses"
     )
+    evidence_refs: list[str] = Field(
+        default_factory=list,
+        description="Profile experiences, skills, or projects backing this claim",
+    )
+    confidence: float = Field(
+        default=0.8, ge=0.0, le=1.0,
+        description="Confidence (0-1) that this rewrite is accurate and the candidate can defend it",
+    )
+
+    @property
+    def evidence_ref(self) -> str | None:
+        """Backward-compat alias for the first evidence_refs entry."""
+        return self.evidence_refs[0] if self.evidence_refs else None
+
+    @property
+    def rationale(self) -> str:
+        """Backward-compat alias for reason."""
+        return self.reason
+
+
+class BulletChange(BaseModel):
+    """A single bullet point rewritten to emphasize job-relevant achievements."""
+    original: str = Field(description="Original bullet text verbatim")
+    adapted: str = Field(description="Rewritten bullet emphasizing job-relevant aspects")
+    reason: str = Field(description="Which job requirement this bullet now highlights")
+    job_requirement: str = Field(description="The specific requirement from the JD this addresses")
+    evidence_ref: str | None = Field(None, description="Skill or project from the profile that backs this claim")
+    confidence: float = Field(default=0.8, description="Confidence that this rewrite is accurate (0-1)")
+
+
+class ExperiencePersonalized(BaseModel):
+    """One experience entry with bullet-level personalization."""
+    company: str
+    title: str
+    bullets_original: list[str] = Field(default_factory=list)
+    bullets_adapted: list[BulletChange] = Field(default_factory=list)
+
+
+class ProjectPersonalized(BaseModel):
+    """One project entry with description personalization."""
+    name: str
+    description_original: str = Field(default="")
+    description_adapted: str = Field(default="")
+    reason: str = Field(default="")
+    highlights_adapted: list[str] = Field(default_factory=list)
 
 
 class PersonalizedCV(BaseModel):
@@ -49,30 +100,49 @@ class PersonalizedCV(BaseModel):
         default_factory=list,
         description="List of experiences/projects referenced in the personalization",
     )
+    experience_personalized: list[ExperiencePersonalized] = Field(
+        default_factory=list,
+        description="Experience entries with bullet-level rewrites for this job (max 4 entries)",
+    )
+    projects_personalized: list[ProjectPersonalized] = Field(
+        default_factory=list,
+        description="Project entries with description adapted for this job (max 3 projects)",
+    )
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 CV_SYSTEM = """You are an expert CV writer specializing in ATS optimization and job targeting.
 
-Your task: personalize a candidate's CV for a specific job opening.
+Your task: personalize a candidate's CV for a specific job opening, including bullet-level rewrites.
 
 ALLOWED:
 - Rewrite the professional summary to emphasize the most relevant aspects
 - Reorder skills list to put job-relevant ones first
 - Adjust headline/title to match job language (e.g. "Senior Engineer" → "Senior Data Engineer")
-- Emphasize relevant projects or experience entries by choosing better language
+- Rewrite experience bullets to highlight the aspects most relevant to the target role
+  (same achievement, different emphasis — e.g. lead on "impact" for product roles, "scale" for infra)
+- Rewrite project descriptions to emphasize technologies or outcomes the JD cares about
 - Add keywords from JD that are organically supported by actual experience
 
 PROHIBITED:
 - Inventing skills the candidate doesn't have
 - Changing dates, company names, job titles in experience
-- Fabricating metrics or achievements
+- Fabricating metrics or achievements not present in the original
 - Claiming experience the candidate doesn't have
 - Adding technologies not in the original profile
+- Confidence > 0.9 when the original bullet is vague and the adaptation is interpretive
 
-For every change, explain what you changed, why it improves fit, and what evidence supports it.
-The candidate must be able to defend every claim in an interview."""
+For every change, populate ALL fields:
+- bullet_index: the 0-based index of the bullet in that experience, or null for section-level changes
+- reason: concise explanation of why this change improves fit
+- job_requirement: copy the exact phrase from the JD this change addresses
+- evidence_refs: list of skills, projects, or experience items from the profile that back the claim
+- confidence: 0.9 if the original bullet is specific; 0.7-0.8 if it's vague and the adaptation is interpretive
+
+The candidate must be able to defend every claim in an interview.
+Produce experience_personalized for the top 3 most relevant experience entries only.
+Produce projects_personalized for the top 2 most relevant projects only."""
 
 
 # ── Agent function ─────────────────────────────────────────────────────────────
@@ -99,14 +169,32 @@ async def personalize_cv(
     tech_stack_text = ", ".join(job_tech_stack) if job_tech_stack else "Not specified"
     must_have_text = "\n".join(f"- {r}" for r in requirements_must_have) or "- Not specified"
 
-    # Summarize experience (avoid sending too much)
+    # Serialize experience with bullets (top 5 for context, top 3 for personalization)
     exp_text = ""
+    exp_with_bullets = ""
     if candidate_experience:
         for exp in candidate_experience[:5]:
             if isinstance(exp, dict):
-                title = exp.get("title", "")
+                title = exp.get("title") or exp.get("role", "")
                 company = exp.get("company", "")
                 exp_text += f"- {title} at {company}\n"
+        for exp in candidate_experience[:3]:
+            if isinstance(exp, dict):
+                title = exp.get("title") or exp.get("role", "")
+                company = exp.get("company", "")
+                bullets = exp.get("bullets") or []
+                exp_with_bullets += f"\n**{title} at {company}**\n"
+                for b in bullets[:6]:
+                    exp_with_bullets += f"  • {b}\n"
+
+    # Serialize projects
+    proj_text = ""
+    if candidate_projects:
+        for proj in candidate_projects[:3]:
+            if isinstance(proj, dict):
+                name = proj.get("name", "")
+                desc = proj.get("description", "")
+                proj_text += f"- **{name}**: {desc}\n"
 
     strategy_text = ""
     for g in strategy_guidance[:6]:
@@ -119,8 +207,11 @@ async def personalize_cv(
 - Summary: {candidate_summary or "No summary provided"}
 - Skills: {skills_text}
 
-Experience entries:
-{exp_text or "Not provided"}
+## Experience (with bullets for personalization):
+{exp_with_bullets or exp_text or "Not provided"}
+
+## Projects:
+{proj_text or "Not provided"}
 
 ## Target Job: {job_title or "Unknown"} at {job_company or "Unknown"}
 - Required seniority: {job_seniority or "not specified"}
@@ -131,7 +222,8 @@ Experience entries:
 ## Strategy guidance to apply:
 {strategy_text or "Optimize for the job requirements listed above"}
 
-Personalize this CV for the job. Output ALL changes made with full original/adapted text."""
+Personalize this CV for the job. Output ALL changes including bullet-level rewrites in \
+experience_personalized (top 3 relevant experiences) and projects_personalized (top 2 projects)."""
 
     result = await provider.structured_output(
         system=CV_SYSTEM,

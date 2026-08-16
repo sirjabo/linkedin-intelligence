@@ -1,19 +1,20 @@
 """Form Intelligence routes: register, view, and answer application forms."""
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_db
-from app.db.models.user import User
-from app.db.models.candidate import Candidate, CandidateProfile
-from app.db.models.application import Application
-from app.db.models.form import ApplicationForm, ApplicationFormField
 from app.api.deps import get_current_user
-from app.schemas.form import FormCreate, FormResponse, FormFieldAnswer
-from app.services.form_intelligence import map_candidate_to_form, FieldSpec
 from app.core.logging import get_logger
+from app.db.models.application import Application
+from app.db.models.candidate import Candidate, CandidateProfile
+from app.db.models.form import ApplicationForm, ApplicationFormField
+from app.db.models.user import User
+from app.db.session import get_db
+from app.schemas.form import FormCreate, FormFieldAnswer, FormResponse
+from app.services.form_intelligence import FieldSpec, map_candidate_to_form
 
 router = APIRouter(prefix="/applications", tags=["forms"])
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ async def register_form(
     profile_result = await db.execute(
         select(CandidateProfile).where(CandidateProfile.candidate_id == candidate.id)
     )
-    profile = profile_result.scalar_one_or_none()
+    _profile = profile_result.scalar_one_or_none()
 
     # Map form fields
     field_specs = [FieldSpec(

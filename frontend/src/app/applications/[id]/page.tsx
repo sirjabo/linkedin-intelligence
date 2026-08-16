@@ -15,12 +15,16 @@ import {
   answerAgentField,
   previewAgent,
   submitAgent,
+  getFitAnalysis,
+  downloadCVUrl,
   type Application,
   type CVVersion,
   type CoverLetter,
   type ApplicationAnswer,
   type AgentSession,
   type AgentField,
+  type FitAnalysis,
+  type RequirementMatch,
 } from "@/lib/api-v2";
 import {
   ArrowLeftIcon,
@@ -38,6 +42,11 @@ import {
   AlertTriangleIcon,
   RefreshCwIcon,
   SendIcon,
+  DownloadIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  TargetIcon,
+  ShieldAlertIcon,
 } from "lucide-react";
 
 const AGENT_STATUS_LABEL: Record<string, string> = {
@@ -47,6 +56,7 @@ const AGENT_STATUS_LABEL: Record<string, string> = {
   awaiting_human: "Esperando respuestas",
   ready_to_fill: "Listo para completar",
   filling: "Completando formulario…",
+  paused: "Pausado",
   previewing: "Vista previa…",
   submitting: "Enviando…",
   submitted: "Enviado",
@@ -102,6 +112,11 @@ export default function ApplicationDetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [submitDone, setSubmitDone] = useState(false);
 
+  // Sprint J: fit analysis for req-by-req breakdown
+  const [fitAnalysis, setFitAnalysis] = useState<FitAnalysis | null>(null);
+  const [cvDiffOpen, setCvDiffOpen] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
+
   // Notes editing
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -126,6 +141,10 @@ export default function ApplicationDetailPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    // Sprint J: load fit analysis in background
+    getFitAnalysis(token, id)
+      .then(setFitAnalysis)
+      .catch(() => null);
   }, [token, id]);
 
   async function handleGenerateCV() {
@@ -309,15 +328,15 @@ export default function ApplicationDetailPage() {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Cargando…</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-label="Cargando postulación">
+        <div className="text-slate-400 animate-pulse" aria-hidden="true">Cargando…</div>
       </div>
     );
   }
 
   if (!app) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="alert">
         <div className="text-red-400">{error || "Postulación no encontrada"}</div>
       </div>
     );
@@ -340,8 +359,8 @@ export default function ApplicationDetailPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/applications" className="text-slate-400 hover:text-white transition-colors">
-            <ArrowLeftIcon size={20} />
+          <Link href="/applications" aria-label="Volver a mis postulaciones" className="text-slate-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+            <ArrowLeftIcon size={20} aria-hidden="true" />
           </Link>
           <div className="flex-1">
             <h1 className="font-bold text-white">
@@ -367,7 +386,7 @@ export default function ApplicationDetailPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         {error && (
-          <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+          <div role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
@@ -396,27 +415,29 @@ export default function ApplicationDetailPage() {
           <button
             onClick={handleGenerateCV}
             disabled={genCV}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={genCV}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <FileTextIcon size={15} />
+            <FileTextIcon size={15} aria-hidden="true" />
             {genCV ? "Generando CV…" : app.cv_versions.length > 0 ? "Regenerar CV" : "Generar CV"}
           </button>
 
           <button
             onClick={handleGenerateCoverLetter}
             disabled={genCL || !hasStrategy}
-            title={!hasStrategy ? "Generá el CV primero" : ""}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={genCL}
+            aria-label={!hasStrategy ? "Generar carta de presentación (generá el CV primero)" : "Generar carta de presentación"}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <MailIcon size={15} />
+            <MailIcon size={15} aria-hidden="true" />
             {genCL ? "Generando carta…" : "Generar carta de presentación"}
           </button>
 
           <Link
             href={`/applications/${id}/interview-prep`}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <BrainIcon size={15} />
+            <BrainIcon size={15} aria-hidden="true" />
             Preparación entrevista
           </Link>
         </div>
@@ -432,8 +453,8 @@ export default function ApplicationDetailPage() {
           </p>
 
           {agentError && (
-            <div className="mb-3 flex items-start gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2.5">
-              <AlertTriangleIcon size={14} className="flex-shrink-0 mt-0.5" />
+            <div role="alert" className="mb-3 flex items-start gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2.5">
+              <AlertTriangleIcon size={14} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
               {agentError}
             </div>
           )}
@@ -442,21 +463,24 @@ export default function ApplicationDetailPage() {
           {!agentSession && (
             <div className="flex gap-2">
               <input
+                id="agent-form-url"
                 type="url"
                 value={agentFormUrl}
                 onChange={(e) => setAgentFormUrl(e.target.value)}
                 placeholder="https://jobs.greenhouse.io/…"
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                aria-label="URL del formulario de postulación"
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
               />
               <button
                 onClick={handleStartAgent}
                 disabled={agentLoading || !agentFormUrl.trim()}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                aria-busy={agentLoading}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {agentLoading ? (
-                  <RefreshCwIcon size={14} className="animate-spin" />
+                  <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                 ) : (
-                  <BotIcon size={14} />
+                  <BotIcon size={14} aria-hidden="true" />
                 )}
                 {agentLoading ? "Iniciando…" : "Iniciar agente"}
               </button>
@@ -483,8 +507,8 @@ export default function ApplicationDetailPage() {
 
               {/* Polling spinner for in-progress states */}
               {["initializing", "discovering", "mapping", "filling", "previewing", "submitting"].includes(agentSession.status) && (
-                <div className="flex items-center gap-2 text-slate-400 text-sm">
-                  <RefreshCwIcon size={14} className="animate-spin" />
+                <div role="status" aria-label="Agente procesando" className="flex items-center gap-2 text-slate-400 text-sm">
+                  <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                   <span>Procesando, no cierres esta página…</span>
                 </div>
               )}
@@ -499,15 +523,16 @@ export default function ApplicationDetailPage() {
                     .filter((f) => f.human_required)
                     .map((field) => (
                     <div key={field.id} className="bg-slate-800 rounded-lg p-3">
-                      <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                      <label htmlFor={`field-${field.id}`} className="text-xs font-medium text-slate-300 block mb-1.5">
                         {field.label}
-                        {field.is_required && <span className="text-red-400 ml-1">*</span>}
+                        {field.is_required && <span className="text-red-400 ml-1" aria-label="(requerido)">*</span>}
                       </label>
                       {field.options && field.options.length > 0 ? (
                         <select
+                          id={`field-${field.id}`}
                           value={fieldAnswers[field.id] ?? field.human_answer ?? ""}
                           onChange={(e) => setFieldAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-600"
+                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           <option value="">Seleccioná…</option>
                           {field.options.map((opt) => (
@@ -516,11 +541,12 @@ export default function ApplicationDetailPage() {
                         </select>
                       ) : (
                         <input
+                          id={`field-${field.id}`}
                           type="text"
                           value={fieldAnswers[field.id] ?? field.human_answer ?? ""}
                           onChange={(e) => setFieldAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
                           placeholder={field.auto_fill_value ? `Sugerido: ${field.auto_fill_value}` : "Tu respuesta…"}
-                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                         />
                       )}
                       <div className="mt-2 flex items-center justify-between gap-2">
@@ -528,7 +554,7 @@ export default function ApplicationDetailPage() {
                           <button
                             type="button"
                             onClick={() => setFieldAnswers((prev) => ({ ...prev, [field.id]: field.auto_fill_value! }))}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                           >
                             Usar sugerencia
                           </button>
@@ -537,12 +563,13 @@ export default function ApplicationDetailPage() {
                         <button
                           onClick={() => handleAnswerField(field)}
                           disabled={savingField === field.id || !fieldAnswers[field.id]?.trim()}
-                          className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded transition-colors"
+                          aria-busy={savingField === field.id}
+                          className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           {savingField === field.id ? (
-                            <RefreshCwIcon size={11} className="animate-spin" />
+                            <RefreshCwIcon size={11} className="animate-spin" aria-hidden="true" />
                           ) : (
-                            <CheckIcon size={11} />
+                            <CheckIcon size={11} aria-hidden="true" />
                           )}
                           Guardar
                         </button>
@@ -558,12 +585,13 @@ export default function ApplicationDetailPage() {
                   <button
                     onClick={handlePreview}
                     disabled={previewing}
-                    className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold transition-colors mt-2"
+                    aria-busy={previewing}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold transition-colors mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     {previewing ? (
-                      <RefreshCwIcon size={14} className="animate-spin" />
+                      <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                     ) : (
-                      <ZapIcon size={14} />
+                      <ZapIcon size={14} aria-hidden="true" />
                     )}
                     {previewing ? "Procesando…" : "Completar formulario"}
                   </button>
@@ -592,12 +620,13 @@ export default function ApplicationDetailPage() {
                   <button
                     onClick={handleConfirmSubmit}
                     disabled={confirming}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                    aria-busy={confirming}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 py-2.5 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   >
                     {confirming ? (
-                      <RefreshCwIcon size={14} className="animate-spin" />
+                      <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                     ) : (
-                      <SendIcon size={14} />
+                      <SendIcon size={14} aria-hidden="true" />
                     )}
                     {confirming ? "Enviando…" : "Confirmar y enviar postulación"}
                   </button>
@@ -606,7 +635,7 @@ export default function ApplicationDetailPage() {
 
               {/* Error state */}
               {agentSession.status === "failed" && agentSession.error_message && (
-                <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+                <div role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
                   {agentSession.error_message}
                 </div>
               )}
@@ -615,7 +644,7 @@ export default function ApplicationDetailPage() {
               {["failed", "submitted"].includes(agentSession.status) && (
                 <button
                   onClick={() => { setAgentSession(null); setAgentFormUrl(""); setFieldAnswers({}); }}
-                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                 >
                   Iniciar nueva sesión
                 </button>
@@ -625,8 +654,8 @@ export default function ApplicationDetailPage() {
 
           {/* Submitted */}
           {submitDone && (
-            <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-              <CheckIcon size={16} />
+            <div role="status" className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+              <CheckIcon size={16} aria-hidden="true" />
               ¡Postulación enviada exitosamente!
             </div>
           )}
@@ -636,78 +665,280 @@ export default function ApplicationDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <StickyNoteIcon size={16} className="text-blue-400" />
+              <StickyNoteIcon size={16} className="text-blue-400" aria-hidden="true" />
               Notas personales
             </h3>
+            <label htmlFor="app-notes" className="sr-only">Notas personales</label>
             <textarea
+              id="app-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               placeholder="Contacto de referencia, comentarios de la entrevista…"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none mb-3"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none mb-3"
             />
             <button
               onClick={handleSaveNotes}
               disabled={savingNotes}
-              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              aria-busy={savingNotes}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <SaveIcon size={12} />
+              <SaveIcon size={12} aria-hidden="true" />
               {notesSaved ? "¡Guardado!" : savingNotes ? "Guardando…" : "Guardar notas"}
             </button>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <CalendarIcon size={16} className="text-blue-400" />
+              <CalendarIcon size={16} className="text-blue-400" aria-hidden="true" />
               Fecha de seguimiento
             </h3>
-            <p className="text-xs text-slate-500 mb-3">
+            <p id="follow-up-hint" className="text-xs text-slate-500 mb-3">
               Recordatorio para hacer follow-up si no recibiste respuesta.
             </p>
+            <label htmlFor="app-follow-up-date" className="sr-only">Fecha de seguimiento</label>
             <input
+              id="app-follow-up-date"
               type="date"
               value={followUpDate}
               onChange={(e) => setFollowUpDate(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 mb-3 [color-scheme:dark]"
+              aria-describedby="follow-up-hint"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 mb-3 [color-scheme:dark]"
             />
             <button
               onClick={handleSaveFollowUp}
               disabled={savingDate}
-              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              aria-busy={savingDate}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <SaveIcon size={12} />
+              <SaveIcon size={12} aria-hidden="true" />
               {dateSaved ? "¡Guardado!" : savingDate ? "Guardando…" : "Guardar fecha"}
             </button>
           </div>
         </div>
 
-        {/* Strategy */}
+        {/* Sprint J: Strategy panel (full Sprint E fields) */}
         {app.strategy && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <ZapIcon size={16} className="text-blue-400" />
-              Estrategia de postulación
-            </h3>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              {(app.strategy as Record<string, string>)?.overall_approach}
-            </p>
+            <button
+              className="w-full flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+              onClick={() => setStrategyOpen((v) => !v)}
+              aria-expanded={strategyOpen}
+            >
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                <ZapIcon size={16} className="text-blue-400" aria-hidden="true" />
+                Estrategia de postulación
+              </h3>
+              {strategyOpen ? <ChevronUpIcon size={16} className="text-slate-400" aria-hidden="true" /> : <ChevronDownIcon size={16} className="text-slate-400" aria-hidden="true" />}
+            </button>
+
+            {strategyOpen && (() => {
+              const s = app.strategy as Record<string, unknown>;
+              return (
+                <div className="mt-4 space-y-4 text-sm">
+                  {s.positioning && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Posicionamiento</p>
+                      <p className="text-slate-300 leading-relaxed">{String(s.positioning)}</p>
+                    </div>
+                  )}
+                  {s.target_narrative && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Narrativa objetivo</p>
+                      <p className="text-slate-300 leading-relaxed">{String(s.target_narrative)}</p>
+                    </div>
+                  )}
+                  {s.overall_approach && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Enfoque general</p>
+                      <p className="text-slate-400 leading-relaxed">{String(s.overall_approach)}</p>
+                    </div>
+                  )}
+                  {Array.isArray(s.keywords_for_form) && s.keywords_for_form.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">Keywords para formularios</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(s.keywords_for_form as string[]).map((kw) => (
+                          <span key={kw} className="bg-blue-900/40 border border-blue-800/40 text-blue-300 px-2 py-0.5 rounded text-xs font-mono">{kw}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(s.interview_preparation_strategy) && s.interview_preparation_strategy.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">Preparación para entrevistas</p>
+                      <ul className="space-y-1.5">
+                        {(s.interview_preparation_strategy as string[]).map((tip, i) => (
+                          <li key={i} className="flex gap-2 text-slate-300">
+                            <span className="text-blue-400 flex-shrink-0">·</span>
+                            {tip}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(s.claims_to_avoid) && s.claims_to_avoid.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                        <ShieldAlertIcon size={11} />
+                        No mencionar en entrevistas
+                      </p>
+                      <ul className="space-y-1">
+                        {(s.claims_to_avoid as string[]).map((c, i) => (
+                          <li key={i} className="text-red-400/80 text-xs flex gap-2">
+                            <span className="flex-shrink-0">✗</span>{c}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {s.company_specific_angle && (
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-wider">Ángulo empresa</p>
+                      <p className="text-slate-300 leading-relaxed">{String(s.company_specific_angle)}</p>
+                    </div>
+                  )}
+                  {Array.isArray(s.strengths_to_emphasize) && s.strengths_to_emphasize.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-400 mb-2 uppercase tracking-wider">Fortalezas a destacar</p>
+                      <ul className="space-y-1">
+                        {(s.strengths_to_emphasize as string[]).map((st, i) => (
+                          <li key={i} className="text-emerald-300/80 text-xs flex gap-2">
+                            <span className="flex-shrink-0">✓</span>{st}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(s.risks_to_address) && s.risks_to_address.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-yellow-400 mb-2 uppercase tracking-wider">Riesgos a abordar</p>
+                      <ul className="space-y-1">
+                        {(s.risks_to_address as string[]).map((r, i) => (
+                          <li key={i} className="text-yellow-300/80 text-xs flex gap-2">
+                            <span className="flex-shrink-0">!</span>{r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
-        {/* Latest CV */}
-        {latestCV && (
+        {/* Sprint J: Requirement-by-requirement match breakdown */}
+        {fitAnalysis && fitAnalysis.requirement_matches && fitAnalysis.requirement_matches.length > 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <FileTextIcon size={16} className="text-blue-400" />
-              CV Personalizado
+              <TargetIcon size={16} className="text-blue-400" />
+              Análisis de requisitos
             </h3>
+            <ul className="space-y-2">
+              {fitAnalysis.requirement_matches.map((rm: RequirementMatch, i: number) => {
+                const statusColors: Record<string, string> = {
+                  MATCHED: "bg-emerald-900/40 border-emerald-800/40 text-emerald-300",
+                  PARTIAL: "bg-yellow-900/40 border-yellow-800/40 text-yellow-300",
+                  MISSING: "bg-slate-800 border-slate-700 text-slate-400",
+                  BLOCKER: "bg-red-900/40 border-red-800/40 text-red-300",
+                  UNCERTAIN: "bg-blue-900/40 border-blue-800/40 text-blue-300",
+                };
+                const statusLabel: Record<string, string> = {
+                  MATCHED: "Cubierto", PARTIAL: "Parcial",
+                  MISSING: "Faltante", BLOCKER: "Bloqueante", UNCERTAIN: "Incierto",
+                };
+                const cls = statusColors[rm.candidate_status] ?? "bg-slate-800 border-slate-700 text-slate-400";
+                return (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className={`text-xs px-2 py-0.5 rounded border flex-shrink-0 font-mono mt-0.5 ${cls}`}>
+                      {statusLabel[rm.candidate_status] ?? rm.candidate_status}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-300 leading-snug">{rm.text}</p>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        {rm.importance === "MUST" ? "Obligatorio" : "Deseable"} · {Math.round(rm.match_score * 100)}%
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Sprint J: Latest CV with diff view + download */}
+        {latestCV && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                <FileTextIcon size={16} className="text-blue-400" />
+                CV Personalizado
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCvDiffOpen((v) => !v)}
+                  aria-expanded={cvDiffOpen}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                >
+                  {cvDiffOpen ? <ChevronUpIcon size={13} aria-hidden="true" /> : <ChevronDownIcon size={13} aria-hidden="true" />}
+                  {cvDiffOpen ? "Ocultar cambios" : "Ver cambios"}
+                </button>
+                <a
+                  href={`${downloadCVUrl(id)}?token=${token}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Descargar CV personalizado como PDF (abre en nueva pestaña)"
+                  className="flex items-center gap-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <DownloadIcon size={11} aria-hidden="true" />
+                  PDF
+                </a>
+              </div>
+            </div>
+
             {latestCV.headline_adapted && (
               <p className="text-blue-300 font-medium mb-2">{latestCV.headline_adapted}</p>
             )}
             {latestCV.summary_adapted && (
               <p className="text-sm text-slate-300 leading-relaxed">{latestCV.summary_adapted}</p>
             )}
-            {Array.isArray(latestCV.changes) && latestCV.changes.length > 0 && (
+            {latestCV.ats_keywords && latestCV.ats_keywords.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {latestCV.ats_keywords.map((kw) => (
+                  <span key={kw} className="bg-slate-800 text-slate-400 text-xs px-1.5 py-0.5 rounded font-mono">{kw}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Sprint J: CV Diff View */}
+            {cvDiffOpen && latestCV.experience_personalized && latestCV.experience_personalized.length > 0 && (
+              <div className="mt-4 space-y-4 border-t border-slate-800 pt-4">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Bullets adaptados por experiencia</p>
+                {latestCV.experience_personalized.map((ep, ei) => (
+                  <div key={ei} className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-300">{ep.title} @ {ep.company}</p>
+                    {ep.bullets_adapted.map((bc, bi) => (
+                      <div key={bi} className="bg-slate-800/50 rounded-lg p-3 text-xs space-y-1.5 border border-slate-700/50">
+                        <div className="flex gap-2">
+                          <span className="text-red-400/70 flex-shrink-0">−</span>
+                          <span className="text-slate-500 line-through">{bc.original}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-emerald-400 flex-shrink-0">+</span>
+                          <span className="text-slate-300">{bc.adapted}</span>
+                        </div>
+                        {bc.reason && (
+                          <p className="text-slate-600 italic pl-4">{bc.reason}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {Array.isArray(latestCV.changes) && latestCV.changes.length > 0 && !cvDiffOpen && (
               <div className="mt-3 pt-3 border-t border-slate-800">
                 <p className="text-xs text-slate-500 mb-2">{latestCV.changes.length} cambio(s) sugerido(s)</p>
               </div>
@@ -728,26 +959,53 @@ export default function ApplicationDetailPage() {
           </div>
         )}
 
+        {/* Sprint J: Submission evidence panel */}
+        {app.status === "applied" && agentSession?.status === "submitted" && (
+          <div className="bg-slate-900 border border-emerald-900/40 rounded-xl p-5">
+            <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+              <CheckIcon size={16} className="text-emerald-400" />
+              Evidencia de postulación
+            </h3>
+            {agentSession.confirmation_id && (
+              <p className="text-xs text-slate-400 mb-2">
+                ID de confirmación: <span className="font-mono text-slate-200">{agentSession.confirmation_id}</span>
+              </p>
+            )}
+            {agentSession.final_url && (
+              <p className="text-xs text-slate-400 mb-3">
+                URL final: <span className="font-mono text-blue-400">{agentSession.final_url}</span>
+              </p>
+            )}
+            <p className="text-xs text-slate-500">
+              {agentSession.fields_confirmed} campo(s) completados · ATS: {agentSession.ats_name ?? "genérico"}
+            </p>
+          </div>
+        )}
+
         {/* Application answers */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
           <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-            <MessageSquareIcon size={16} className="text-blue-400" />
+            <MessageSquareIcon size={16} className="text-blue-400" aria-hidden="true" />
             Preguntas de la empresa
           </h3>
-          <p className="text-xs text-slate-500 mb-3">Pegá las preguntas del formulario, una por línea.</p>
+          <p id="questions-hint" className="text-xs text-slate-500 mb-3">Pegá las preguntas del formulario, una por línea.</p>
+          <label htmlFor="app-questions" className="sr-only">Preguntas del formulario</label>
           <textarea
+            id="app-questions"
             value={questions}
             onChange={(e) => setQuestions(e.target.value)}
             rows={4}
             placeholder={"¿Por qué querés trabajar en esta empresa?\n¿Cuál es tu mayor fortaleza?\n…"}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none mb-3"
+            aria-describedby="questions-hint"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none mb-3"
           />
           <button
             onClick={handleGenerateAnswers}
             disabled={genAnswers || !questions.trim()}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={genAnswers}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <ZapIcon size={14} />
+            <ZapIcon size={14} aria-hidden="true" />
             {genAnswers ? "Generando…" : "Generar respuestas"}
           </button>
           {answers.length > 0 && (
@@ -766,20 +1024,20 @@ export default function ApplicationDetailPage() {
         {app.events.length > 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-4">Historial</h3>
-            <div className="space-y-3">
+            <ul className="space-y-3">
               {app.events.map((ev) => (
-                <div key={ev.id} className="flex gap-3 items-start">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0" />
+                <li key={ev.id} className="flex gap-3 items-start">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0" aria-hidden="true" />
                   <div>
                     <p className="text-sm text-slate-300 font-medium capitalize">{ev.event_type}</p>
                     {ev.notes && <p className="text-xs text-slate-500 mt-0.5">{ev.notes}</p>}
-                    <p className="text-xs text-slate-600 mt-0.5">
+                    <time dateTime={ev.occurred_at} className="text-xs text-slate-600 mt-0.5 block">
                       {new Date(ev.occurred_at).toLocaleString("es-AR")}
-                    </p>
+                    </time>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
       </main>

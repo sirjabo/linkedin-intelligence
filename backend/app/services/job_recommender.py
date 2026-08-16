@@ -41,50 +41,50 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in tokens if len(t) >= 2 and t not in _STOPWORDS]
 
 
-def _candidate_keywords(profile_data: dict) -> Counter:
+def _candidate_keywords(profile_data: dict) -> dict[str, float]:
     """Build a weighted token counter from the candidate profile.
 
     Skills are counted with weight 3, summary/experience tokens with weight 1.
     """
-    counter: Counter = Counter()
+    counter: dict[str, float] = {}
 
     for skill in profile_data.get("skills") or []:
         if isinstance(skill, str):
             for tok in _tokenize(skill):
-                counter[tok] += 3
+                counter[tok] = counter.get(tok, 0.0) + 3
         elif isinstance(skill, dict):
             name = skill.get("canonical_name") or skill.get("name") or ""
             for tok in _tokenize(name):
-                counter[tok] += 3
+                counter[tok] = counter.get(tok, 0.0) + 3
 
     for tok in _tokenize(profile_data.get("summary") or ""):
-        counter[tok] += 1
+        counter[tok] = counter.get(tok, 0.0) + 1
 
     for exp in profile_data.get("experience") or []:
         if isinstance(exp, dict):
             for tok in _tokenize(exp.get("title", "")):
-                counter[tok] += 1
+                counter[tok] = counter.get(tok, 0.0) + 1
             for tok in _tokenize(exp.get("company", "")):
-                counter[tok] += 1
+                counter[tok] = counter.get(tok, 0.0) + 1
 
     for edu in profile_data.get("education") or []:
         if isinstance(edu, dict):
             for tok in _tokenize(edu.get("field", "")):
-                counter[tok] += 1
+                counter[tok] = counter.get(tok, 0.0) + 1
 
     return counter
 
 
-def _job_token_counter(job: JobRaw) -> Counter:
+def _job_token_counter(job: JobRaw) -> dict[str, float]:
     """Build a field-weighted term counter for a single job."""
-    counter: Counter = Counter()
+    counter: dict[str, float] = {}
     for tok in _tokenize(job.title):
-        counter[tok] += _FIELD_WEIGHTS["title"]
+        counter[tok] = counter.get(tok, 0.0) + _FIELD_WEIGHTS["title"]
     for tag in job.tech_tags:
         for tok in _tokenize(tag):
-            counter[tok] += _FIELD_WEIGHTS["tags"]
+            counter[tok] = counter.get(tok, 0.0) + _FIELD_WEIGHTS["tags"]
     for tok in _tokenize(job.description[:3000]):
-        counter[tok] += _FIELD_WEIGHTS["description"]
+        counter[tok] = counter.get(tok, 0.0) + _FIELD_WEIGHTS["description"]
     return counter
 
 
@@ -108,15 +108,15 @@ def _compute_idf(jobs: list[JobRaw]) -> dict[str, float]:
 
 
 def _cosine_score(
-    query: Counter,
-    doc: Counter,
+    query: dict[str, float],
+    doc: dict[str, float],
     idf: dict[str, float],
 ) -> tuple[float, list[str]]:
     """Cosine similarity between TF-IDF weighted query and document vectors."""
     if not query or not doc:
         return 0.0, []
 
-    def weighted(counter: Counter) -> dict[str, float]:
+    def weighted(counter: dict[str, float]) -> dict[str, float]:
         return {tok: tf * idf.get(tok, 1.0) for tok, tf in counter.items()}
 
     q_vec = weighted(query)
@@ -144,7 +144,7 @@ def _cosine_score(
     return round(min(score, 1.0), 4), matched
 
 
-def score_job(job: JobRaw, candidate_counter: Counter, idf: dict[str, float]) -> ScoredJob:
+def score_job(job: JobRaw, candidate_counter: dict[str, float], idf: dict[str, float]) -> ScoredJob:
     """Score a single job against the candidate counter using TF-IDF cosine similarity."""
     doc = _job_token_counter(job)
     raw_score, matched = _cosine_score(candidate_counter, doc, idf)

@@ -4,21 +4,25 @@ import re
 import time
 from collections import Counter
 from datetime import date, datetime, timedelta
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.market import (
-    SkillFrequency, SkillsRadarResponse,
-    CompanyHiring, MarketTrendItem, MarketTrendsResponse,
-)
-from app.services.job_sources.base import JobRaw
-from app.services.job_sources.remotive import RemotiveSource
-from app.services.job_sources.arbeitnow import ArbeitnowSource
-from app.services.job_sources.remoteok import RemoteOKSource
-from app.db.session import get_db
-from app.db.models.market import SkillSnapshot
 from app.core.logging import get_logger
+from app.db.models.market import SkillSnapshot
+from app.db.session import get_db
+from app.schemas.market import (
+    CompanyHiring,
+    MarketTrendItem,
+    MarketTrendsResponse,
+    SkillFrequency,
+    SkillsRadarResponse,
+)
+from app.services.job_sources.arbeitnow import ArbeitnowSource
+from app.services.job_sources.base import JobRaw
+from app.services.job_sources.remoteok import RemoteOKSource
+from app.services.job_sources.remotive import RemotiveSource
 
 logger = get_logger(__name__)
 

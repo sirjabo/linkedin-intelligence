@@ -1,7 +1,8 @@
 """Pydantic schemas for Application Agent API endpoints."""
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, HttpUrl, field_validator
+
+from pydantic import BaseModel, field_validator
 
 
 class AgentStartRequest(BaseModel):
@@ -10,7 +11,7 @@ class AgentStartRequest(BaseModel):
     @field_validator("form_url")
     @classmethod
     def must_be_https_or_localhost(cls, v: str) -> str:
-        if v.startswith("http://127.0.0.1") or v.startswith("http://localhost"):
+        if v.startswith(("http://127.0.0.1", "http://localhost")):
             return v  # allow localhost for tests
         if not v.startswith("https://"):
             raise ValueError("form_url must use HTTPS (or localhost for testing)")

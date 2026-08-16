@@ -1,18 +1,19 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.db.models.user import User
-from app.db.models.candidate import Candidate
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, RefreshRequest
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
-from app.core.limiter import limiter
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.core.logging import get_logger
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
+from app.db.models.candidate import Candidate
+from app.db.models.user import User
+from app.db.session import get_db
+from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = get_logger(__name__)
@@ -41,7 +42,7 @@ async def register(request: Request, payload: RegisterRequest, db: AsyncSession 
         await db.refresh(user)
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered") from None
 
     logger.info("user_registered", user_id=str(user.id))
     return TokenResponse(
@@ -76,7 +77,7 @@ async def refresh(
             raise ValueError("not a refresh token")
         user_id = uuid.UUID(data["sub"])
     except (ValueError, KeyError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") from None
 
     result = await db.execute(select(User).where(User.id == user_id, User.is_active.is_(True)))
     user = result.scalar_one_or_none()

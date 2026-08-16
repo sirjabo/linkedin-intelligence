@@ -35,8 +35,7 @@ class ArbeitnowSource:
 
     async def fetch(self, query: str, limit: int, category: str | None) -> list[JobRaw]:
         async with (
-            self._client if self._client
-            else httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+            self._client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
         ) as client:
             resp = await client.get(ARBEITNOW_URL, params={"page": 1})
             resp.raise_for_status()

@@ -1,6 +1,6 @@
 ===========================================================================
 LINKEDIN INTELLIGENCE — RESUMEN COMPLETO DEL ESTADO DEL PROYECTO
-Para pasar contexto a ChatGPT · Generado: agosto 2026
+Para pasar contexto · Actualizado: agosto 2026
 ===========================================================================
 
 ## QUÉ ES ESTE PROYECTO
@@ -220,39 +220,45 @@ getSkillsRadar(role, limit)
 - El submit final siempre requiere aprobación explícita del usuario
 
 
-## LO QUE FALTA / DEUDA TÉCNICA
+## DEUDA TÉCNICA — ESTADO ACTUAL (agosto 2026)
 
-1. Celery worker: no está en Railway como servicio separado aún. Para activar las tareas
-   hay que agregar un servicio "Worker" en Railway con comando:
+### ✅ RESUELTOS
+
+1. Celery worker: servicio en Railway (ID: 1e91bc15), comando:
    celery -A app.worker.celery_app worker --loglevel=info
+   Variables: referencias a ${{api.*}} para no duplicar secrets.
 
-2. Celery Beat: ídem, necesita otro servicio con:
+2. Celery Beat: servicio en Railway (ID: f9b09805), comando:
    celery -A app.worker.celery_app beat --loglevel=info
 
-3. SMTP: no configurado en Railway. Agregar variables SMTP_* para activar email digest.
+3. SMTP: variables SMTP_* agregadas como placeholders en Railway (API service).
+   Reemplazar con valores reales para activar email digest.
 
-4. Benchmark UI: el endpoint existe pero no hay página dedicada que lo muestre.
-   Sugerencia: agregar widget en /profile con benchmark vs rol objetivo del candidato.
+4. Benchmark UI: widget en /profile con selector de rol, barra de progreso,
+   tier badge, skills matcheadas/faltantes. Carga lazy (botón-triggered).
 
-5. Tests: no hay tests unitarios para los nuevos servicios (about_writer, email_service,
-   los nuevos endpoints). Ideal agregar pytest coverage para lógica de negocio crítica.
+5. Tests: 81 tests passing (pytest).
+   - test_new_services.py: 22 unit tests (about_writer, email, salary, benchmark tiers, limiter)
+   - test_integration_endpoints.py: 13 integration tests (salary, benchmark, about-writer)
+   - test_market_skills.py: 8 tests (slugify, trends endpoint, cache, skills radar)
+   - + tests existentes (candidates, auth, analyze, etc.)
 
-6. Skill trends en producción: los primeros 7 días no habrá datos históricos para comparar
-   (todos los trends aparecerán como "new" o "stable"). Esto se auto-corrige con el tiempo.
+6. Skill trends en producción: auto-corrección después de 7 días con datos históricos.
 
-7. Benchmark data fresca: el endpoint de benchmark llama _aggregate_skills() en tiempo real,
-   lo cual hace N llamadas a APIs externas. Considerar usar SkillSnapshot en lugar de fetch live.
+7. Benchmark data fresca: endpoint lee de SkillSnapshot (DB, nightly snapshot).
+   Fallback a _aggregate_skills() solo si no hay snapshot aún (primer día de deploy).
+   Esto es rápido y no hace HTTP a APIs externas en cada request.
 
-8. PDF export: el estilo print CSS es básico. Para reports más ricos considerar react-pdf
-   o puppeteer en backend (genera PDF server-side).
+10. Rate limiting: limiter.py usa storage_uri=REDIS_URL para rate limits globales
+    cross-worker. Fallback a memory:// en dev local.
 
-9. Auth unificación: el proyecto tiene dos sistemas de auth (JWT propio + Supabase).
-   A largo plazo conviene migrar todo a uno. Supabase sería la opción más limpia dado que
-   ya se usa en producción para cv_chat.
+### ⚠️ PENDIENTE (deuda baja prioridad)
 
-10. Rate limiting: SlowAPI está configurado pero no hay Redis como backend de SlowAPI.
-    En producción con múltiples workers, el rate limit actual es per-process (no global).
-    Agregar: limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL)
+8. PDF export: actualmente window.print() + print CSS (básico). Para reports más ricos
+   considerar react-pdf o puppeteer en backend.
+
+9. Auth unificación: JWT propio (features nuevas) + Supabase (cv_chat legacy).
+   A largo plazo migrar todo a Supabase.
 
 
 ## BRANCH DE DEPLOY

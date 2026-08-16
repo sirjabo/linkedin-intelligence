@@ -1,5 +1,6 @@
 """Phase 6 — Interview Prep routes."""
 import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,11 +10,11 @@ from app.api.deps import get_current_user
 from app.db.models.application import Application
 from app.db.models.candidate import Candidate
 from app.db.models.interview import InterviewPrep
+from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.interview import InterviewPrepResponse
 from app.services.agents.interview_agent import generate_interview_prep
 from app.services.ai.provider import AnthropicProvider
-from app.db.models.user import User
 
 router = APIRouter(prefix="/applications", tags=["interview"])
 
@@ -24,7 +25,7 @@ async def _get_application_for_user(
     try:
         app_uuid = _uuid.UUID(application_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Application not found")
+        raise HTTPException(status_code=404, detail="Application not found") from None
     cand_result = await db.execute(
         select(Candidate).where(Candidate.user_id == current_user.id)
     )

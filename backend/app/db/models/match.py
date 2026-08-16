@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, Float, DateTime, ForeignKey, JSON, Uuid, UniqueConstraint
+
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
 
 
@@ -39,6 +41,8 @@ class MatchAnalysis(Base):
     career_fit_score: Mapped[float | None] = mapped_column(Float)
     application_decision: Mapped[str | None] = mapped_column(String(50))  # APPLY|APPLY_WITH_CUSTOMIZATION|STRETCH|LOW_FIT|DO_NOT_APPLY|BLOCKED
     hard_blockers: Mapped[list | None] = mapped_column(JSON)
+    # Per-requirement match breakdown (Sprint D)
+    requirement_matches: Mapped[list | None] = mapped_column(JSON)
     # Learning loop: actual outcome recorded by the user after applying
     # Values: "offer" | "interview" | "phone_screen" | "rejected" | "no_response" | None
     outcome: Mapped[str | None] = mapped_column(String(50))

@@ -4,8 +4,11 @@ Reads all MatchAnalysis rows for a candidate, aggregates which skills appear
 most often in missing_skills, then uses an LLM to produce a prioritized
 improvement plan.
 """
+import contextlib
 from collections import Counter
 from dataclasses import dataclass, field
+
+from app.services.ai.model_router import route_model
 
 
 @dataclass
@@ -108,7 +111,7 @@ def _deterministic_tips(
 async def generate_optimization_report(
     analyses: list[dict],
     profile_data: dict,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = route_model("evaluation"),
 ) -> OptimizationReport:
     """Generate a full optimization report.
 
@@ -120,10 +123,8 @@ async def generate_optimization_report(
     # Build a short LLM summary if we have enough data
     summary = _default_summary(len(analyses), skill_gaps, tips)
     if analyses and skill_gaps:
-        try:
+        with contextlib.suppress(Exception):
             summary = await _llm_summary(analyses, skill_gaps, tips, model)
-        except Exception:
-            pass  # fallback to deterministic summary
 
     return OptimizationReport(
         total_analyses_reviewed=len(analyses),
@@ -157,6 +158,7 @@ async def _llm_summary(
     model: str,
 ) -> str:
     import anthropic
+
     from app.core.config import settings
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -176,4 +178,7 @@ async def _llm_summary(
             ),
         }],
     )
-    return resp.content[0].text.strip()
+    block = resp.content[0]
+    if not hasattr(block, "text"):
+        return ""
+    return block.text.strip()  # type: ignore[union-attr]

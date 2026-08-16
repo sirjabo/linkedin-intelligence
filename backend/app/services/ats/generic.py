@@ -4,6 +4,7 @@ Used when no specific adapter matches the URL.
 Falls back to: standard form extraction + higher human-required rate.
 """
 import re
+
 from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 

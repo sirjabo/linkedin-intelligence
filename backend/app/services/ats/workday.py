@@ -5,8 +5,8 @@ Workday renders job pages that require clicking "Apply Now" to open the wizard.
 The application wizard is a multi-step flow with page-level navigation.
 """
 import re
-from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
+from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 _APPLY_SELECTORS = [
     "[data-automation-id='applyButton']",
@@ -27,9 +27,13 @@ _NEXT_SELECTORS = [
 class WorkdayAdapter:
     ats_name = "workday"
     url_patterns = [
-        re.compile(r"myworkdayjobs\.com", re.I),
-        re.compile(r"workday\.com", re.I),
+        re.compile(r"myworkdayjobs\.com", re.IGNORECASE),
+        re.compile(r"workday\.com", re.IGNORECASE),
     ]
+
+    def __init__(self) -> None:
+        self.current_section: str | None = None
+        self.section_history: list[str] = []
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
         """Click the 'Apply Now' button if the page is a job description, not yet a form."""
@@ -38,9 +42,26 @@ class WorkdayAdapter:
                 try:
                     # The click will navigate to the wizard — click_next handles navigation
                     await browser.click_next()
+                    await self._track_section(browser)
                     return
                 except Exception:
                     continue
+
+    async def _track_section(self, browser: BrowserAutomationAdapter) -> None:
+        """Track which wizard section is currently shown."""
+        try:
+            page_text = await browser.get_page_text()
+            # Workday section headers are typically short lines (< 60 chars) early in the page
+            for line in page_text.splitlines()[:30]:
+                line = line.strip()
+                if 5 < len(line) < 60 and not line.endswith("."):
+                    if line != self.current_section:
+                        self.current_section = line
+                        if line not in self.section_history:
+                            self.section_history.append(line)
+                    break
+        except Exception:
+            pass
 
     def normalize_field(self, field: RawFormField) -> RawFormField:
         # Workday uses aria-labels as the primary source; prefer aria_label over label
@@ -70,10 +91,11 @@ class WorkdayAdapter:
                 break
             if has_next:
                 await browser.click_next()
+                await self._track_section(browser)
             else:
                 break
         await browser.click_submit()
         return await browser.is_confirmation_page()
 
     def extract_confirmation_id_pattern(self) -> re.Pattern | None:
-        return re.compile(r"WD[-]?(\d{7,})", re.I)
+        return re.compile(r"WD[-]?(\d{7,})", re.IGNORECASE)

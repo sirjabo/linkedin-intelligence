@@ -38,11 +38,25 @@ ApplicationDecision = Literal[
     "APPLY", "APPLY_WITH_CUSTOMIZATION", "STRETCH", "LOW_FIT", "DO_NOT_APPLY", "BLOCKED"
 ]
 
+RequirementStatus = Literal["MATCHED", "PARTIAL", "MISSING", "BLOCKER", "UNCERTAIN"]
+RequirementImportance = Literal["MUST", "NICE_TO_HAVE"]
+
 
 @dataclass
 class HardConstraintResult:
     blocked: bool
     blockers: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RequirementMatch:
+    """Per-requirement breakdown of match status."""
+    text: str
+    requirement_type: str          # must_have | nice_to_have
+    importance: RequirementImportance
+    candidate_status: RequirementStatus
+    match_score: float             # 0.0–1.0
+    evidence_ref: str | None = None
 
 
 @dataclass
@@ -56,6 +70,8 @@ class DeterministicResult:
     matched_skills: list[str] = field(default_factory=list)
     missing_skills: list[str] = field(default_factory=list)
     career_fit_score: float | None = None
+    requirement_matches: list[RequirementMatch] = field(default_factory=list)
+    domain_score: float | None = None  # None when domain cannot be determined
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,6 +121,33 @@ def _expand_skill(skill: str) -> frozenset[str]:
     return _SYNONYM_MAP.get(n, frozenset({n}))
 
 
+# Transferable skill mappings: candidate skill A partially qualifies for requirement B.
+# Key = candidate skill; value = list of requirement terms it partially fulfills.
+TRANSFERABLE_SKILLS: dict[str, list[str]] = {
+    "machine learning": ["data science", "deep learning", "nlp", "computer vision", "ai", "ai/ml"],
+    "data science": ["machine learning", "statistics", "analytics", "data analysis"],
+    "devops": ["sre", "site reliability engineering", "platform engineering", "cloud infrastructure"],
+    "sre": ["devops", "infrastructure", "platform engineering", "cloud operations"],
+    "full stack": ["backend", "frontend", "web development", "software engineering"],
+    "backend": ["full stack", "api development", "server-side", "software engineering"],
+    "frontend": ["full stack", "web development", "ui engineering", "software engineering"],
+    "mobile": ["ios", "android", "react native", "flutter", "cross-platform"],
+    "ios": ["mobile development", "mobile", "cross-platform"],
+    "android": ["mobile development", "mobile", "cross-platform"],
+    "data engineering": ["etl", "data pipeline", "big data", "analytics engineering"],
+    "cybersecurity": ["security engineering", "information security", "infosec", "appsec"],
+    "nlp": ["machine learning", "ai", "text processing", "conversational ai", "ai/ml"],
+    "computer vision": ["machine learning", "image processing", "ai", "ai/ml"],
+    "embedded systems": ["firmware development", "hardware engineering", "iot"],
+}
+
+# Reverse map: requirement keyword → candidate skills that transfer into it
+_TRANSFERABLE_REVERSE: dict[str, list[str]] = {}
+for _src_skill, _target_reqs in TRANSFERABLE_SKILLS.items():
+    for _t in _target_reqs:
+        _TRANSFERABLE_REVERSE.setdefault(_t.lower().strip(), []).append(_src_skill.lower().strip())
+
+
 def _norm(s: str) -> str:
     return s.lower().strip()
 
@@ -125,11 +168,60 @@ def _skill_in_text(candidate_skills: set[str], text: str) -> bool:
     return False
 
 
+def _classify_requirement_status(
+    description: str,
+    candidate_skills: set[str],
+    req_type: str,
+) -> RequirementMatch:
+    """Classify a single requirement against candidate skills with MATCHED/PARTIAL/MISSING/BLOCKER."""
+    matched = _skill_in_text(candidate_skills, description)
+    # Partial: a synonym group that partially overlaps but is not a strong match
+    # We use substring-in-text as the bar — if true, MATCHED; if false, consider PARTIAL
+    # by checking if any candidate skill is conceptually related (first token match)
+    if matched:
+        status: RequirementStatus = "MATCHED"
+        score = 1.0
+    else:
+        # Check for weak partial match: first word of requirement matches a candidate skill
+        first_token = description.lower().split()[0] if description else ""
+        weak = first_token and any(first_token in sk for sk in candidate_skills)
+        if weak:
+            status = "PARTIAL"
+            score = 0.5
+        else:
+            # Check transferable skills: candidate skill A can partially fulfill requirement B
+            req_lower = _norm(description)
+            transferred = False
+            for req_token in [req_lower, *req_lower.split()]:
+                transferable_from = _TRANSFERABLE_REVERSE.get(req_token, [])
+                if any(tf in candidate_skills for tf in transferable_from):
+                    transferred = True
+                    break
+            if transferred:
+                status = "PARTIAL"
+                score = 0.35
+            elif req_type == "must_have":
+                status = "BLOCKER"
+                score = 0.0
+            else:
+                status = "MISSING"
+                score = 0.0
+
+    importance: RequirementImportance = "MUST" if req_type == "must_have" else "NICE_TO_HAVE"
+    return RequirementMatch(
+        text=description,
+        requirement_type=req_type,
+        importance=importance,
+        candidate_status=status,
+        match_score=score,
+    )
+
+
 def _score_skill_overlap(
     profile_skills: list[dict],
     requirements: list,       # list of JobRequirement ORM objects
     tech_stack: list[str] | None,
-) -> tuple[float, list[str], list[str]]:
+) -> tuple[float, list[str], list[str], list[RequirementMatch]]:
     candidate_skills = {_norm(s.get("canonical_name", "")) for s in profile_skills if s.get("canonical_name")}
 
     must_have_tech = [
@@ -143,31 +235,48 @@ def _score_skill_overlap(
 
     matched: list[str] = []
     missing: list[str] = []
+    req_matches: list[RequirementMatch] = []
 
     if must_have_tech:
         for req in must_have_tech:
-            if _skill_in_text(candidate_skills, req.description):
+            rm = _classify_requirement_status(req.description, candidate_skills, "must_have")
+            req_matches.append(rm)
+            if rm.candidate_status == "MATCHED":
                 matched.append(req.description)
-            else:
+            elif rm.candidate_status != "PARTIAL":
                 missing.append(req.description)
         score = len(matched) / len(must_have_tech) if must_have_tech else 0.7
     elif tech_stack:
         # Fall back to tech_stack when no explicit technical requirements
         ts_norm = [_norm(t) for t in tech_stack]
-        matched = [t for t in ts_norm if t in candidate_skills]
-        missing = [t for t in ts_norm if t not in candidate_skills]
+        for t in ts_norm:
+            if _skill_in_text(candidate_skills, t):
+                matched.append(t)
+                req_matches.append(RequirementMatch(
+                    text=t, requirement_type="must_have", importance="MUST",
+                    candidate_status="MATCHED", match_score=1.0,
+                ))
+            else:
+                missing.append(t)
+                req_matches.append(RequirementMatch(
+                    text=t, requirement_type="must_have", importance="MUST",
+                    candidate_status="MISSING", match_score=0.0,
+                ))
         score = len(matched) / len(ts_norm) if ts_norm else 0.7
     else:
         score = 0.70  # neutral — no technical criteria to evaluate
 
     # Bonus from nice-to-have matches (capped at +0.10)
     if nice_to_have_tech and candidate_skills:
-        bonus_matched = sum(
-            1 for r in nice_to_have_tech if _skill_in_text(candidate_skills, r.description)
-        )
+        bonus_matched = 0
+        for req in nice_to_have_tech:
+            rm = _classify_requirement_status(req.description, candidate_skills, "nice_to_have")
+            req_matches.append(rm)
+            if rm.candidate_status == "MATCHED":
+                bonus_matched += 1
         score = min(1.0, score + 0.10 * (bonus_matched / len(nice_to_have_tech)))
 
-    return round(score, 3), matched, missing
+    return round(score, 3), matched, missing, req_matches
 
 
 def _score_experience(candidate_level: str | None, job_seniority: str | None) -> float:
@@ -178,14 +287,7 @@ def _score_experience(candidate_level: str | None, job_seniority: str | None) ->
     j = SENIORITY_RANK.get(_norm(job_seniority), 3)
     distance = abs(c - j)
 
-    if distance == 0:
-        return 1.00
-    elif distance == 1:
-        return 0.85
-    elif distance == 2:
-        return 0.60
-    else:
-        return 0.30
+    return {0: 1.00, 1: 0.85, 2: 0.60}.get(distance, 0.30)
 
 
 def _score_location(
@@ -237,6 +339,75 @@ def _score_salary(
     return 0.20
 
 
+# Domain keyword sets — used to align candidate industry experience with job context.
+_DOMAIN_KEYWORDS: dict[str, list[str]] = {
+    "fintech": ["fintech", "finance", "financial", "banking", "payment", "payments", "trading",
+                "lending", "insurance", "insurtech", "wealth management", "crypto", "blockchain", "neobank"],
+    "healthtech": ["healthtech", "health", "healthcare", "medical", "clinical", "pharma",
+                   "biotech", "hospital", "patient", "ehr", "telemedicine", "medtech"],
+    "edtech": ["edtech", "education", "learning", "e-learning", "elearning", "school",
+               "university", "lms", "training", "curriculum", "online course"],
+    "ecommerce": ["ecommerce", "e-commerce", "retail", "marketplace", "shopping",
+                  "fulfillment", "inventory", "direct-to-consumer", "dtc"],
+    "gaming": ["gaming", "game", "games", "mobile game", "video game", "esports", "gamedev"],
+    "adtech": ["adtech", "advertising", "ad tech", "programmatic", "dsp", "ssp",
+               "martech", "marketing technology", "attribution"],
+    "logistics": ["logistics", "supply chain", "shipping", "freight", "last-mile",
+                  "warehouse", "transportation", "fleet"],
+    "proptech": ["proptech", "real estate", "property", "realty", "mortgage", "construction tech"],
+    "cybersecurity": ["cybersecurity", "security", "infosec", "threat", "vulnerability",
+                      "soc", "appsec", "zero trust", "endpoint"],
+    "ai": ["artificial intelligence", "machine learning", "deep learning", "nlp",
+           "ai/ml", "llm", "generative ai", "computer vision", "ai company", "ai startup"],
+    "data": ["data platform", "analytics", "big data", "business intelligence", "bi",
+             "data infrastructure", "data warehouse"],
+    "saas": ["saas", "software as a service", "cloud platform", "b2b software", "enterprise software"],
+    "devtools": ["developer tools", "devtools", "developer platform", "sdk", "api company",
+                 "open source", "infrastructure software"],
+}
+
+
+def _score_domain(
+    candidate_industries: list[str] | None,
+    job_text: str | None,
+) -> float | None:
+    """Score domain alignment between candidate industry experience and job context.
+
+    Returns 1.0 for explicit domain match, 0.5 for inferred match,
+    0.0 for no overlap, or None when inputs are insufficient.
+    """
+    if not candidate_industries or not job_text:
+        return None
+
+    job_lower = job_text.lower()
+    candidate_lower = {c.lower().strip() for c in candidate_industries if c}
+
+    # Detect which domains the job signals
+    job_domains: set[str] = set()
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
+        if any(kw in job_lower for kw in keywords):
+            job_domains.add(domain)
+
+    if not job_domains:
+        return None
+
+    # Check if candidate industry labels match the job's domain keywords
+    direct_match = any(
+        any(kw in ci for kw in _DOMAIN_KEYWORDS.get(domain, []))
+        for domain in job_domains
+        for ci in candidate_lower
+    )
+    if direct_match:
+        return 1.0
+
+    # Fallback: candidate industry name appears verbatim in job text
+    inferred_match = any(ci in job_lower for ci in candidate_lower if len(ci) >= 4)
+    if inferred_match:
+        return 0.5
+
+    return 0.0
+
+
 # ── Hard Constraints Layer ─────────────────────────────────────────────────────
 
 def check_hard_constraints(
@@ -267,13 +438,17 @@ def check_hard_constraints(
             )
 
     # Salary blocker (> 30% below minimum)
-    if job_salary_max is not None and candidate_salary_pref_min is not None and candidate_salary_pref_min > 0:
-        if job_salary_max < candidate_salary_pref_min * 0.70:
-            gap_pct = round((1 - job_salary_max / candidate_salary_pref_min) * 100, 1)
-            blockers.append(
-                f"Salary gap: job max ${job_salary_max:,} is {gap_pct}% below "
-                f"candidate minimum ${candidate_salary_pref_min:,}"
-            )
+    if (
+        job_salary_max is not None
+        and candidate_salary_pref_min is not None
+        and candidate_salary_pref_min > 0
+        and job_salary_max < candidate_salary_pref_min * 0.70
+    ):
+        gap_pct = round((1 - job_salary_max / candidate_salary_pref_min) * 100, 1)
+        blockers.append(
+            f"Salary gap: job max ${job_salary_max:,} is {gap_pct}% below "
+            f"candidate minimum ${candidate_salary_pref_min:,}"
+        )
 
     # Work authorization blocker
     # Blocked only when candidate explicitly needs sponsorship AND job explicitly does not offer it
@@ -382,14 +557,16 @@ def compute_deterministic(
     requirements: list,
     job_salary_max: int | None = None,
     candidate_salary_pref_min: int | None = None,
+    candidate_industries: list[str] | None = None,
+    job_text: str | None = None,
 ) -> DeterministicResult:
     """Compute deterministic match scores from structured profile + job data.
 
     Accepts plain Python values so it can be unit-tested without ORM objects.
     When salary data is available, incorporates a 5th salary component.
-    Also computes career_fit_score (separate from job-fit score).
+    Also computes career_fit_score and domain_score (both informational, not weighted).
     """
-    skill_score, matched, missing = _score_skill_overlap(
+    skill_score, matched, missing, req_matches = _score_skill_overlap(
         profile_skills, requirements, job_tech_stack
     )
     exp_score = _score_experience(profile_career_level, job_seniority)
@@ -399,6 +576,7 @@ def compute_deterministic(
     career_fit = compute_career_fit(
         profile_career_level, candidate_salary_pref_min, job_seniority, job_salary_max
     )
+    domain = _score_domain(candidate_industries, job_text)
 
     if sal_score is not None:
         w = BASE_WEIGHTS_WITH_SALARY
@@ -427,4 +605,6 @@ def compute_deterministic(
         matched_skills=matched,
         missing_skills=missing,
         career_fit_score=career_fit,
+        requirement_matches=req_matches,
+        domain_score=domain,
     )

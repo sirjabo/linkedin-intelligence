@@ -8,7 +8,6 @@ Verifies:
   - High-overlap job beats low-overlap job in ranking
 """
 import math
-from collections import Counter
 
 import pytest
 
@@ -39,7 +38,7 @@ def _job(external_id: str, title: str, desc: str, tags: list[str]) -> JobRaw:
 def test_candidate_keywords_returns_counter():
     profile = {"skills": ["python", "sql"], "summary": "data engineer", "experience": [], "education": []}
     result = _candidate_keywords(profile)
-    assert isinstance(result, Counter)
+    assert isinstance(result, dict)
 
 
 def test_candidate_keywords_skill_tokens_present():
@@ -92,7 +91,7 @@ def test_compute_idf_single_job_all_same():
 def test_score_job_zero_on_no_overlap():
     job = _job("a", "Java Backend", "java spring boot", ["java", "spring"])
     idf = _compute_idf([job])
-    candidate = Counter({"python": 3, "sql": 3})
+    candidate: dict[str, float] = {"python": 3, "sql": 3}
     result = score_job(job, candidate, idf)
     assert result.score == 0.0
     assert result.matched_keywords == []
@@ -101,7 +100,7 @@ def test_score_job_zero_on_no_overlap():
 def test_score_job_positive_on_overlap():
     job = _job("a", "Python Engineer", "python sql work", ["python", "sql"])
     idf = _compute_idf([job])
-    candidate = Counter({"python": 3, "sql": 3})
+    candidate: dict[str, float] = {"python": 3, "sql": 3}
     result = score_job(job, candidate, idf)
     assert result.score > 0.0
     assert "python" in result.matched_keywords or "sql" in result.matched_keywords
@@ -110,14 +109,14 @@ def test_score_job_positive_on_overlap():
 def test_score_job_empty_candidate():
     job = _job("a", "Python Engineer", "python work", ["python"])
     idf = _compute_idf([job])
-    result = score_job(job, Counter(), idf)
+    result = score_job(job, {}, idf)
     assert result.score == 0.0
 
 
 def test_score_job_within_bounds():
     job = _job("a", "ML Engineer", "python pytorch ml", ["python", "pytorch"])
     idf = _compute_idf([job])
-    candidate = Counter({"python": 3, "pytorch": 3, "ml": 3})
+    candidate: dict[str, float] = {"python": 3, "pytorch": 3, "ml": 3}
     result = score_job(job, candidate, idf)
     assert 0.0 <= result.score <= 1.0
 

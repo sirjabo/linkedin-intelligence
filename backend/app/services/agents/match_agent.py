@@ -4,12 +4,15 @@ Pure function — takes structured data, returns structured reasoning.
 No DB I/O; no side effects.
 """
 from pydantic import BaseModel, Field
-from app.services.ai.provider import LLMProvider, default_provider
+
 from app.core.logging import get_logger
+from app.services.ai.cache import llm_cache
+from app.services.ai.model_router import route_model
+from app.services.ai.provider import LLMProvider, default_provider
 
 logger = get_logger(__name__)
 
-MODEL_MATCH = "claude-haiku-4-5-20251001"
+MODEL_MATCH = route_model("match_reason")
 
 
 # ── Output schema ─────────────────────────────────────────────────────────────
@@ -75,6 +78,20 @@ async def reason_about_match(
     provider: LLMProvider = default_provider,
 ) -> LLMMatchResult:
     """Produce a qualitative LLM assessment to complement deterministic scoring."""
+    cache_key_parts = [
+        candidate_summary or "",
+        ",".join(sorted(candidate_skills)),
+        candidate_career_level or "",
+        job_title or "",
+        job_company or "",
+        ",".join(sorted(requirements_must_have)),
+        str(round(deterministic_score, 3)),
+    ]
+    cached = llm_cache.get("match_reason", *cache_key_parts)
+    if cached is not None:
+        logger.info("match_agent.reason_cache_hit", job_title=job_title)
+        return LLMMatchResult.model_validate(cached)
+
     logger.info(
         "match_agent.reason_start",
         job_title=job_title,
@@ -118,6 +135,7 @@ Evaluate this candidate for the job and provide your structured assessment."""
         schema=LLMMatchResult,
         model=MODEL_MATCH,
     )
+    llm_cache.set("match_reason", *cache_key_parts, result.model_dump())
     logger.info(
         "match_agent.reason_done",
         llm_score=result.score,

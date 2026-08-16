@@ -42,9 +42,7 @@ class RemotiveSource:
             params["category"] = category
 
         async with (
-            self._client
-            if self._client
-            else httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+            self._client or httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
         ) as client:
             resp = await client.get(REMOTIVE_URL, params=params)
             resp.raise_for_status()

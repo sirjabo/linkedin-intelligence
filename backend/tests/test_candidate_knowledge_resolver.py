@@ -4,7 +4,7 @@ AC-04: resolver.resolve() returns the correct value and source for each semantic
 All tests use synthetic candidate data — no real personal data.
 """
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,11 +13,10 @@ import pytest
 from app.services.candidate_knowledge_resolver import (
     CandidateKnowledgeResolver,
     _compute_total_years,
-    _years_to_bucket,
-    _match_select_option,
     _get_highest_education,
+    _match_select_option,
+    _years_to_bucket,
 )
-
 
 # ── Fixtures — use SimpleNamespace so no SQLAlchemy machinery needed ──────────
 
@@ -53,9 +52,21 @@ def _make_profile(
         id=uuid.uuid4(),
         summary=summary,
         experience=experience or [
-            {"company": "BigCo", "role": "Senior Data Engineer", "start_date": "01/2021", "end_date": "Present", "duration_years": 3, "bullets": []},
-            {"company": "MidCo", "role": "Data Engineer", "start_date": "06/2018", "end_date": "12/2020", "duration_years": 2.5, "bullets": []},
-            {"company": "StartupX", "role": "Junior DE", "start_date": "01/2017", "end_date": "05/2018", "duration_years": 1.5, "bullets": []},
+            {
+                "company": "BigCo", "role": "Senior Data Engineer",
+                "start_date": "01/2021", "end_date": "Present",
+                "duration_years": 3, "bullets": [],
+            },
+            {
+                "company": "MidCo", "role": "Data Engineer",
+                "start_date": "06/2018", "end_date": "12/2020",
+                "duration_years": 2.5, "bullets": [],
+            },
+            {
+                "company": "StartupX", "role": "Junior DE",
+                "start_date": "01/2017", "end_date": "05/2018",
+                "duration_years": 1.5, "bullets": [],
+            },
         ],
         education=education or [
             {"degree": "Bachelor", "field": "Computer Science", "institution": "UBA", "year": "2016", "gpa": None},
@@ -76,6 +87,13 @@ def _make_application(
         cv_versions=[],
         answers=answers or [],
     )
+
+
+@pytest.fixture(autouse=True)
+def fresh_resolver():
+    """Ensure each test gets a clean resolver with an empty cache."""
+    global resolver
+    resolver = CandidateKnowledgeResolver()
 
 
 resolver = CandidateKnowledgeResolver()
@@ -135,7 +153,8 @@ async def test_resolve_location():
 @pytest.mark.asyncio
 async def test_resolve_work_authorization():
     c = _make_candidate(work_authorization="citizen")
-    r = await resolver.resolve("work_authorization", "Work Authorization", ["citizen", "permanent_resident", "visa_required"], c, None, _make_application())
+    opts = ["citizen", "permanent_resident", "visa_required"]
+    r = await resolver.resolve("work_authorization", "Work Authorization", opts, c, None, _make_application())
     assert r.source == "DIRECT"
     assert r.value == "citizen"
 
@@ -164,7 +183,8 @@ async def test_resolve_salary_expectation():
 async def test_resolve_years_experience_computed():
     c = _make_candidate()
     p = _make_profile()  # total = 3+2.5+1.5 = 7 → "6-10"
-    r = await resolver.resolve("years_experience", "Years of Experience", ["0-2", "3-5", "6-10", "10+"], c, p, _make_application())
+    opts = ["0-2", "3-5", "6-10", "10+"]
+    r = await resolver.resolve("years_experience", "Years of Experience", opts, c, p, _make_application())
     assert r.source == "COMPUTED"
     assert r.value is not None
     assert "6" in r.value or "10" in r.value  # "6-10" bucket
@@ -199,7 +219,7 @@ async def test_resolve_current_title():
 @pytest.mark.asyncio
 async def test_resolve_cover_letter():
     c = _make_candidate()
-    cl = SimpleNamespace(content="I am excited about this role.", created_at=datetime.utcnow())
+    cl = SimpleNamespace(content="I am excited about this role.", created_at=datetime.now(UTC))
     app = _make_application(cover_letters=[cl])
 
     r = await resolver.resolve("cover_letter", "Cover Letter", None, c, None, app)
@@ -272,7 +292,7 @@ async def test_custom_essay_from_kb_cover_letter_motivation():
     c = _make_candidate()
     cover = SimpleNamespace(
         content="Dear Hiring Manager, I am excited about this opportunity because of my Spark expertise.",
-        created_at=datetime(2026, 8, 14),
+        created_at=datetime(2026, 8, 14, tzinfo=UTC),
         evidence_refs=[],
     )
     app = _make_application(cover_letters=[cover], answers=[])

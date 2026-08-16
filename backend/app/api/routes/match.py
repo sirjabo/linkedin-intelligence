@@ -1,24 +1,29 @@
 """Match routes: run and retrieve match analyses for a job."""
+import dataclasses
 import uuid
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_db
+from app.api.deps import get_current_user
+from app.core.logging import get_logger
 from app.db.models.candidate import Candidate, CandidateProfile
 from app.db.models.job import Job
 from app.db.models.match import MatchAnalysis
-from app.api.deps import get_current_user
 from app.db.models.user import User
-from app.schemas.match import MatchResponse, MatchFeedback
-from app.services.matching.engine import (
-    compute_deterministic, tier_from_score, DET_WEIGHT,
-    check_hard_constraints, decide_application,
-)
+from app.db.session import get_db
+from app.schemas.match import MatchFeedback, MatchResponse
 from app.services.agents.match_agent import reason_about_match
-from app.core.logging import get_logger
+from app.services.matching.engine import (
+    DET_WEIGHT,
+    check_hard_constraints,
+    compute_deterministic,
+    decide_application,
+    tier_from_score,
+)
 
 router = APIRouter(prefix="/jobs", tags=["match"])
 logger = get_logger(__name__)
@@ -196,7 +201,8 @@ async def run_match(
         existing.llm_gaps = llm_result.gaps
         existing.career_fit_score = det_result.career_fit_score
         existing.application_decision = application_decision
-        existing.hard_blockers = hard_constraint.blockers if hard_constraint.blockers else None
+        existing.hard_blockers = hard_constraint.blockers or None
+        existing.requirement_matches = [dataclasses.asdict(rm) for rm in det_result.requirement_matches] or None
         existing.updated_at = now
         analysis = existing
     else:
@@ -219,7 +225,8 @@ async def run_match(
             llm_gaps=llm_result.gaps,
             career_fit_score=det_result.career_fit_score,
             application_decision=application_decision,
-            hard_blockers=hard_constraint.blockers if hard_constraint.blockers else None,
+            hard_blockers=hard_constraint.blockers or None,
+            requirement_matches=[dataclasses.asdict(rm) for rm in det_result.requirement_matches] or None,
             created_at=now,
             updated_at=now,
         )

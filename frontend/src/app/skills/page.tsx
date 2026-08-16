@@ -60,7 +60,7 @@ function SkillBar({ skill, max }: { skill: SkillFrequency; max: number }) {
         <p className="text-sm font-medium text-white leading-tight">{skill.name}</p>
         <p className="text-xs text-slate-500 mt-0.5">{CATEGORY_LABELS[skill.category] ?? skill.category}</p>
       </div>
-      <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden" role="progressbar" aria-valuenow={skill.frequency_pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${skill.name}: ${skill.frequency_pct}%`}>
         <div
           className={`h-full rounded-full transition-all duration-500 ${barColor}`}
           style={{ width: `${barPct}%` }}
@@ -122,9 +122,10 @@ export default function SkillsPage() {
       <div className="max-w-3xl mx-auto px-6 pt-16 pb-24">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors"
+          aria-label="Volver al inicio"
+          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
         >
-          <ArrowLeftIcon className="w-3.5 h-3.5" /> Volver al inicio
+          <ArrowLeftIcon className="w-3.5 h-3.5" aria-hidden="true" /> Volver al inicio
         </Link>
 
         <div className="flex items-center justify-between mb-6">
@@ -144,9 +145,10 @@ export default function SkillsPage() {
           {!loading && skills.length > 0 && (
             <button
               onClick={() => window.print()}
-              className="no-print flex items-center gap-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition-colors"
+              aria-label="Exportar Skills Radar como PDF"
+              className="no-print flex items-center gap-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <DownloadIcon className="w-3.5 h-3.5" /> PDF
+              <DownloadIcon className="w-3.5 h-3.5" aria-hidden="true" /> PDF
             </button>
           )}
         </div>
@@ -168,12 +170,14 @@ export default function SkillsPage() {
         )}
 
         {/* Role selector */}
-        <div className="flex flex-wrap gap-2 mb-8">
+        <div role="tablist" aria-label="Rol objetivo" className="flex flex-wrap gap-2 mb-8">
           {(roles.length > 0 ? roles : Object.keys(ROLE_LABELS)).map((role) => (
             <button
               key={role}
+              role="tab"
+              aria-selected={selectedRole === role}
               onClick={() => setSelectedRole(role)}
-              className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${
+              className={`text-sm px-4 py-1.5 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                 selectedRole === role
                   ? "bg-blue-600 border-blue-600 text-white"
                   : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
@@ -185,14 +189,14 @@ export default function SkillsPage() {
         </div>
 
         {error && (
-          <div className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+          <div role="alert" className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 gap-3 text-slate-400">
-            <RefreshCwIcon className="w-5 h-5 animate-spin" />
+          <div role="status" aria-label="Consultando fuentes de empleo" className="flex items-center justify-center py-20 gap-3 text-slate-400">
+            <RefreshCwIcon className="w-5 h-5 animate-spin" aria-hidden="true" />
             <span>Consultando fuentes de empleo…</span>
           </div>
         ) : (

@@ -1,17 +1,25 @@
+import hashlib
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import get_db
-from app.db.models.user import User
+from app.api.deps import get_current_user
+from app.core.logging import get_logger
 from app.db.models.candidate import Candidate
 from app.db.models.job import Job, JobRequirement
-from app.api.deps import get_current_user
-from app.schemas.job import JobCreate, JobAnalyze, JobResponse, ParsedJobResponse
+from app.db.models.user import User
+from app.db.session import get_db
+from app.schemas.job import JobAnalyze, JobCreate, JobResponse, ParsedJobResponse
 from app.services.agents.job_agent import parse_job_description
-from app.core.logging import get_logger
+
+
+def _jd_hash(raw_jd: str) -> str:
+    """Stable fingerprint for deduplication — lowercased, whitespace-normalized."""
+    normalized = " ".join(raw_jd.lower().split())
+    return hashlib.sha256(normalized.encode()).hexdigest()
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = get_logger(__name__)
@@ -62,12 +70,30 @@ async def create_job(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Job:
-    """Parse a job description and save it to the candidate's tracked jobs."""
+    """Parse a job description and save it to the candidate's tracked jobs.
+
+    Returns HTTP 200 with the existing job if the same JD was already saved (dedup).
+    Returns HTTP 201 on first save.
+    """
     candidate = await _get_candidate_or_404(current_user, db)
+
+    # Deduplication check before expensive LLM parse
+    jd_fingerprint = _jd_hash(payload.raw_jd)
+    existing_result = await db.execute(
+        select(Job)
+        .options(selectinload(Job.requirements))
+        .where(Job.candidate_id == candidate.id, Job.jd_hash == jd_fingerprint)
+    )
+    existing_job = existing_result.scalar_one_or_none()
+    if existing_job:
+        logger.info("job_dedup_hit", job_id=str(existing_job.id), candidate_id=str(candidate.id))
+        return existing_job
+
     parsed = await parse_job_description(payload.raw_jd)
 
     job = Job(
         candidate_id=candidate.id,
+        jd_hash=jd_fingerprint,
         title=payload.title or parsed.title,
         company=payload.company or parsed.company,
         job_url=payload.job_url,

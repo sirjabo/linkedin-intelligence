@@ -3,9 +3,10 @@
 URL pattern: careers.smartrecruiters.com/[company]/[job-id]
 SmartRecruiters typically has a single-page form with optional multi-step sections.
 """
+import contextlib
 import re
-from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
+from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 _CONSENT_SELECTORS = [
     "button[id*='cookie']",
@@ -28,8 +29,8 @@ _APPLY_SELECTORS = [
 class SmartRecruitersAdapter:
     ats_name = "smartrecruiters"
     url_patterns = [
-        re.compile(r"smartrecruiters\.com", re.I),
-        re.compile(r"careers\.smartrecruiters", re.I),
+        re.compile(r"smartrecruiters\.com", re.IGNORECASE),
+        re.compile(r"careers\.smartrecruiters", re.IGNORECASE),
     ]
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
@@ -37,14 +38,10 @@ class SmartRecruitersAdapter:
         # Dismiss cookie/GDPR consent banner
         for selector in _CONSENT_SELECTORS:
             if await browser.has_element(selector):
-                try:
+                with contextlib.suppress(Exception):
                     await browser.fill_text(selector, "")  # no-op fill just to focus
-                except Exception:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     await browser.click_next()  # fallback click approach
-                except Exception:
-                    pass
                 break
 
         # If on a job listing (not the apply form), click Apply
@@ -75,4 +72,4 @@ class SmartRecruitersAdapter:
         return await browser.is_confirmation_page()
 
     def extract_confirmation_id_pattern(self) -> re.Pattern | None:
-        return re.compile(r"[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}", re.I)
+        return re.compile(r"[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}", re.IGNORECASE)

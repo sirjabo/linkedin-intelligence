@@ -11,34 +11,35 @@ Security invariants:
   - No auto-submit without explicit human confirmation
 """
 import asyncio
+import contextlib
 import os
 import uuid
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models.application import Application, ApplicationSubmission, CVVersion, CoverLetter
-from app.db.models.candidate import Candidate, CandidateProfile
-from app.db.models.form import ApplicationForm, ApplicationFormField
-from app.db.models.agent_session import ApplicationAgentSession
-from app.db.models.job import Job
-from app.services.browser.playwright_adapter import PlaywrightAdapter
-from app.services.browser.adapter import RawFormField
-from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
-from app.services.cv_storage import generate_cv_file, cv_exists, get_cv_path
-from app.services.ats.registry import detect_ats
-from app.services.form_intelligence import classify_field, classify_field_llm
-from app.services.matching.engine import compute_deterministic, tier_from_score, DET_WEIGHT
-from app.services.agents.match_agent import reason_about_match
-from app.services.agents.application_agent import generate_strategy
-from app.services.agents.cv_agent import personalize_cv
-from app.services.agents.communication_agent import generate_cover_letter
-from app.services.claim_validator import validate_claims
-from app.services.ai.provider import LLMProvider, default_provider
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.models.agent_session import ApplicationAgentSession
+from app.db.models.application import Application, ApplicationSubmission, CoverLetter, CVVersion
+from app.db.models.candidate import Candidate, CandidateProfile
+from app.db.models.form import ApplicationForm, ApplicationFormField
+from app.db.models.job import Job
+from app.services.agents.application_agent import generate_strategy
+from app.services.agents.communication_agent import generate_cover_letter
+from app.services.agents.cv_agent import personalize_cv
+from app.services.agents.match_agent import reason_about_match
+from app.services.ai.provider import LLMProvider, default_provider
+from app.services.ats.registry import detect_ats
+from app.services.browser.adapter import RawFormField
+from app.services.browser.playwright_adapter import PlaywrightAdapter
+from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
+from app.services.claim_validator import EvidenceBuilder, validate_claims
+from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
+from app.services.form_intelligence import classify_field, classify_field_llm
+from app.services.matching.engine import DET_WEIGHT, compute_deterministic, tier_from_score
 
 logger = get_logger(__name__)
 
@@ -200,7 +201,7 @@ class ApplicationAgentOrchestrator:
             form.status = "ready" if human_count == 0 else "mapped"
 
             # Handle CV file
-            cv_path = await _ensure_cv_file(candidate, profile, app)
+            _cv_path = await _ensure_cv_file(candidate, profile, app)
 
             # Persist before-fill screenshot
             session.screenshot_before_path = _save_screenshot(_before_bytes, str(session.id), "before")
@@ -225,6 +226,105 @@ class ApplicationAgentOrchestrator:
             logger.error("agent.start.failed", session_id=str(session.id), error=str(exc))
             raise AgentError(f"start() failed: {exc}") from exc
 
+    async def pause(
+        self,
+        *,
+        session_id: uuid.UUID,
+        resume_from_field: str | None = None,
+        db: AsyncSession,
+    ) -> ApplicationAgentSession:
+        """Sprint I: pause a session mid-fill, optionally recording where to resume.
+
+        Allowed from: filling | awaiting_human | awaiting_confirm
+        The resume_from_field label is stored in error_message temporarily as
+        a lightweight state-carry mechanism (structured pause metadata).
+        """
+        session = await _load_session(session_id, db)
+        pausable = {"filling", "awaiting_human", "ready_to_fill", "awaiting_confirm"}
+        if session.status not in pausable:
+            raise AgentError(
+                f"Cannot pause session in status '{session.status}' — "
+                f"only {pausable} are pausable"
+            )
+        session.status = "paused"
+        if resume_from_field:
+            # Store JSON-like metadata in error_message; a real impl would use a separate column
+            import json
+            pause_meta = {"resume_from_field": resume_from_field}
+            session.error_message = json.dumps(pause_meta)
+        await db.commit()
+        logger.info(
+            "agent.paused",
+            session_id=str(session.id),
+            resume_from_field=resume_from_field,
+        )
+        return session
+
+    async def resume_from_field(
+        self,
+        *,
+        session_id: uuid.UUID,
+        field_label: str | None = None,
+        db: AsyncSession,
+    ) -> ApplicationAgentSession:
+        """Sprint I: resume a paused session, optionally starting from a specific field.
+
+        If field_label is given, marks all fields before it as skipped so the
+        browser automation can pick up mid-form. Returns the session in
+        awaiting_human or ready_to_fill depending on pending human fields.
+        """
+        session = await _load_session(session_id, db)
+        if session.status != "paused":
+            raise AgentError(
+                f"resume_from_field() requires session status 'paused', got '{session.status}'"
+            )
+
+        form = await _load_form(session.application_id, db)
+
+        # Determine effective resume field
+        effective_label = field_label
+        if not effective_label and session.error_message:
+            import json
+            with contextlib.suppress(Exception):
+                meta = json.loads(session.error_message)
+                effective_label = meta.get("resume_from_field")
+
+        # Mark fields before the resume point as skipped
+        skipped = 0
+        if effective_label:
+            found_start = False
+            for f in sorted(form.fields, key=lambda x: x.sort_order):
+                if not found_start:
+                    if (f.label or "").lower() == effective_label.lower():
+                        found_start = True
+                    else:
+                        # Soft-skip: mark human_required = False so submit() won't block on it
+                        if not f.auto_fill_value and not f.human_answer:
+                            f.human_required = False
+                            skipped += 1
+
+        session.fields_skipped = (session.fields_skipped or 0) + skipped
+
+        # Check for remaining human fields
+        unanswered = [
+            f for f in form.fields
+            if f.human_required and f.auto_fill_value is None and f.human_answer is None
+        ]
+        session.fields_human_pending = len(unanswered)
+        session.status = "awaiting_human" if unanswered else "ready_to_fill"
+        session.error_message = None  # clear pause metadata
+
+        form.status = "ready" if not unanswered else "mapped"
+        await db.commit()
+        logger.info(
+            "agent.resumed_from_field",
+            session_id=str(session.id),
+            resume_from=effective_label,
+            skipped=skipped,
+            status=session.status,
+        )
+        return session
+
     async def resume(
         self,
         *,
@@ -233,8 +333,12 @@ class ApplicationAgentOrchestrator:
     ) -> ApplicationAgentSession:
         """Check if all human fields have answers and advance the session to ready_to_fill."""
         session = await _load_session(session_id, db)
-        if session.status not in ("awaiting_human", "ready_to_fill"):
+        if session.status not in ("awaiting_human", "ready_to_fill", "paused"):
             raise AgentError(f"Cannot resume session in status '{session.status}'")
+
+        # If paused, use resume_from_field without a specific field to restart from top
+        if session.status == "paused":
+            return await self.resume_from_field(session_id=session_id, db=db)
 
         form = await _load_form(session.application_id, db)
         unanswered = [
@@ -268,7 +372,7 @@ class ApplicationAgentOrchestrator:
             raise AgentError("submit() requires human_confirmed=True — the user must explicitly confirm before submission")
 
         session = await _load_session(session_id, db)
-        if session.status not in ("ready_to_fill",):
+        if session.status != "ready_to_fill":
             raise AgentError(f"Cannot submit from session status '{session.status}' — must be 'ready_to_fill'")
 
         form = await _load_form(session.application_id, db)
@@ -281,11 +385,11 @@ class ApplicationAgentOrchestrator:
             cv_path = await _ensure_cv_file(candidate, profile, app)
 
             async with PlaywrightAdapter(headless=True) as browser:
-                await browser.open_url(session.form_url)
+                await browser.open_url(session.form_url or "")
                 raw_form = await browser.discover_form()
 
                 # Build name → RawFormField map for selector lookup
-                field_map: dict[str, RawFormField] = {f.name: f for f in raw_form.fields}
+                _field_map: dict[str, RawFormField] = {f.name: f for f in raw_form.fields}
 
                 # Fill each field
                 filled = 0
@@ -316,7 +420,7 @@ class ApplicationAgentOrchestrator:
                             await browser.select_option(selector, value)
                             filled += 1
                     elif ftype == "checkbox":
-                        checked = bool(value) and value.lower() not in ("false", "0", "no", "")
+                        checked = bool(value) and (value or "").lower() not in ("false", "0", "no", "")
                         await browser.check_checkbox(selector, checked)
                         filled += 1
                     elif ftype == "number":
@@ -326,7 +430,7 @@ class ApplicationAgentOrchestrator:
                             filled += 1
                     elif ftype == "url":
                         # Only fill if value is a well-formed URL; invalid URLs trigger browser validation
-                        if value and (value.startswith("http://") or value.startswith("https://")):
+                        if value and value.startswith(("http://", "https://")):
                             await browser.fill_text(selector, value)
                             filled += 1
                     elif value:
@@ -350,7 +454,7 @@ class ApplicationAgentOrchestrator:
                 session.status = "submitting"
                 await db.commit()
 
-                ats_adapter = detect_ats(session.form_url)
+                ats_adapter = detect_ats(session.form_url or "")
                 success = await ats_adapter.submit(browser)
 
                 if not success:
@@ -362,7 +466,7 @@ class ApplicationAgentOrchestrator:
 
                 final_url = None
                 try:
-                    state = await browser.open_url(browser._page.url if browser._page else session.form_url)
+                    state = await browser.open_url(browser._page.url if browser._page else (session.form_url or ""))
                     final_url = state.url
                 except Exception:
                     pass
@@ -379,13 +483,22 @@ class ApplicationAgentOrchestrator:
             session.completed_at = datetime.utcnow()
 
             if success:
-                # Create ApplicationSubmission record
+                # Build snapshot of submitted field values for evidence
+                submitted_data: dict[str, str] = {}
+                for db_field in form.fields:
+                    val = db_field.human_answer or db_field.auto_fill_value
+                    if val and db_field.semantic_type not in ("cv_file", "phone"):
+                        submitted_data[db_field.label or db_field.semantic_type] = val[:200]
+
+                # Create ApplicationSubmission record with full evidence
                 db.add(ApplicationSubmission(
                     application_id=session.application_id,
                     submitted_at=datetime.utcnow(),
                     confirmation_number=confirmation_id,
                     submission_url=final_url or session.form_url,
                     submitted_via="agent",
+                    form_data_submitted=submitted_data,
+                    screenshot_confirmation_path=session.screenshot_after_path,
                 ))
                 # Update Application status
                 app.status = "applied"
@@ -543,17 +656,25 @@ async def _run_intelligence_phase(
             ),
         )
 
-        # Claim validation on adapted CV text (Phase 2: add real evidence records)
+        # Build real evidence records from the profile for claim validation
+        evidence_records = EvidenceBuilder.build_from_profile(profile, extra_text=_summary)
+
+        # Claim validation on adapted CV text — now with real evidence
         cv_text = " ".join(c.adapted for c in personalized_cv_result.changes if c.adapted)
-        validation = validate_claims(cv_text, evidence_records=[])
-        if validation.unverified_claims:
+        # Also include adapted experience bullets in the validation text
+        for ep in personalized_cv_result.experience_personalized:
+            for bc in ep.bullets_adapted:
+                cv_text += " " + bc.adapted
+        validation = validate_claims(cv_text, evidence_records=evidence_records)
+        if validation.unverified_claims or validation.contradicted_claims:
             logger.warning(
                 "intelligence_phase.unverified_claims",
                 application_id=str(app.id),
-                count=len(validation.unverified_claims),
+                unverified=len(validation.unverified_claims),
+                contradicted=len(validation.contradicted_claims),
             )
 
-        # Persist CVVersion and CoverLetter
+        # Persist CVVersion and CoverLetter (Sprint A: now includes bullet-level personalization)
         db.add(CVVersion(
             application_id=app.id,
             summary_adapted=personalized_cv_result.summary_adapted,
@@ -563,6 +684,8 @@ async def _run_intelligence_phase(
             evidence_refs=personalized_cv_result.evidence_refs,
             ats_keywords=personalized_cv_result.ats_keywords_added,
             validation_result=validation.to_dict(),
+            experience_personalized=[ep.model_dump() for ep in personalized_cv_result.experience_personalized],
+            projects_personalized=[pp.model_dump() for pp in personalized_cv_result.projects_personalized],
         ))
         db.add(CoverLetter(
             application_id=app.id,
@@ -671,6 +794,37 @@ async def _load_form(application_id: uuid.UUID, db: AsyncSession) -> Application
     return form
 
 
+_CV_MAX_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+_PDF_MAGIC = b"%PDF"
+
+
+def _validate_cv_file(path: str) -> tuple[bool, str]:
+    """Sprint H: validate a CV file is present, readable, and a valid PDF.
+
+    Returns (ok, reason). reason is empty string on success.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError as exc:
+        return False, f"file not accessible: {exc}"
+
+    if stat.st_size == 0:
+        return False, "file is empty (0 bytes)"
+    if stat.st_size > _CV_MAX_SIZE_BYTES:
+        return False, f"file too large ({stat.st_size // 1024} KB > 10 MB limit)"
+
+    try:
+        with open(path, "rb") as fh:
+            header = fh.read(4)
+    except OSError as exc:
+        return False, f"file unreadable: {exc}"
+
+    if not header.startswith(_PDF_MAGIC):
+        return False, "file does not appear to be a valid PDF (missing %PDF header)"
+
+    return True, ""
+
+
 async def _ensure_cv_file(
     candidate: Candidate,
     profile: CandidateProfile | None,
@@ -678,8 +832,22 @@ async def _ensure_cv_file(
 ) -> str | None:
     try:
         if not cv_exists(candidate.id, application.id):
-            return await generate_cv_file(candidate, profile, application)
-        return get_cv_path(candidate.id, application.id)
+            path = await generate_cv_file(candidate, profile, application)
+        else:
+            path = get_cv_path(candidate.id, application.id)
+
+        if path:
+            ok, reason = _validate_cv_file(path)
+            if not ok:
+                logger.warning("cv_file_invalid", path=path, reason=reason)
+                # Attempt regeneration once on validation failure
+                path = await generate_cv_file(candidate, profile, application)
+                if path:
+                    ok2, reason2 = _validate_cv_file(path)
+                    if not ok2:
+                        logger.error("cv_file_regeneration_still_invalid", path=path, reason=reason2)
+                        return None
+        return path
     except Exception as exc:
         logger.warning("cv_file_generation_failed", error=str(exc))
         return None

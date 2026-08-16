@@ -1,0 +1,60 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # flake8-bugbear
+    "UP",       # pyupgrade
+    "S",        # flake8-bandit
+    "BLE",      # blind-except
+    "DTZ",      # datetime-tz
+    "RUF",      # ruff-specific
+    "FURB",     # refurb
+    "SIM",      # simplify
+    "PIE",      # misc cleanups
+    "ASYNC",    # async lint
+]
+ignore = [
+    # FastAPI uses Depends/Query in default args — this is the correct pattern
+    "B008",
+    # SQLAlchemy uses forward-reference strings in relationship(); ruff can't resolve them
+    "F821",
+    # Broad Exception catch is intentional in market fetch fallback and similar resilience code
+    "BLE001",
+    # try/except pass is intentional in some legacy compatibility code
+    "S110", "S112",
+    # mutable class default is handled by SQLAlchemy
+    "RUF012",
+    # datetime.date.today() is fine for our use case (UTC dates only, no TZ confusion)
+    "DTZ011", "DTZ003",
+    # EN dashes in salary/content strings are intentional typography, not bugs
+    "RUF001", "RUF002", "RUF003",
+    # Config defaults are not real secrets (dev placeholders only)
+    "S105", "S108",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files can use assert and don't need all the same guards
+"tests/**" = ["S101", "S106", "BLE001", "ASYNC230"]
+# Legacy v1 routes (Supabase auth) — kept as-is
+"app/api/routes/cv.py" = ["ALL"]
+"app/api/routes/chat.py" = ["ALL"]
+# LLM prompt strings and HTML email templates contain intentionally long lines
+"app/services/ai_service.py" = ["E501"]
+"app/services/email_service.py" = ["E501"]
+"app/services/candidate_knowledge_resolver.py" = ["E501"]
+# SQLAlchemy Column definitions with inline comments often exceed 120 chars
+"app/db/models/*.py" = ["E501"]
+# LLM prompt strings in agents/services exceed 120 chars
+"app/services/agents/*.py" = ["E501"]
+"app/services/about_writer.py" = ["E501"]
+"app/services/application_agent_orchestrator.py" = ["E501"]
+"app/services/browser/form_extractor.py" = ["E501"]
+"app/services/form_intelligence.py" = ["E501"]
+"app/main.py" = ["E501"]
+# Playwright adapter uses assert for internal invariant checks, not test assertions
+"app/services/browser/playwright_adapter.py" = ["S101"]
