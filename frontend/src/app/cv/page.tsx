@@ -83,8 +83,8 @@ export default function CVPage() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-label="Verificando sesión">
+        <Loader2 className="w-6 h-6 text-blue-400 animate-spin" aria-hidden="true" />
       </div>
     );
   }
@@ -121,16 +121,17 @@ export default function CVPage() {
               <span className="text-xs text-slate-500 group-hover:text-slate-300 transition-colors hidden sm:block">LinkedIn Intelligence</span>
             </Link>
             <div className="w-px h-3 bg-white/10 hidden sm:block" />
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-400" />
+            <div className="flex items-center gap-2" role="status">
+              <div className="w-2 h-2 rounded-full bg-green-400" aria-hidden="true" />
               <span className="text-xs text-slate-400">CV actualizado automáticamente</span>
             </div>
           </div>
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+            aria-label="Empezar con un nuevo CV"
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <RotateCcw className="w-3 h-3" />
+            <RotateCcw className="w-3 h-3" aria-hidden="true" />
             Nuevo CV
           </button>
         </div>

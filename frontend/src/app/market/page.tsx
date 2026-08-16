@@ -101,9 +101,10 @@ export default function MarketPage() {
       <div className="max-w-3xl mx-auto px-6 pt-16 pb-24">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors"
+          aria-label="Volver al inicio"
+          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
         >
-          <ArrowLeftIcon className="w-3.5 h-3.5" /> Volver al inicio
+          <ArrowLeftIcon className="w-3.5 h-3.5" aria-hidden="true" /> Volver al inicio
         </Link>
 
         <div className="flex items-center gap-3 mb-3">
@@ -120,12 +121,14 @@ export default function MarketPage() {
         </div>
 
         {/* Role tabs */}
-        <div className="flex flex-wrap gap-2 mt-6 mb-8">
+        <div role="tablist" aria-label="Rol objetivo" className="flex flex-wrap gap-2 mt-6 mb-8">
           {(roles.length > 0 ? roles : Object.keys(ROLE_LABELS)).map((role) => (
             <button
               key={role}
+              role="tab"
+              aria-selected={selectedRole === role}
               onClick={() => setSelectedRole(role)}
-              className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${
+              className={`text-sm px-4 py-1.5 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                 selectedRole === role
                   ? "bg-blue-600 border-blue-600 text-white"
                   : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
@@ -137,14 +140,14 @@ export default function MarketPage() {
         </div>
 
         {error && (
-          <div className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+          <div role="alert" className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 gap-3 text-slate-400">
-            <RefreshCwIcon className="w-5 h-5 animate-spin" />
+          <div role="status" aria-label="Analizando mercado" className="flex items-center justify-center py-20 gap-3 text-slate-400">
+            <RefreshCwIcon className="w-5 h-5 animate-spin" aria-hidden="true" />
             <span>Analizando mercado…</span>
           </div>
         ) : data ? (
@@ -179,15 +182,15 @@ export default function MarketPage() {
                       key={skill.skill}
                       className="flex items-center gap-4 bg-slate-900 border border-slate-800 rounded-xl px-5 py-3"
                     >
-                      <span className="text-xs text-slate-600 w-5 text-right">{i + 1}</span>
+                      <span className="text-xs text-slate-600 w-5 text-right" aria-hidden="true">{i + 1}</span>
                       <span className="flex-1 text-sm font-medium text-white">{skill.skill}</span>
-                      <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden" role="progressbar" aria-valuenow={skill.frequency_pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${skill.skill}: ${skill.frequency_pct}%`}>
                         <div
                           className="h-full bg-blue-500 rounded-full"
                           style={{ width: `${skill.frequency_pct}%` }}
                         />
                       </div>
-                      <span className="text-xs text-slate-400 w-10 text-right">{skill.frequency_pct}%</span>
+                      <span className="text-xs text-slate-400 w-10 text-right" aria-hidden="true">{skill.frequency_pct}%</span>
                     </div>
                   ))}
                 </div>

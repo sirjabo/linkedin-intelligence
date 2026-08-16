@@ -87,15 +87,15 @@ export default function JobDetailPage() {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Cargando…</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-label="Cargando trabajo">
+        <div className="text-slate-400 animate-pulse" aria-hidden="true">Cargando…</div>
       </div>
     );
   }
 
   if (!job) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="alert">
         <div className="text-red-400">{error || "Trabajo no encontrado"}</div>
       </div>
     );
@@ -107,8 +107,8 @@ export default function JobDetailPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">
-            <ArrowLeftIcon size={20} />
+          <Link href="/dashboard" aria-label="Volver al dashboard" className="text-slate-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+            <ArrowLeftIcon size={20} aria-hidden="true" />
           </Link>
           <h1 className="font-bold text-white truncate">{job.title ?? "Trabajo"}</h1>
         </div>
@@ -116,7 +116,7 @@ export default function JobDetailPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8">
         {error && (
-          <div className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+          <div role="alert" className="mb-4 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
@@ -154,18 +154,20 @@ export default function JobDetailPage() {
               <button
                 onClick={handleRunMatch}
                 disabled={runningMatch}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                aria-busy={runningMatch}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <ZapIcon size={15} />
+                <ZapIcon size={15} aria-hidden="true" />
                 {runningMatch ? "Analizando…" : match ? "Reanalizar match" : "Analizar match"}
               </button>
 
               <button
                 onClick={handleCreateApplication}
                 disabled={creatingApp}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                aria-busy={creatingApp}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <FileTextIcon size={15} />
+                <FileTextIcon size={15} aria-hidden="true" />
                 {creatingApp ? "Creando…" : "Crear postulación"}
               </button>
             </div>
@@ -180,13 +182,14 @@ export default function JobDetailPage() {
                 <p className="text-xs text-slate-500 mb-3">
                   Registrar el resultado real ayuda a mejorar el algoritmo de matching.
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Resultado de la postulación">
                   {OUTCOME_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
                       onClick={() => handleRecordOutcome(opt.value)}
                       disabled={recordingOutcome}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      aria-pressed={currentOutcome === opt.value}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                         currentOutcome === opt.value
                           ? "bg-blue-600 text-white"
                           : "bg-slate-800 hover:bg-slate-700 text-slate-300"
