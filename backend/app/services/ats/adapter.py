@@ -2,6 +2,7 @@
 import asyncio
 import re
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from app.core.logging import get_logger
@@ -9,6 +10,24 @@ from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 _log = get_logger(__name__)
 _T = TypeVar("_T")
+
+
+@dataclass(frozen=True)
+class ATSCapabilities:
+    """Static capability declaration for an ATS adapter.
+
+    Used by the orchestrator to adjust behaviour (e.g. apply confidence
+    penalties, surface EEO warnings, skip redundant retries).
+    """
+    eeo_detection: bool = False        # can detect EEO voluntary-disclosure sections
+    multi_page: bool = False           # form spans multiple pages / wizard steps
+    max_form_pages: int = 1            # practical upper bound on pages
+    iframe_support: bool = False       # form may be embedded in an <iframe>
+    custom_questions: bool = False     # adapter surfaces non-standard freeform questions
+    requires_apply_click: bool = False # job listing needs an Apply click before form
+    has_confirmation_id: bool = False  # adapter regex can extract a submission ID
+    confidence_penalty: float = 0.0   # subtract from auto-fill confidence (0.0 = none)
+    known_url_patterns: list[str] = field(default_factory=list)  # human-readable examples
 
 
 async def retry_with_backoff(
@@ -48,6 +67,11 @@ class ATSAdapter(Protocol):
     """
     ats_name: str
     url_patterns: list[re.Pattern]
+
+    @property
+    def capabilities(self) -> ATSCapabilities:
+        """Return the static capability matrix for this adapter."""
+        ...
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
         """Handle anything that blocks form access (cookie banners, etc.)."""

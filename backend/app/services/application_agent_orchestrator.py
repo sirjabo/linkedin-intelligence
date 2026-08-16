@@ -87,8 +87,16 @@ class ApplicationAgentOrchestrator:
         # Load application + candidate + profile
         app, candidate, profile = await _load_application_context(application_id, db)
 
-        # Detect ATS
+        # Detect ATS and log capabilities
         ats_adapter = detect_ats(form_url)
+        logger.info(
+            "ats.detected",
+            ats=ats_adapter.ats_name,
+            multi_page=ats_adapter.capabilities.multi_page,
+            requires_apply_click=ats_adapter.capabilities.requires_apply_click,
+            iframe_support=ats_adapter.capabilities.iframe_support,
+            confidence_penalty=ats_adapter.capabilities.confidence_penalty,
+        )
 
         # Create session
         session = ApplicationAgentSession(
@@ -193,11 +201,13 @@ class ApplicationAgentOrchestrator:
                     sort_order=i,
                 ))
 
-            # Update session counters
+            # Update session counters; apply adapter confidence penalty (e.g. generic ATS)
             n = len(raw_form.fields)
             session.fields_auto_filled = auto_count
             session.fields_human_pending = human_count
-            session.avg_confidence = total_confidence / n if n else None
+            raw_avg = total_confidence / n if n else 0.0
+            penalty = ats_adapter.capabilities.confidence_penalty
+            session.avg_confidence = max(0.0, round(raw_avg - penalty, 4)) if n else None
 
             form.human_fields_pending = human_count
             form.status = "ready" if human_count == 0 else "mapped"

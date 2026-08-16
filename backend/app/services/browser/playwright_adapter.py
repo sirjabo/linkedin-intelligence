@@ -161,6 +161,16 @@ class PlaywrightAdapter:
             logger.warning("fill_text_failed", selector=css_selector, error=str(exc))
             return False
 
+    async def click(self, css_selector: str) -> bool:
+        assert self._page
+        try:
+            target = self._active_frame or self._page
+            await target.locator(css_selector).first.click(timeout=5_000)
+            return True
+        except Exception as exc:
+            logger.warning("click_failed", selector=css_selector, error=str(exc))
+            return False
+
     async def select_option(self, css_selector: str, value: str) -> bool:
         assert self._page
         try:
@@ -237,12 +247,12 @@ class PlaywrightAdapter:
         return await self._page.inner_text("body")
 
     async def is_confirmation_page(self) -> bool:
-        assert self._page  # noqa: S101
+        assert self._page
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return bool(result.get("is_confirmation", False))
 
     async def extract_confirmation_id(self) -> str | None:
-        assert self._page  # noqa: S101
+        assert self._page
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return result.get("confirmation_id")
 

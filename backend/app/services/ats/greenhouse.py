@@ -4,6 +4,7 @@ URL pattern: boards.greenhouse.io/[company]/jobs/[id]
 """
 import re
 
+from app.services.ats.adapter import ATSCapabilities
 from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 # EEO section headers found in Greenhouse forms
@@ -13,6 +14,14 @@ _EEO_SECTION_PATTERNS = [
     re.compile(r"demographic\s+information", re.IGNORECASE),
     re.compile(r"\beeo\b", re.IGNORECASE),
 ]
+
+_CAPABILITIES = ATSCapabilities(
+    eeo_detection=True,
+    multi_page=True,
+    max_form_pages=10,
+    has_confirmation_id=True,
+    known_url_patterns=["boards.greenhouse.io/company/jobs/id"],
+)
 
 
 class GreenhouseAdapter:
@@ -29,33 +38,21 @@ class GreenhouseAdapter:
         "LinkedIn Profile": "LinkedIn Profile URL",
     }
 
-    def __init__(self) -> None:
-        self.sections_visited: list[str] = []
-        self.eeo_section_present: bool = False
+    @property
+    def capabilities(self) -> ATSCapabilities:
+        return _CAPABILITIES
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
-        # Greenhouse sometimes shows a GDPR consent banner
+        # Greenhouse sometimes shows a GDPR consent banner — click to accept
         try:
             page_text = await browser.get_page_text()
             if "cookie" in page_text.lower() or "gdpr" in page_text.lower():
-                await browser.fill_text("[data-gdpr-consent-accept]", "")
+                await browser.click("[data-gdpr-consent-accept]")
         except Exception:
             pass  # no banner, continue
 
-        # Detect EEO section so the orchestrator can inform the candidate
-        try:
-            page_text = await browser.get_page_text()
-            self.eeo_section_present = any(
-                p.search(page_text) for p in _EEO_SECTION_PATTERNS
-            )
-        except Exception:
-            pass
-
     def normalize_field(self, field: RawFormField) -> RawFormField:
         label = self._LABEL_OVERRIDES.get(field.label, field.label)
-        # Track which sections we've seen
-        if field.section_title and field.section_title not in self.sections_visited:
-            self.sections_visited.append(field.section_title)
         return RawFormField(
             field_id=field.field_id,
             name=field.name,
@@ -71,7 +68,7 @@ class GreenhouseAdapter:
 
     async def submit(self, browser: BrowserAutomationAdapter) -> bool:
         # Greenhouse can have multi-page forms — navigate through any intermediate pages
-        max_pages = 10
+        max_pages = _CAPABILITIES.max_form_pages
         for _ in range(max_pages):
             has_next = await browser.has_element("button:has-text('Next'), button:has-text('Continue')")
             has_submit = await browser.has_element("button[type='submit'], input[type='submit']")

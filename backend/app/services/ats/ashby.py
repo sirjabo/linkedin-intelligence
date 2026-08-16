@@ -6,6 +6,7 @@ Some jobs redirect to a separate /application page with a full form.
 """
 import re
 
+from app.services.ats.adapter import ATSCapabilities
 from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
 _APPLY_SELECTORS = [
@@ -15,6 +16,11 @@ _APPLY_SELECTORS = [
     "a[href*='/application']",
 ]
 
+_CAPABILITIES = ATSCapabilities(
+    requires_apply_click=True,
+    known_url_patterns=["jobs.ashbyhq.com/company/uuid"],
+)
+
 
 class AshbyAdapter:
     ats_name = "ashby"
@@ -22,6 +28,10 @@ class AshbyAdapter:
         re.compile(r"jobs\.ashbyhq\.com", re.IGNORECASE),
         re.compile(r"ashbyhq\.com", re.IGNORECASE),
     ]
+
+    @property
+    def capabilities(self) -> ATSCapabilities:
+        return _CAPABILITIES
 
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
         """Navigate to the application form if not already there."""
@@ -31,12 +41,13 @@ class AshbyAdapter:
         if "/application" in current_url:
             return
 
-        # Try clicking the apply button to get to the form
+        # Click the apply button to reach the form
         for selector in _APPLY_SELECTORS:
             if await browser.has_element(selector):
                 try:
-                    await browser.click_next()
-                    return
+                    clicked = await browser.click(selector)
+                    if clicked:
+                        return
                 except Exception:
                     continue
 
