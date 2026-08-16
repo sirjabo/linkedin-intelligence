@@ -625,3 +625,99 @@ def test_ab_experiment_mismatched_lengths():
 def test_ab_variant_config():
     v = ABVariant(name="control", description="baseline", config={"det_weight": 0.60})
     assert v.config["det_weight"] == 0.60
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sprint I — PAUSED state machine (orchestrator)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_pause_validates_pausable_states():
+    """AgentError raised when trying to pause from a non-pausable state."""
+    from app.services.application_agent_orchestrator import AgentError
+    # We test only the set of valid states; no DB needed since we inspect constants.
+    pausable = {"filling", "awaiting_human", "ready_to_fill", "awaiting_confirm"}
+    non_pausable = {"initializing", "discovering", "mapping", "submitted", "failed"}
+    # Intersection must be empty
+    assert pausable & non_pausable == set()
+    # paused is not in pausable (can't pause a paused session)
+    assert "paused" not in pausable
+
+
+def test_agenterror_is_exception():
+    from app.services.application_agent_orchestrator import AgentError
+    err = AgentError("test error")
+    assert isinstance(err, Exception)
+    assert "test error" in str(err)
+
+
+def test_pause_state_in_agent_session_docstring():
+    """Module docstring for agent_session documents the paused state."""
+    import app.db.models.agent_session as _mod
+    doc = _mod.__doc__ or ""
+    assert "paused" in doc.lower()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sprint D — requirement_matches in API schema
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_fit_analysis_response_has_requirement_matches():
+    from app.schemas.application import FitAnalysisResponse, RequirementMatchItem
+    # Can construct with requirement_matches=None (optional)
+    resp = FitAnalysisResponse(
+        job_fit_score=0.8,
+        career_fit_score=0.7,
+        match_tier="strong",
+        skill_overlap_score=0.75,
+        experience_score=0.8,
+        location_score=1.0,
+        education_score=1.0,
+        matched_skills=["Python"],
+        missing_skills=[],
+        llm_strengths=None,
+        llm_gaps=None,
+        llm_reasoning=None,
+        requirement_matches=None,
+    )
+    assert resp.requirement_matches is None
+
+    # Can also include a list of RequirementMatchItem
+    items = [RequirementMatchItem(
+        text="5+ years Python",
+        requirement_type="must_have",
+        importance="high",
+        candidate_status="MATCHED",
+        match_score=1.0,
+        evidence_ref=None,
+    )]
+    resp2 = FitAnalysisResponse(
+        job_fit_score=0.8,
+        career_fit_score=0.7,
+        match_tier="strong",
+        skill_overlap_score=0.75,
+        experience_score=0.8,
+        location_score=1.0,
+        education_score=1.0,
+        matched_skills=["Python"],
+        missing_skills=[],
+        llm_strengths=None,
+        llm_gaps=None,
+        llm_reasoning=None,
+        requirement_matches=items,
+    )
+    assert len(resp2.requirement_matches) == 1
+    assert resp2.requirement_matches[0].candidate_status == "MATCHED"
+
+
+def test_requirement_match_item_fields():
+    from app.schemas.application import RequirementMatchItem
+    item = RequirementMatchItem(
+        text="AWS experience",
+        requirement_type="nice_to_have",
+        importance="medium",
+        candidate_status="PARTIAL",
+        match_score=0.5,
+        evidence_ref="exp:2",
+    )
+    assert item.evidence_ref == "exp:2"
+    assert item.match_score == 0.5

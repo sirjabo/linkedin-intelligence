@@ -586,6 +586,7 @@ async def get_fit_analysis(
         llm_strengths=match.llm_strengths,
         llm_gaps=match.llm_gaps,
         llm_reasoning=match.llm_reasoning,
+        requirement_matches=match.requirement_matches,
     )
 
 

@@ -121,6 +121,15 @@ class ApplicationListResponse(BaseModel):
     updated_at: datetime
 
 
+class RequirementMatchItem(BaseModel):
+    text: str
+    requirement_type: str
+    importance: str
+    candidate_status: str
+    match_score: float
+    evidence_ref: str | None = None
+
+
 class FitAnalysisResponse(BaseModel):
     job_fit_score: float
     career_fit_score: float | None
@@ -134,6 +143,7 @@ class FitAnalysisResponse(BaseModel):
     llm_strengths: list | None
     llm_gaps: list | None
     llm_reasoning: str | None
+    requirement_matches: list[RequirementMatchItem] | None = None
 
 
 class DecisionResponse(BaseModel):

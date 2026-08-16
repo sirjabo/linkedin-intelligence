@@ -1,4 +1,5 @@
 """Match routes: run and retrieve match analyses for a job."""
+import dataclasses
 import uuid
 from datetime import datetime
 
@@ -201,6 +202,7 @@ async def run_match(
         existing.career_fit_score = det_result.career_fit_score
         existing.application_decision = application_decision
         existing.hard_blockers = hard_constraint.blockers or None
+        existing.requirement_matches = [dataclasses.asdict(rm) for rm in det_result.requirement_matches] or None
         existing.updated_at = now
         analysis = existing
     else:
@@ -224,6 +226,7 @@ async def run_match(
             career_fit_score=det_result.career_fit_score,
             application_decision=application_decision,
             hard_blockers=hard_constraint.blockers or None,
+            requirement_matches=[dataclasses.asdict(rm) for rm in det_result.requirement_matches] or None,
             created_at=now,
             updated_at=now,
         )
