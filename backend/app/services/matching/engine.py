@@ -38,11 +38,25 @@ ApplicationDecision = Literal[
     "APPLY", "APPLY_WITH_CUSTOMIZATION", "STRETCH", "LOW_FIT", "DO_NOT_APPLY", "BLOCKED"
 ]
 
+RequirementStatus = Literal["MATCHED", "PARTIAL", "MISSING", "BLOCKER", "UNCERTAIN"]
+RequirementImportance = Literal["MUST", "NICE_TO_HAVE"]
+
 
 @dataclass
 class HardConstraintResult:
     blocked: bool
     blockers: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RequirementMatch:
+    """Per-requirement breakdown of match status."""
+    text: str
+    requirement_type: str          # must_have | nice_to_have
+    importance: RequirementImportance
+    candidate_status: RequirementStatus
+    match_score: float             # 0.0–1.0
+    evidence_ref: str | None = None
 
 
 @dataclass
@@ -56,6 +70,7 @@ class DeterministicResult:
     matched_skills: list[str] = field(default_factory=list)
     missing_skills: list[str] = field(default_factory=list)
     career_fit_score: float | None = None
+    requirement_matches: list[RequirementMatch] = field(default_factory=list)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -125,11 +140,48 @@ def _skill_in_text(candidate_skills: set[str], text: str) -> bool:
     return False
 
 
+def _classify_requirement_status(
+    description: str,
+    candidate_skills: set[str],
+    req_type: str,
+) -> RequirementMatch:
+    """Classify a single requirement against candidate skills with MATCHED/PARTIAL/MISSING/BLOCKER."""
+    matched = _skill_in_text(candidate_skills, description)
+    # Partial: a synonym group that partially overlaps but is not a strong match
+    # We use substring-in-text as the bar — if true, MATCHED; if false, consider PARTIAL
+    # by checking if any candidate skill is conceptually related (first token match)
+    if matched:
+        status: RequirementStatus = "MATCHED"
+        score = 1.0
+    else:
+        # Check for weak partial match: first word of requirement matches a candidate skill
+        first_token = description.lower().split()[0] if description else ""
+        weak = first_token and any(first_token in sk for sk in candidate_skills)
+        if weak:
+            status = "PARTIAL"
+            score = 0.5
+        elif req_type == "must_have":
+            status = "BLOCKER"
+            score = 0.0
+        else:
+            status = "MISSING"
+            score = 0.0
+
+    importance: RequirementImportance = "MUST" if req_type == "must_have" else "NICE_TO_HAVE"
+    return RequirementMatch(
+        text=description,
+        requirement_type=req_type,
+        importance=importance,
+        candidate_status=status,
+        match_score=score,
+    )
+
+
 def _score_skill_overlap(
     profile_skills: list[dict],
     requirements: list,       # list of JobRequirement ORM objects
     tech_stack: list[str] | None,
-) -> tuple[float, list[str], list[str]]:
+) -> tuple[float, list[str], list[str], list[RequirementMatch]]:
     candidate_skills = {_norm(s.get("canonical_name", "")) for s in profile_skills if s.get("canonical_name")}
 
     must_have_tech = [
@@ -143,31 +195,48 @@ def _score_skill_overlap(
 
     matched: list[str] = []
     missing: list[str] = []
+    req_matches: list[RequirementMatch] = []
 
     if must_have_tech:
         for req in must_have_tech:
-            if _skill_in_text(candidate_skills, req.description):
+            rm = _classify_requirement_status(req.description, candidate_skills, "must_have")
+            req_matches.append(rm)
+            if rm.candidate_status == "MATCHED":
                 matched.append(req.description)
-            else:
+            elif rm.candidate_status not in ("PARTIAL",):
                 missing.append(req.description)
         score = len(matched) / len(must_have_tech) if must_have_tech else 0.7
     elif tech_stack:
         # Fall back to tech_stack when no explicit technical requirements
         ts_norm = [_norm(t) for t in tech_stack]
-        matched = [t for t in ts_norm if t in candidate_skills]
-        missing = [t for t in ts_norm if t not in candidate_skills]
+        for t in ts_norm:
+            if _skill_in_text(candidate_skills, t):
+                matched.append(t)
+                req_matches.append(RequirementMatch(
+                    text=t, requirement_type="must_have", importance="MUST",
+                    candidate_status="MATCHED", match_score=1.0,
+                ))
+            else:
+                missing.append(t)
+                req_matches.append(RequirementMatch(
+                    text=t, requirement_type="must_have", importance="MUST",
+                    candidate_status="MISSING", match_score=0.0,
+                ))
         score = len(matched) / len(ts_norm) if ts_norm else 0.7
     else:
         score = 0.70  # neutral — no technical criteria to evaluate
 
     # Bonus from nice-to-have matches (capped at +0.10)
     if nice_to_have_tech and candidate_skills:
-        bonus_matched = sum(
-            1 for r in nice_to_have_tech if _skill_in_text(candidate_skills, r.description)
-        )
+        bonus_matched = 0
+        for req in nice_to_have_tech:
+            rm = _classify_requirement_status(req.description, candidate_skills, "nice_to_have")
+            req_matches.append(rm)
+            if rm.candidate_status == "MATCHED":
+                bonus_matched += 1
         score = min(1.0, score + 0.10 * (bonus_matched / len(nice_to_have_tech)))
 
-    return round(score, 3), matched, missing
+    return round(score, 3), matched, missing, req_matches
 
 
 def _score_experience(candidate_level: str | None, job_seniority: str | None) -> float:
@@ -386,7 +455,7 @@ def compute_deterministic(
     When salary data is available, incorporates a 5th salary component.
     Also computes career_fit_score (separate from job-fit score).
     """
-    skill_score, matched, missing = _score_skill_overlap(
+    skill_score, matched, missing, req_matches = _score_skill_overlap(
         profile_skills, requirements, job_tech_stack
     )
     exp_score = _score_experience(profile_career_level, job_seniority)
@@ -424,4 +493,5 @@ def compute_deterministic(
         matched_skills=matched,
         missing_skills=missing,
         career_fit_score=career_fit,
+        requirement_matches=req_matches,
     )

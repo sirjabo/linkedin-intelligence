@@ -1,7 +1,8 @@
 """CV Storage: generates and stores personalized CV PDF files.
 
 Produces a real PDF via pdf_generator using CVVersion data (adapted summary,
-ordered skills) when available, falling back to raw profile data otherwise.
+ordered skills, personalized experience bullets) when available, falling back
+to raw profile data otherwise.
 
 Path convention: {UPLOAD_DIR}/cv_pdfs/{candidate_id}/{application_id}.pdf
 """
@@ -119,19 +120,36 @@ def _build_cv_dict(
         elif isinstance(raw, dict):
             skills = {k: [str(x) for x in v] for k, v in raw.items() if v}
 
-    # Experience
+    # Experience — use personalized bullets from CVVersion when available
     experience: list[dict] = []
+    personalized_bullets: dict[str, list[str]] = {}
+    if cv_version and cv_version.experience_personalized:
+        for ep in cv_version.experience_personalized:
+            if isinstance(ep, dict):
+                key = (ep.get("company", "") + "|" + ep.get("title", "")).lower()
+                adapted = [
+                    bc.get("adapted", bc.get("original", ""))
+                    for bc in (ep.get("bullets_adapted") or [])
+                    if isinstance(bc, dict)
+                ]
+                if adapted:
+                    personalized_bullets[key] = [s for s in adapted if s is not None]
+
     if profile and profile.experience:
         for exp in (profile.experience or []):
             if not isinstance(exp, dict):
                 continue
+            company = exp.get("company", "")
+            role = exp.get("role") or exp.get("title", "")
+            key = (company + "|" + role).lower()
+            bullets = personalized_bullets.get(key) or exp.get("bullets") or []
             experience.append({
-                "company": exp.get("company", ""),
-                "role": exp.get("role") or exp.get("title", ""),
+                "company": company,
+                "role": role,
                 "start_date": exp.get("start_date", ""),
                 "end_date": exp.get("end_date", "Present"),
                 "location": exp.get("location", ""),
-                "bullets": exp.get("bullets") or [],
+                "bullets": bullets,
             })
 
     # Education

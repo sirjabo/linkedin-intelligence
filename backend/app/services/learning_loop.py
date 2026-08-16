@@ -2,9 +2,13 @@
 
 Aggregates outcome data across a candidate's applications to detect
 whether the scoring engine is over- or under-optimistic, and which
-tiers need recalibration. No LLM calls — pure statistics.
+tiers need recalibration. Includes active threshold updates and A/B
+experiment framework. No LLM calls — pure statistics.
 """
+import hashlib
+import math
 from dataclasses import dataclass, field
+from typing import Any
 
 # Outcomes counted as positive signals (candidate advanced)
 _POSITIVE = {"got_interview", "offer"}
@@ -199,3 +203,155 @@ def _generate_insights(
             )
 
     return insights
+
+
+# ── Sprint L: Active Threshold Updates ───────────────────────────────────────
+
+# Default score thresholds per tier (lower bound of the tier)
+_DEFAULT_THRESHOLDS: dict[str, float] = {
+    "excellent": 0.85,
+    "strong":    0.70,
+    "moderate":  0.50,
+    "weak":      0.30,
+    "poor":      0.00,
+}
+
+# Minimum number of outcomes before updating a tier's threshold
+_MIN_OUTCOMES_FOR_THRESHOLD_UPDATE = 10
+
+# How much to shift the threshold per calibration unit (damped to avoid oscillation)
+_THRESHOLD_LEARNING_RATE = 0.05
+
+
+@dataclass
+class ThresholdUpdate:
+    tier: str
+    old_threshold: float
+    new_threshold: float
+    direction: str        # "raised" | "lowered" | "unchanged"
+    reason: str
+
+
+def _update_thresholds(
+    calibration: CalibrationReport,
+    current_thresholds: dict[str, float] | None = None,
+) -> tuple[dict[str, float], list[ThresholdUpdate]]:
+    """Compute updated match score thresholds from a calibration report.
+
+    Uses the calibration_score per tier to nudge thresholds toward better alignment
+    with observed interview rates. Returns (new_thresholds, list[ThresholdUpdate]).
+
+    - over_optimistic tier  → raise its threshold (require higher score to enter that tier)
+    - under_optimistic tier → lower its threshold (allow lower scores into the tier)
+    - well_calibrated       → unchanged
+    - insufficient data     → unchanged
+    """
+    thresholds = dict(current_thresholds or _DEFAULT_THRESHOLDS)
+    updates: list[ThresholdUpdate] = []
+
+    for ti in calibration.by_tier:
+        if ti.interview_rate is None or ti.outcomes_recorded < _MIN_OUTCOMES_FOR_THRESHOLD_UPDATE:
+            continue
+        expected = ti.expected_interview_rate or 0
+        if expected <= 0:
+            continue
+
+        tier_cal_score = ti.interview_rate / expected
+        old = thresholds.get(ti.tier, _DEFAULT_THRESHOLDS.get(ti.tier, 0.0))
+
+        if tier_cal_score < 0.75:
+            # Over-optimistic: raise the threshold for this tier
+            delta = _THRESHOLD_LEARNING_RATE * (1 - tier_cal_score)
+            new = min(old + delta, 0.99)
+            direction = "raised"
+            reason = (
+                f"interview rate {ti.interview_rate:.0%} vs {expected:.0%} expected "
+                f"(cal_score={tier_cal_score:.2f})"
+            )
+        elif tier_cal_score > 1.35:
+            # Under-optimistic: lower the threshold
+            delta = _THRESHOLD_LEARNING_RATE * (tier_cal_score - 1)
+            new = max(old - delta, 0.01)
+            direction = "lowered"
+            reason = (
+                f"outperforming: {ti.interview_rate:.0%} vs {expected:.0%} expected "
+                f"(cal_score={tier_cal_score:.2f})"
+            )
+        else:
+            new = old
+            direction = "unchanged"
+            reason = f"well calibrated (cal_score={tier_cal_score:.2f})"
+
+        thresholds[ti.tier] = new
+        updates.append(ThresholdUpdate(
+            tier=ti.tier,
+            old_threshold=old,
+            new_threshold=new,
+            direction=direction,
+            reason=reason,
+        ))
+
+    return thresholds, updates
+
+
+# ── Sprint L: A/B Experiment Framework ───────────────────────────────────────
+
+@dataclass
+class ABVariant:
+    name: str
+    description: str
+    config: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ABExperiment:
+    experiment_id: str
+    description: str
+    variants: list[ABVariant]
+    traffic_split: list[float]   # must sum to 1.0; same length as variants
+
+    def __post_init__(self) -> None:
+        if len(self.variants) != len(self.traffic_split):
+            raise ValueError("variants and traffic_split must have the same length")
+        total = sum(self.traffic_split)
+        if not math.isclose(total, 1.0, abs_tol=1e-6):
+            raise ValueError(f"traffic_split must sum to 1.0, got {total}")
+
+    def assign(self, unit_id: str) -> ABVariant:
+        """Deterministically assign a unit (candidate_id, session_id, etc.) to a variant.
+
+        Uses a hash of (experiment_id + unit_id) modulo 1000 to achieve stable assignment.
+        The same unit always gets the same variant across calls.
+        """
+        hash_input = f"{self.experiment_id}:{unit_id}".encode()
+        digest = int(hashlib.sha256(hash_input).hexdigest(), 16)
+        bucket = (digest % 1000) / 1000.0   # 0.000 … 0.999
+
+        cumulative = 0.0
+        for variant, split in zip(self.variants, self.traffic_split, strict=True):
+            cumulative += split
+            if bucket < cumulative:
+                return variant
+        return self.variants[-1]  # safety fallback
+
+
+# Pre-built experiments
+DET_WEIGHT_EXPERIMENT = ABExperiment(
+    experiment_id="det_weight_v1",
+    description="Test 0.60 vs 0.50 deterministic weight in hybrid scoring",
+    variants=[
+        ABVariant(name="control", description="det_weight=0.60 (current default)", config={"det_weight": 0.60}),
+        ABVariant(name="treatment", description="det_weight=0.50 (equal weights)", config={"det_weight": 0.50}),
+    ],
+    traffic_split=[0.50, 0.50],
+)
+
+APPLY_THRESHOLD_EXPERIMENT = ABExperiment(
+    experiment_id="apply_threshold_v1",
+    description="Test whether raising the apply threshold (0.60 → 0.65) improves interview rate",
+    variants=[
+        ABVariant(name="control",   description="apply_threshold=0.60", config={"apply_threshold": 0.60}),
+        ABVariant(name="treatment", description="apply_threshold=0.65", config={"apply_threshold": 0.65}),
+    ],
+    traffic_split=[0.50, 0.50],
+)

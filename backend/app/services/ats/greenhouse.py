@@ -6,6 +6,14 @@ import re
 
 from app.services.browser.adapter import BrowserAutomationAdapter, RawFormField
 
+# EEO section headers found in Greenhouse forms
+_EEO_SECTION_PATTERNS = [
+    re.compile(r"equal\s+employment\s+opportunity", re.IGNORECASE),
+    re.compile(r"voluntary\s+(self[\s-]?)?disclosure", re.IGNORECASE),
+    re.compile(r"demographic\s+information", re.IGNORECASE),
+    re.compile(r"\beeo\b", re.IGNORECASE),
+]
+
 
 class GreenhouseAdapter:
     ats_name = "greenhouse"
@@ -21,6 +29,10 @@ class GreenhouseAdapter:
         "LinkedIn Profile": "LinkedIn Profile URL",
     }
 
+    def __init__(self) -> None:
+        self.sections_visited: list[str] = []
+        self.eeo_section_present: bool = False
+
     async def before_discover(self, browser: BrowserAutomationAdapter) -> None:
         # Greenhouse sometimes shows a GDPR consent banner
         try:
@@ -30,8 +42,20 @@ class GreenhouseAdapter:
         except Exception:
             pass  # no banner, continue
 
+        # Detect EEO section so the orchestrator can inform the candidate
+        try:
+            page_text = await browser.get_page_text()
+            self.eeo_section_present = any(
+                p.search(page_text) for p in _EEO_SECTION_PATTERNS
+            )
+        except Exception:
+            pass
+
     def normalize_field(self, field: RawFormField) -> RawFormField:
         label = self._LABEL_OVERRIDES.get(field.label, field.label)
+        # Track which sections we've seen
+        if field.section_title and field.section_title not in self.sections_visited:
+            self.sections_visited.append(field.section_title)
         return RawFormField(
             field_id=field.field_id,
             name=field.name,
@@ -47,7 +71,6 @@ class GreenhouseAdapter:
 
     async def submit(self, browser: BrowserAutomationAdapter) -> bool:
         # Greenhouse can have multi-page forms — navigate through any intermediate pages
-        # before clicking the final Submit.
         max_pages = 10
         for _ in range(max_pages):
             has_next = await browser.has_element("button:has-text('Next'), button:has-text('Continue')")

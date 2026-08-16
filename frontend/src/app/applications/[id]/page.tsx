@@ -15,12 +15,16 @@ import {
   answerAgentField,
   previewAgent,
   submitAgent,
+  getFitAnalysis,
+  downloadCVUrl,
   type Application,
   type CVVersion,
   type CoverLetter,
   type ApplicationAnswer,
   type AgentSession,
   type AgentField,
+  type FitAnalysis,
+  type RequirementMatch,
 } from "@/lib/api-v2";
 import {
   ArrowLeftIcon,
@@ -38,6 +42,11 @@ import {
   AlertTriangleIcon,
   RefreshCwIcon,
   SendIcon,
+  DownloadIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  TargetIcon,
+  ShieldAlertIcon,
 } from "lucide-react";
 
 const AGENT_STATUS_LABEL: Record<string, string> = {
@@ -47,6 +56,7 @@ const AGENT_STATUS_LABEL: Record<string, string> = {
   awaiting_human: "Esperando respuestas",
   ready_to_fill: "Listo para completar",
   filling: "Completando formulario…",
+  paused: "Pausado",
   previewing: "Vista previa…",
   submitting: "Enviando…",
   submitted: "Enviado",
@@ -102,6 +112,11 @@ export default function ApplicationDetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [submitDone, setSubmitDone] = useState(false);
 
+  // Sprint J: fit analysis for req-by-req breakdown
+  const [fitAnalysis, setFitAnalysis] = useState<FitAnalysis | null>(null);
+  const [cvDiffOpen, setCvDiffOpen] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
+
   // Notes editing
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -126,6 +141,10 @@ export default function ApplicationDetailPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    // Sprint J: load fit analysis in background
+    getFitAnalysis(token, id)
+      .then(setFitAnalysis)
+      .catch(() => null);
   }, [token, id]);
 
   async function handleGenerateCV() {
@@ -681,33 +700,225 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
 
-        {/* Strategy */}
+        {/* Sprint J: Strategy panel (full Sprint E fields) */}
         {app.strategy && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <ZapIcon size={16} className="text-blue-400" />
-              Estrategia de postulación
-            </h3>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              {(app.strategy as Record<string, string>)?.overall_approach}
-            </p>
+            <button
+              className="w-full flex items-center justify-between"
+              onClick={() => setStrategyOpen((v) => !v)}
+            >
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                <ZapIcon size={16} className="text-blue-400" />
+                Estrategia de postulación
+              </h3>
+              {strategyOpen ? <ChevronUpIcon size={16} className="text-slate-400" /> : <ChevronDownIcon size={16} className="text-slate-400" />}
+            </button>
+
+            {strategyOpen && (() => {
+              const s = app.strategy as Record<string, unknown>;
+              return (
+                <div className="mt-4 space-y-4 text-sm">
+                  {s.positioning && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Posicionamiento</p>
+                      <p className="text-slate-300 leading-relaxed">{String(s.positioning)}</p>
+                    </div>
+                  )}
+                  {s.target_narrative && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Narrativa objetivo</p>
+                      <p className="text-slate-300 leading-relaxed">{String(s.target_narrative)}</p>
+                    </div>
+                  )}
+                  {s.overall_approach && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Enfoque general</p>
+                      <p className="text-slate-400 leading-relaxed">{String(s.overall_approach)}</p>
+                    </div>
+                  )}
+                  {Array.isArray(s.keywords_for_form) && s.keywords_for_form.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">Keywords para formularios</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(s.keywords_for_form as string[]).map((kw) => (
+                          <span key={kw} className="bg-blue-900/40 border border-blue-800/40 text-blue-300 px-2 py-0.5 rounded text-xs font-mono">{kw}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(s.interview_preparation_strategy) && s.interview_preparation_strategy.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-400 mb-2 uppercase tracking-wider">Preparación para entrevistas</p>
+                      <ul className="space-y-1.5">
+                        {(s.interview_preparation_strategy as string[]).map((tip, i) => (
+                          <li key={i} className="flex gap-2 text-slate-300">
+                            <span className="text-blue-400 flex-shrink-0">·</span>
+                            {tip}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(s.claims_to_avoid) && s.claims_to_avoid.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wider flex items-center gap-1">
+                        <ShieldAlertIcon size={11} />
+                        No mencionar en entrevistas
+                      </p>
+                      <ul className="space-y-1">
+                        {(s.claims_to_avoid as string[]).map((c, i) => (
+                          <li key={i} className="text-red-400/80 text-xs flex gap-2">
+                            <span className="flex-shrink-0">✗</span>{c}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {s.company_specific_angle && (
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-wider">Ángulo empresa</p>
+                      <p className="text-slate-300 leading-relaxed">{String(s.company_specific_angle)}</p>
+                    </div>
+                  )}
+                  {Array.isArray(s.strengths_to_emphasize) && s.strengths_to_emphasize.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-400 mb-2 uppercase tracking-wider">Fortalezas a destacar</p>
+                      <ul className="space-y-1">
+                        {(s.strengths_to_emphasize as string[]).map((st, i) => (
+                          <li key={i} className="text-emerald-300/80 text-xs flex gap-2">
+                            <span className="flex-shrink-0">✓</span>{st}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(s.risks_to_address) && s.risks_to_address.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-yellow-400 mb-2 uppercase tracking-wider">Riesgos a abordar</p>
+                      <ul className="space-y-1">
+                        {(s.risks_to_address as string[]).map((r, i) => (
+                          <li key={i} className="text-yellow-300/80 text-xs flex gap-2">
+                            <span className="flex-shrink-0">!</span>{r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
-        {/* Latest CV */}
-        {latestCV && (
+        {/* Sprint J: Requirement-by-requirement match breakdown */}
+        {fitAnalysis && fitAnalysis.requirement_matches && fitAnalysis.requirement_matches.length > 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <FileTextIcon size={16} className="text-blue-400" />
-              CV Personalizado
+              <TargetIcon size={16} className="text-blue-400" />
+              Análisis de requisitos
             </h3>
+            <div className="space-y-2">
+              {fitAnalysis.requirement_matches.map((rm: RequirementMatch, i: number) => {
+                const statusColors: Record<string, string> = {
+                  MATCHED: "bg-emerald-900/40 border-emerald-800/40 text-emerald-300",
+                  PARTIAL: "bg-yellow-900/40 border-yellow-800/40 text-yellow-300",
+                  MISSING: "bg-slate-800 border-slate-700 text-slate-400",
+                  BLOCKER: "bg-red-900/40 border-red-800/40 text-red-300",
+                  UNCERTAIN: "bg-blue-900/40 border-blue-800/40 text-blue-300",
+                };
+                const statusLabel: Record<string, string> = {
+                  MATCHED: "✓ Cubierto", PARTIAL: "~ Parcial",
+                  MISSING: "✗ Faltante", BLOCKER: "⛔ Bloqueante", UNCERTAIN: "? Incierto",
+                };
+                const cls = statusColors[rm.candidate_status] ?? "bg-slate-800 border-slate-700 text-slate-400";
+                return (
+                  <div key={i} className="flex items-start gap-3">
+                    <span className={`text-xs px-2 py-0.5 rounded border flex-shrink-0 font-mono mt-0.5 ${cls}`}>
+                      {statusLabel[rm.candidate_status] ?? rm.candidate_status}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-300 leading-snug">{rm.text}</p>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        {rm.importance === "MUST" ? "Obligatorio" : "Deseable"} · {Math.round(rm.match_score * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Sprint J: Latest CV with diff view + download */}
+        {latestCV && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                <FileTextIcon size={16} className="text-blue-400" />
+                CV Personalizado
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCvDiffOpen((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  {cvDiffOpen ? <ChevronUpIcon size={13} /> : <ChevronDownIcon size={13} />}
+                  {cvDiffOpen ? "Ocultar cambios" : "Ver cambios"}
+                </button>
+                <a
+                  href={`${downloadCVUrl(id)}?token=${token}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition-colors"
+                >
+                  <DownloadIcon size={11} />
+                  PDF
+                </a>
+              </div>
+            </div>
+
             {latestCV.headline_adapted && (
               <p className="text-blue-300 font-medium mb-2">{latestCV.headline_adapted}</p>
             )}
             {latestCV.summary_adapted && (
               <p className="text-sm text-slate-300 leading-relaxed">{latestCV.summary_adapted}</p>
             )}
-            {Array.isArray(latestCV.changes) && latestCV.changes.length > 0 && (
+            {latestCV.ats_keywords && latestCV.ats_keywords.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {latestCV.ats_keywords.map((kw) => (
+                  <span key={kw} className="bg-slate-800 text-slate-400 text-xs px-1.5 py-0.5 rounded font-mono">{kw}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Sprint J: CV Diff View */}
+            {cvDiffOpen && latestCV.experience_personalized && latestCV.experience_personalized.length > 0 && (
+              <div className="mt-4 space-y-4 border-t border-slate-800 pt-4">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Bullets adaptados por experiencia</p>
+                {latestCV.experience_personalized.map((ep, ei) => (
+                  <div key={ei} className="space-y-2">
+                    <p className="text-xs font-semibold text-slate-300">{ep.title} @ {ep.company}</p>
+                    {ep.bullets_adapted.map((bc, bi) => (
+                      <div key={bi} className="bg-slate-800/50 rounded-lg p-3 text-xs space-y-1.5 border border-slate-700/50">
+                        <div className="flex gap-2">
+                          <span className="text-red-400/70 flex-shrink-0">−</span>
+                          <span className="text-slate-500 line-through">{bc.original}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-emerald-400 flex-shrink-0">+</span>
+                          <span className="text-slate-300">{bc.adapted}</span>
+                        </div>
+                        {bc.reason && (
+                          <p className="text-slate-600 italic pl-4">{bc.reason}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {Array.isArray(latestCV.changes) && latestCV.changes.length > 0 && !cvDiffOpen && (
               <div className="mt-3 pt-3 border-t border-slate-800">
                 <p className="text-xs text-slate-500 mb-2">{latestCV.changes.length} cambio(s) sugerido(s)</p>
               </div>
@@ -725,6 +936,29 @@ export default function ApplicationDetailPage() {
             <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
               {latestCL.content}
             </div>
+          </div>
+        )}
+
+        {/* Sprint J: Submission evidence panel */}
+        {app.status === "applied" && agentSession?.status === "submitted" && (
+          <div className="bg-slate-900 border border-emerald-900/40 rounded-xl p-5">
+            <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
+              <CheckIcon size={16} className="text-emerald-400" />
+              Evidencia de postulación
+            </h3>
+            {agentSession.confirmation_id && (
+              <p className="text-xs text-slate-400 mb-2">
+                ID de confirmación: <span className="font-mono text-slate-200">{agentSession.confirmation_id}</span>
+              </p>
+            )}
+            {agentSession.final_url && (
+              <p className="text-xs text-slate-400 mb-3">
+                URL final: <span className="font-mono text-blue-400">{agentSession.final_url}</span>
+              </p>
+            )}
+            <p className="text-xs text-slate-500">
+              {agentSession.fields_confirmed} campo(s) completados · ATS: {agentSession.ats_name ?? "genérico"}
+            </p>
           </div>
         )}
 

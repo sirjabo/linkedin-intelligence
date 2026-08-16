@@ -121,3 +121,108 @@ def list_items_have_field(list_field: str, item_field: str, min_non_empty: int =
         ok = count >= min_non_empty
         return ok, f"{count}/{len(items)} {list_field}[*].{item_field} populated"
     return EvalCriterion(name=f"{list_field}_items_{item_field}", check=check)
+
+
+# ── Sprint K: LLM Judge criteria ──────────────────────────────────────────────
+
+@dataclass
+class LLMEvaluationCriterion:
+    """Criterion evaluated by a language model rather than deterministically.
+
+    The `prompt_template` receives the output text via {text} and must instruct
+    the LLM to reply with a single line: PASS <reason> or FAIL <reason>.
+    """
+    name: str
+    prompt_template: str
+    weight: float = 1.0
+    model: str = "claude-haiku-4-5-20251001"
+
+    async def evaluate_async(self, text: str) -> EvalResult:
+        """Call the LLM and parse PASS/FAIL from the response."""
+        try:
+            import anthropic
+
+            from app.core.config import settings
+
+            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            prompt = self.prompt_template.format(text=text[:4000])
+            resp = await client.messages.create(
+                model=self.model,
+                max_tokens=80,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            block = resp.content[0]
+            answer = (getattr(block, "text", "") or "").strip()
+            passed = answer.upper().startswith("PASS")
+            detail = answer[5:].strip() if len(answer) > 5 else answer
+            return EvalResult(name=self.name, passed=passed, detail=detail, weight=self.weight)
+        except Exception as exc:
+            return EvalResult(
+                name=self.name, passed=False,
+                detail=f"LLM criterion errored: {exc}", weight=self.weight,
+            )
+
+
+# ── Pre-built LLM criteria ────────────────────────────────────────────────────
+
+CVFactualityCriterion = LLMEvaluationCriterion(
+    name="cv_factuality",
+    weight=2.0,
+    prompt_template=(
+        "You are a factuality auditor. Review the following CV text and determine "
+        "whether it contains any invented metrics, dates, or accomplishments that "
+        "a candidate could NOT plausibly defend in an interview.\n\n"
+        "CV text:\n{text}\n\n"
+        "Reply with a single line: PASS if the CV appears factual, "
+        "FAIL if it contains suspicious or invented claims. Follow with a brief reason."
+    ),
+)
+
+CVPersonalizationCriterion = LLMEvaluationCriterion(
+    name="cv_personalization",
+    weight=1.5,
+    prompt_template=(
+        "You are evaluating whether a CV has been meaningfully personalized for a job. "
+        "A generic CV that reads the same for any job FAILS. A CV with role-specific "
+        "language, prioritized relevant experience, and adapted bullet points PASSES.\n\n"
+        "CV text:\n{text}\n\n"
+        "Reply with a single line: PASS or FAIL, followed by a brief reason."
+    ),
+)
+
+CoverLetterClicheCriterion = LLMEvaluationCriterion(
+    name="cover_letter_no_cliches",
+    weight=1.0,
+    prompt_template=(
+        "You are reviewing a cover letter for overused clichés. "
+        "Phrases like 'I am passionate about', 'team player', 'hard worker', "
+        "'dynamic environment', 'results-driven' are red flags.\n\n"
+        "Cover letter:\n{text}\n\n"
+        "Reply with: PASS if the letter is specific and cliché-free, "
+        "FAIL if it contains 2 or more clichés. Add a brief reason."
+    ),
+)
+
+CoverLetterCompanyHookCriterion = LLMEvaluationCriterion(
+    name="cover_letter_company_hook",
+    weight=1.0,
+    prompt_template=(
+        "Does the following cover letter demonstrate genuine knowledge of the "
+        "company (mentions their product, mission, recent news, or culture "
+        "in a specific way)? Generic 'I admire your company' does not count.\n\n"
+        "Cover letter:\n{text}\n\n"
+        "Reply with: PASS if company-specific knowledge is evident, FAIL otherwise. "
+        "Include a brief reason."
+    ),
+)
+
+
+async def evaluate_llm(
+    text: str,
+    criteria: list[LLMEvaluationCriterion],
+) -> EvalReport:
+    """Run all LLM criteria concurrently against text and return an EvalReport."""
+    import asyncio
+
+    results = await asyncio.gather(*(c.evaluate_async(text) for c in criteria))
+    return EvalReport(results=list(results))

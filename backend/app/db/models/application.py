@@ -65,6 +65,8 @@ class CVVersion(Base):
     evidence_refs: Mapped[list | None] = mapped_column(JSON)
     ats_keywords: Mapped[list | None] = mapped_column(JSON)
     validation_result: Mapped[dict | None] = mapped_column(JSON)
+    experience_personalized: Mapped[list | None] = mapped_column(JSON)  # list of ExperiencePersonalized dicts
+    projects_personalized: Mapped[list | None] = mapped_column(JSON)    # list of ProjectPersonalized dicts
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application: Mapped[Application] = relationship("Application", back_populates="cv_versions")
@@ -114,6 +116,8 @@ class ApplicationSubmission(Base):
     # manual | agent | api
     submitted_via: Mapped[str] = mapped_column(String(100), nullable=False, default="manual")
     notes: Mapped[str | None] = mapped_column(Text)
+    form_data_submitted: Mapped[dict | None] = mapped_column(JSON)    # snapshot of submitted field values
+    screenshot_confirmation_path: Mapped[str | None] = mapped_column(String(2048))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application: Mapped[Application] = relationship("Application", back_populates="submission")

@@ -40,6 +40,53 @@ class FieldResolution:
     human_hint: str | None = None  # hint shown when source=HUMAN_REQUIRED
 
 
+@dataclass
+class DateRange:
+    start_year: float | None
+    end_year: float | None  # None = present
+
+    def duration_years(self) -> float:
+        import datetime
+        end = self.end_year or datetime.datetime.utcnow().year
+        start = self.start_year or end
+        return max(0.0, end - start)
+
+
+def _parse_year(s: str | None) -> float | None:
+    if not s:
+        return None
+    s = str(s).strip()
+    # Accept "2018", "2018-01", "2018-01-15", "Jan 2018"
+    for fmt in ("%Y", "%Y-%m", "%Y-%m-%d"):
+        try:
+            import datetime
+            return float(datetime.datetime.strptime(s[:len(fmt.replace("%Y","0000").replace("%m","00").replace("%d","00"))], fmt).year)
+        except ValueError:
+            pass
+    # Try extracting 4-digit year anywhere in string
+    m = re.search(r"\b(19|20)\d{2}\b", s)
+    return float(m.group()) if m else None
+
+
+def _deduplicate_periods(periods: list[DateRange]) -> float:
+    """Sum years across periods, merging overlapping spans to avoid double counting."""
+    if not periods:
+        return 0.0
+    import datetime
+    current_year = float(datetime.datetime.utcnow().year)
+    resolved = sorted(
+        [(p.start_year or 0.0, p.end_year or current_year) for p in periods],
+        key=lambda t: t[0],
+    )
+    merged: list[tuple[float, float]] = []
+    for start, end in resolved:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return sum(end - start for start, end in merged)
+
+
 class CandidateKnowledgeResolver:
     """Resolves semantic field types to candidate-sourced values.
 
@@ -48,6 +95,7 @@ class CandidateKnowledgeResolver:
 
     def __init__(self, llm_model: str = "claude-haiku-4-5-20251001"):
         self._llm_model = llm_model
+        self._cache: dict[str, FieldResolution] = {}
 
     async def resolve(
         self,
@@ -57,8 +105,43 @@ class CandidateKnowledgeResolver:
         candidate: Candidate,
         profile: CandidateProfile | None,
         application: Application,
+        skill_target: str | None = None,
     ) -> FieldResolution:
-        """Resolve a semantic field type to a candidate-sourced value."""
+        """Resolve a semantic field type to a candidate-sourced value.
+
+        Results are cached per (semantic_type, field_label, skill_target) within this
+        resolver instance so repeated calls in the same application context are free.
+        """
+        cache_key = f"{semantic_type}|{field_label}|{skill_target or ''}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        result = await self._resolve_uncached(
+            semantic_type=semantic_type,
+            field_label=field_label,
+            field_options=field_options,
+            candidate=candidate,
+            profile=profile,
+            application=application,
+            skill_target=skill_target,
+        )
+        self._cache[cache_key] = result
+        return result
+
+    def clear_cache(self) -> None:
+        self._cache.clear()
+
+    async def _resolve_uncached(
+        self,
+        semantic_type: str,
+        field_label: str,
+        field_options: list[str] | None,
+        candidate: Candidate,
+        profile: CandidateProfile | None,
+        application: Application,
+        skill_target: str | None = None,
+    ) -> FieldResolution:
+        """Internal resolver without cache."""
         # Always-human fields
         if semantic_type in _ALWAYS_HUMAN:
             return FieldResolution(
@@ -78,6 +161,7 @@ class CandidateKnowledgeResolver:
                 candidate=candidate,
                 profile=profile,
                 application=application,
+                skill_target=skill_target,
             )
 
         # Unknown semantic type — try FROM_KB before falling back to HUMAN_REQUIRED
@@ -294,6 +378,45 @@ class CandidateKnowledgeResolver:
             return FieldResolution("graduation_year", str(year), "COMPUTED", 0.85, f"profile.education[-1].end_year = {year}")
         return FieldResolution("graduation_year", None, "HUMAN_REQUIRED", 0.8, "no education data", "Your graduation year")
 
+    async def _resolve_skill_years(
+        self,
+        *,
+        profile: CandidateProfile | None,
+        field_label: str,
+        skill_target: str | None = None,
+        field_options: list[str] | None = None,
+        **_,
+    ) -> FieldResolution:
+        """Compute years of experience for a specific skill from dated experience entries.
+
+        Deduplicates overlapping periods to avoid inflating the total.
+        Falls back to HUMAN_REQUIRED when the skill cannot be found.
+        """
+        skill = skill_target or _extract_skill_from_label(field_label)
+        if not skill:
+            return FieldResolution(
+                "skill_years", None, "HUMAN_REQUIRED", 0.6,
+                "could not determine target skill from field label",
+                f"How many years of experience do you have with {field_label}?",
+            )
+
+        periods = _extract_skill_periods(skill, profile)
+        if not periods:
+            return FieldResolution(
+                "skill_years", None, "HUMAN_REQUIRED", 0.75,
+                f"skill '{skill}' not found in dated experience entries",
+                f"How many years of {skill} experience do you have?",
+            )
+
+        total = _deduplicate_periods(periods)
+        years_str = str(int(total)) if total == int(total) else f"{total:.1f}"
+        value = _match_select_option(years_str, field_options) or years_str
+        confidence = 0.85 if total > 0 else 0.5
+        return FieldResolution(
+            "skill_years", value, "COMPUTED", confidence,
+            f"found {len(periods)} period(s) with '{skill}' → {total:.1f} deduplicated years",
+        )
+
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -436,6 +559,95 @@ def _match_select_option(value: str, options: list[str] | None) -> str | None:
         if len(v) >= 3 and v in opt_lower:
             return opt
     return None
+
+
+def _extract_skill_from_label(label: str) -> str | None:
+    """Extract the target skill name from a form field label.
+
+    Examples:
+      "Years of Python experience" → "python"
+      "How many years of SQL?" → "sql"
+      "React experience (years)" → "react"
+    """
+    label_lower = label.lower()
+    # Pattern: "years of X" / "X experience" / "experience with X"
+    patterns = [
+        re.compile(r"years?\s+of\s+([a-z][a-z0-9+#.\s/-]{1,30}?)(?:\s+experience|\s*\?|$)", re.IGNORECASE),
+        re.compile(r"([a-z][a-z0-9+#.\s/-]{1,30}?)\s+experience\s*\(?years?\)?", re.IGNORECASE),
+        re.compile(r"experience\s+(?:with|in)\s+([a-z][a-z0-9+#.\s/-]{1,30}?)(?:\s*\?|$|\s+years?)", re.IGNORECASE),
+    ]
+    for pat in patterns:
+        m = pat.search(label_lower)
+        if m:
+            return m.group(1).strip().lower()
+    return None
+
+
+def _extract_skill_periods(skill: str, profile: CandidateProfile | None) -> list[DateRange]:
+    """Find all dated experience entries that mention the given skill."""
+    if not profile or not profile.experience:
+        return []
+
+    skill_lower = skill.lower().strip()
+    periods: list[DateRange] = []
+
+    # Also check synonyms from the matching engine's synonym groups
+    try:
+        from app.services.matching.engine import _expand_skill
+        skill_synonyms = _expand_skill(skill_lower)
+    except Exception:
+        skill_synonyms = frozenset({skill_lower})
+
+    for exp in profile.experience:
+        if not isinstance(exp, dict):
+            continue
+
+        # Check if this experience mentions the skill
+        text_to_search = " ".join(filter(None, [
+            exp.get("title", ""),
+            exp.get("role", ""),
+            exp.get("description", ""),
+            " ".join(exp.get("bullets", [])) if isinstance(exp.get("bullets"), list) else "",
+            " ".join(str(s) for s in (exp.get("technologies") or exp.get("tech") or [])),
+        ])).lower()
+
+        skill_mentioned = (
+            skill_lower in text_to_search
+            or any(syn in text_to_search for syn in skill_synonyms)
+        )
+        if not skill_mentioned:
+            continue
+
+        # Also check skills[] list on the experience entry if present
+        exp_skills = [str(s).lower() for s in (exp.get("skills") or [])]
+        if exp_skills and not any(
+            skill_lower in s or any(syn in s for syn in skill_synonyms)
+            for s in exp_skills
+        ):
+            skill_mentioned = False
+
+        if not skill_mentioned:
+            continue
+
+        start = _parse_year(exp.get("start_date") or exp.get("start_year"))
+        end = _parse_year(exp.get("end_date") or exp.get("end_year"))
+        # "Present" / "current" / None end_date means still active
+        end_str = str(exp.get("end_date") or "").lower()
+        if end_str in ("present", "current", "now", "", "none"):
+            end = None  # will be resolved to current year in deduplicate
+
+        # Fall back to duration_years when dates aren't parseable
+        if start is None and end is None:
+            dur = float(exp.get("duration_years") or exp.get("years") or 0)
+            if dur > 0:
+                import datetime
+                now = float(datetime.datetime.utcnow().year)
+                periods.append(DateRange(start_year=now - dur, end_year=None))
+            continue
+
+        periods.append(DateRange(start_year=start, end_year=end))
+
+    return periods
 
 
 def _build_candidate_context(candidate: Candidate, profile: CandidateProfile | None) -> str:
