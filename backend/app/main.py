@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api.routes import (
     agent,
     analyze,
+    answers,
     applications,
     auth,
     candidates,
@@ -99,6 +100,7 @@ app.include_router(forms.router, prefix="/api/v2")
 app.include_router(agent.router, prefix="/api/v2")
 app.include_router(market.router, prefix="/api/v2")
 app.include_router(analyze.router, prefix="/api/v2")
+app.include_router(answers.router, prefix="/api/v2")
 
 
 @app.get("/health")

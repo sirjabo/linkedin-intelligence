@@ -23,6 +23,7 @@ from app.schemas.candidate import (
     SourceResponse,
 )
 from app.services.agents.profile_agent import consolidate_profiles, extract_from_source
+from app.services.github_ingestion import fetch_github_profile
 from app.services.learning_loop import compute_calibration
 from app.services.pdf_extractor import extract_pdf_text
 from app.services.profile_optimizer import generate_optimization_report
@@ -147,6 +148,58 @@ async def ingest_text_source(
     await db.commit()
     await db.refresh(source)
     logger.info("source_ingested", candidate_id=str(candidate.id), source_type=payload.source_type)
+    return source
+
+
+@router.post("/me/sources/github", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_github_source(
+    payload: SourceIngest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CandidateSource:
+    """Ingest a GitHub profile via the GitHub public API.
+
+    payload.source_url must be a GitHub profile URL (e.g. https://github.com/username)
+    or a plain GitHub username. The API fetches repos, languages, and bio automatically.
+    """
+    if not payload.source_url:
+        raise HTTPException(status_code=400, detail="source_url (GitHub profile URL or username) is required")
+
+    candidate = await _get_candidate_or_404(current_user, db)
+
+    try:
+        profile_data = await fetch_github_profile(payload.source_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc}") from exc
+
+    # Build a text representation for extraction pipeline compatibility
+    skills_text = ", ".join(s["canonical_name"] for s in profile_data.get("skills", []))
+    projects_text = "; ".join(
+        f"{p['name']}: {p['description']}" for p in profile_data.get("projects", []) if p.get("description")
+    )
+    raw_text = "\n".join(filter(None, [
+        f"Name: {profile_data.get('name', '')}",
+        f"Location: {profile_data.get('location', '')}",
+        f"Bio: {profile_data.get('summary', '')}",
+        f"Skills: {skills_text}",
+        f"Projects: {projects_text}",
+        f"GitHub: {profile_data.get('github_url', '')}",
+    ]))
+
+    source = CandidateSource(
+        candidate_id=candidate.id,
+        source_type="github",
+        source_url=profile_data.get("github_url") or payload.source_url,
+        raw_content=raw_text,
+        extracted_content=profile_data,
+        extraction_confidence=profile_data.get("extraction_confidence", 0.65),
+    )
+    db.add(source)
+    await db.commit()
+    await db.refresh(source)
+    logger.info("github_source_ingested", candidate_id=str(candidate.id))
     return source
 
 
