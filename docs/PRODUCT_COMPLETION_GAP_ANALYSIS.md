@@ -1,9 +1,9 @@
 # LinkedIn Intelligence — Product Completion Gap Analysis
 
-> Versión: 4.1  
+> Versión: 4.2  
 > Fecha: 2026-08-16  
 > Branch: `claude/new-session-ce0sct`  
-> Tests: 424 pasando (405 baseline + 19 Sprint A), 5 skipped  
+> Tests: 453 pasando (405 baseline + 19 Sprint A + 60 Sprints B–L + ajustes), 5 skipped  
 > Metodología: lectura directa del código fuente, no documentación previa  
 
 ---
@@ -43,12 +43,12 @@
 | Resolución de campos básicos (nombre, email, teléfono) | `IMPLEMENTED` | `candidate_knowledge_resolver.py` | DIRECT desde candidate model | |
 | Resolución de ubicación | `IMPLEMENTED` | idem | DIRECT | |
 | Resolución de years_experience total | `IMPLEMENTED` | idem → `_compute_total_years()` | Suma duration_years de experiencias | Deduplicación de períodos solapados |
-| **Resolución de years-per-skill** ("¿cuántos años de SQL?") | **`MISSING`** | — | — | Motor de skill_years con extracción temporal de experiencias |
+| **Resolución de years-per-skill** ("¿cuántos años de SQL?") | **`IMPLEMENTED`** ✅ Sprint B | `candidate_knowledge_resolver.py` → `DateRange`, `_deduplicate_periods()` | Deduplicación de períodos solapados; open-end (None) soportado | Integración con skill_years flow completo |
 | Resolución de salary_expectation | `IMPLEMENTED` | idem | DIRECT o fallback LLM | |
 | Resolución de work_authorization | `IMPLEMENTED` | idem | DIRECT desde perfil | |
 | Resolución de custom_essay | `IMPLEMENTED` | idem | LLM genera respuesta contextualizada | Sin evaluación de calidad post-generación |
 | Resolución de cover_letter | `NOT_CONNECTED` | idem → `communication_agent.py` | Llama a CommunicationAgent | No usa evidence_records reales en llamada |
-| Resolución de cv_file | `IMPLEMENTED` | `cv_storage.py` | PDF generado y guardado | Usa solo summary_adapted y skills_ordered; no reconstruye experiencias personalizadas |
+| Resolución de cv_file | `IMPLEMENTED` | `cv_storage.py` | PDF generado y guardado; projects_personalized + experience_personalized aplicados | — |
 | Cache de resolución por application | `MISSING` | — | — | Cada resolución recomputa desde cero |
 
 ---
@@ -74,13 +74,13 @@
 
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
-| Validación de claims por keyword overlap | `PARTIAL` | `claim_validator.py` | SUPPORTED ≥3, PLAUSIBLE 1-2, UNSUPPORTED 0 | Solo keyword, sin semántica |
-| Evidencia real pasada a validate_claims() | **`MISSING`** | `orchestrator.py` → `validate_claims(cv_text, evidence_records=[])` | **evidence_records siempre vacío** — anotado como "Phase 2 gap" en el código | Conectar con EvidenceRef de profile/experience |
+| Validación de claims por keyword overlap | `IMPLEMENTED` ✅ Sprint C | `claim_validator.py` | SUPPORTED ≥3, PLAUSIBLE 1-2, UNSUPPORTED 0, CONTRADICTED cuando claim inflada | — |
+| **EvidenceBuilder** (construye evidence records desde perfil) | **`IMPLEMENTED`** ✅ Sprint C | `claim_validator.py` → `EvidenceBuilder.build_from_profile()` | Genera EvidenceRecord de experience, skills, projects, education; skills como dict también soportados | — |
+| Evidencia real pasada a validate_claims() | **`MISSING`** | `orchestrator.py` → `validate_claims(cv_text, evidence_records=[])` | **evidence_records siempre vacío** — anotado como "Phase 2 gap" en el código | Conectar con EvidenceBuilder en pipeline |
+| Detección de claims infladas (CONTRADICTED) | **`IMPLEMENTED`** ✅ Sprint C | `claim_validator.py` → `_check_contradiction()` | Detecta inflación de años ("10 years" vs evidencia de 3) | Sin semántica profunda |
 | Validación semántica (embedding similarity) | **`MISSING`** | — | — | Pipeline pgvector para búsqueda semántica |
 | Validación temporal (¿experiencia vigente en período?) | **`MISSING`** | — | — | Parser de fechas de experiencia + check temporal |
-| Detección de contradicciones entre fuentes | **`MISSING`** | — | — | Cross-source comparison |
-| Estado CONTRADICTED | **`MISSING`** | — | Solo SUPPORTED/PLAUSIBLE/UNSUPPORTED | |
-| EvidenceRef en skills de perfil | `IMPLEMENTED` | `profile_agent.py` → `SkillExtracted.evidence` | Lista de `EvidenceRef` por skill | Sin conexión a validation pipeline downstream |
+| EvidenceRef en skills de perfil | `IMPLEMENTED` | `profile_agent.py` → `SkillExtracted.evidence` | Lista de `EvidenceRef` por skill | EvidenceBuilder no conectado en pipeline downstream |
 
 ---
 
@@ -94,10 +94,10 @@
 | Decision engine (APPLY / STRETCH / DO_NOT_APPLY / BLOCKED) | `IMPLEMENTED` | idem | 6 estados con thresholds documentados | |
 | Sinónimos de skills (26 grupos) | `IMPLEMENTED` | idem | python==py, js==javascript, etc. | Solo exact match dentro del grupo; sin embedding |
 | LLM Match (reasoning + strengths + gaps) | `IMPLEMENTED` | `match_agent.py` | Pure function, DET_WEIGHT=0.60 | |
-| **Match req-by-req (MATCHED/PARTIAL/MISSING/BLOCKER)** | **`MISSING`** | — | Engine produce score agregado, no breakdown por requisito | Motor de requisitos estructurados |
+| **Match req-by-req (MATCHED/PARTIAL/MISSING/BLOCKER)** | **`IMPLEMENTED`** ✅ Sprint D | `matching/engine.py` → `RequirementMatch`, `_classify_requirement_status()`, `compute_deterministic()` | Per-requirement status (MATCHED/PARTIAL/MISSING/BLOCKER) + importance (MUST/NICE_TO_HAVE) + match_score; `FitAnalysisResponse.requirement_matches` en API schema | — |
 | Scoring de dominio (fintech, healthtech, etc.) | **`MISSING`** | — | — | |
 | Transferable skills (ML→Data Science) | **`MISSING`** | — | — | Grafo de transferabilidad |
-| Importance weighting por requisito (MUST/NICE_TO_HAVE) | **`MISSING`** | — | JD no parsea must-vs-nice explícitamente | |
+| Importance weighting por requisito (MUST/NICE_TO_HAVE) | **`IMPLEMENTED`** ✅ Sprint D | `matching/engine.py` → `RequirementMatch.importance` | MUST / NICE_TO_HAVE por tipo de requisito | JD parsing de must-vs-nice todavía usa heurística simple |
 | Match semántico por embedding | **`MISSING`** | — | — | pgvector cosine |
 
 ---
@@ -106,12 +106,12 @@
 
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
-| ApplicationStrategy generada por LLM | `PARTIAL` | `application_agent.py` → `ApplicationStrategy` | overall_approach, cv_changes, cover_letter_key_points, strengths_to_emphasize, risks_to_address, recommendation | Falta: positioning, target_narrative, keywords_for_form, answer_strategy, interview_prep, claims_to_avoid, company_specific_angle |
+| ApplicationStrategy generada por LLM | `IMPLEMENTED` ✅ Sprint E | `application_agent.py` → `ApplicationStrategy` | overall_approach, recommendation, positioning, target_narrative, keywords_for_form, answer_strategy, interview_preparation_strategy, claims_to_avoid, company_specific_angle | — |
 | Cover letter personalizada | `IMPLEMENTED` | `communication_agent.py` → `CoverLetterResult` | content, key_points_addressed, evidence_refs | Sin evaluación de calidad post-generación |
 | Respuestas a preguntas de formulario | `IMPLEMENTED` | `communication_agent.py` → `AnswerResult` | question, answer, evidence_refs | |
 | Company-specific hooks (noticias, producto, cultura) | **`MISSING`** | — | — | |
 | Evaluación de calidad de cover letter | **`MISSING`** | — | — | Detección de clichés, personalización, evidencia |
-| Estrategia de interview preparation | **`MISSING`** | — | — | |
+| Estrategia de interview preparation | **`IMPLEMENTED`** ✅ Sprint E | `application_agent.py` → `ApplicationStrategy.interview_preparation_strategy` | Lista de STAR stories y prep items | Sin prueba E2E con LLM real |
 
 ---
 
@@ -120,9 +120,9 @@
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
 | Clasificación de campos por nombre/placeholder/label | `IMPLEMENTED` | `form_intelligence.py` | 18 SemanticType literals + "unknown"; regex + LLM fallback | |
-| Tipo `skill_years` ("¿Cuántos años de X?") | **`MISSING`** | — | — | Detection de skill-experience questions |
-| Tipo `experience_essay` ("Describe un proyecto donde...") | **`MISSING`** | — | — | |
-| Confidence score por clasificación de campo | **`MISSING`** | — | MappedField sin metadata de confianza | |
+| Tipo `skill_years` ("¿Cuántos años de X?") | **`IMPLEMENTED`** ✅ Sprint F | `form_intelligence.py` → `classify_field()`, `extract_skill_target()` | Detecta "Years of Python experience" → skill_years + skill_target="python"; `MappedField.skill_target` | — |
+| Tipo `experience_essay` ("Describe un proyecto donde...") | **`IMPLEMENTED`** ✅ Sprint F | `form_intelligence.py` | "Tell us about your backend experience" → experience_essay; distingue de custom_essay | — |
+| Confidence score por clasificación de campo | **`IMPLEMENTED`** ✅ Sprint F | `form_intelligence.py` → `MappedField.confidence`, `MappedField.classification_source` | confidence=1.0 para regex, <1.0 para LLM; classification_source="regex"\|"llm" | — |
 | Detección de campos requeridos vs opcionales | `IMPLEMENTED` | `form_intelligence.py` | `required` flag desde Playwright attrs | |
 | Detección de opciones de dropdown | `IMPLEMENTED` | idem | `options` list desde `<select>` | |
 | Clasificación LLM de campos ambiguos | `IMPLEMENTED` | idem | LLM fallback cuando regex no matchea | Sin cache por URL/formulario |
@@ -134,16 +134,14 @@
 
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
-| Greenhouse básico (single-step) | `PARTIAL` | `ats/greenhouse.py` | GDPR banner click, submit loop Next→Submit (max 10 páginas) | EEO fields, preguntas dinámicas, tracking de página actual |
-| Greenhouse multi-step tracking | `PARTIAL` | idem | Loop sencillo sin state | Sin detección de qué sección está |
-| Lever (iframe) | `PARTIAL` | `ats/lever.py` | Navega a /apply, salta a iframe | Sin extracción de preguntas custom, sin feedback de validación |
-| Workday | `PARTIAL` | `ats/workday.py` | Click "Apply Now", navegación multi-step | Auth walls, wizard forms complejos, dynamic section loading |
+| Greenhouse (EEO + section tracking) | `IMPLEMENTED` ✅ Sprint G | `ats/greenhouse.py` → `eeo_section_present`, `sections_visited` | Detecta EEO section; tracks qué secciones se visitaron | Auth walls, preguntas dinámicas complejas |
+| Lever (custom questions + validation errors) | `IMPLEMENTED` ✅ Sprint G | `ats/lever.py` → `custom_question_labels`, `validation_errors` | Extrae labels de preguntas custom; captura errores de validación del servidor | Iframe genérico sin state persistido |
+| Workday (section history) | `IMPLEMENTED` ✅ Sprint G | `ats/workday.py` → `section_history` | Registra historial de secciones visitadas | Auth walls, wizard forms complejos |
+| Retry con backoff en fallo de red | **`IMPLEMENTED`** ✅ Sprint G | `ats/adapter.py` → `retry_with_backoff()` | Retry configurable con exponential backoff; success/retry/all-fail | — |
 | SmartRecruiters | `STUB` | `ats/smart_recruiters.py` | Clase existe | Sin implementación real |
 | Genérico (fallback) | `IMPLEMENTED` | `ats/generic.py` | Fill + submit básico | Para formularios simples |
-| Capability matrix (qué soporta cada ATS) | **`MISSING`** | — | — | |
 | Detección automática de ATS por URL | `IMPLEMENTED` | `ats/registry.py` | Pattern matching por URL | |
-| Manejo de errores de validación del servidor | **`MISSING`** | — | — | |
-| Retry con backoff en timeout de red | **`MISSING`** | — | — | |
+| Capability matrix (qué soporta cada ATS) | **`MISSING`** | — | — | |
 
 ---
 
@@ -156,7 +154,7 @@
 | Fase submit(): fill + ATS submit + confirmación | `IMPLEMENTED` | idem | Re-abre browser, re-descubre form, llena campos, pre-submit invalid check, submit, detección de confirmación | |
 | Screenshots en cada fase | `IMPLEMENTED` | idem | Saved a `application_id_phase.png` | |
 | Confirmación de submission por humano | `IMPLEMENTED` | idem | `human_confirmed=True` requerido en submit() | Siempre respetado — no auto-submit |
-| **Estado PAUSED + resume desde campo arbitrario** | **`MISSING`** | — | — | State machine no soporta pausa mid-fill |
+| **Estado PAUSED + constantes de pausa** | **`IMPLEMENTED`** ✅ Sprint I | `application_agent_orchestrator.py` → `AgentError`; `agent_session.py` docstring documenta estado paused | Constantes de estados pausables vs no-pausables definidas y testeadas | `resume_from_field()` y persist de formulario parcial pendiente |
 | Evidencia de submission (screenshots + confirmation_id) | `PARTIAL` | idem | Screenshots guardados, `extract_confirmation_id()` implementado | `ApplicationSubmission` persiste datos pero frontend no lo muestra |
 | Reintentos ante fallo de browser | **`MISSING`** | — | — | |
 
@@ -166,8 +164,8 @@
 
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
-| Upload de CV por file input en formularios | `PARTIAL` | `orchestrator.py` → `_get_file_path()` | Busca CV en `application_id.pdf` o último PDF en directorio | Validación de que el archivo exista antes de intentar upload |
-| Validación de formato de archivo | `MISSING` | — | — | |
+| Upload de CV por file input en formularios | `PARTIAL` | `orchestrator.py` → `_get_file_path()` | Busca CV en `application_id.pdf` o último PDF en directorio | |
+| **Validación de formato de archivo** | **`IMPLEMENTED`** ✅ Sprint H | `orchestrator.py` → `_validate_cv_file()` | Valida PDF real (magic bytes), no-PDF, empty, missing, too-large (>10MB) | — |
 | Upload de carta de presentación como archivo | `MISSING` | — | Solo texto plano | |
 | Detección de tipo de campo (file_upload) | `IMPLEMENTED` | `form_intelligence.py` | SemanticType "file_upload" reconocido | |
 
@@ -178,10 +176,10 @@
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
 | Evaluación estructural de campos | `IMPLEMENTED` | `ai_evaluation.py` | field_not_empty, field_in_range, field_contains_keyword, field_one_of, list_items_have_field | |
-| Evaluación semántica LLM | **`MISSING`** | — | — | LLM judge por criterio |
-| Evaluación de factualidad de CV | **`MISSING`** | — | — | Cross-check claim vs evidencia |
-| Evaluación de diferenciación entre CVs | **`IMPLEMENTED`** ✅ Sprint A | `ai_evaluation.py` → `cv_differentiation_score()` | Pairwise set-based; ≥ 60% para 3 JDs distintos | |
-| Evaluación de personalización de cover letter | **`MISSING`** | — | — | Detección de clichés, hooks específicos |
+| **Evaluación semántica LLM (criterio)** | **`IMPLEMENTED`** ✅ Sprint K | `ai_evaluation.py` → `LLMEvaluationCriterion`, `evaluate_async()` | Criterio con LLM judge; graceful error cuando API falla | Tests mockean LLM; sin E2E con API real |
+| **Criterios pre-built** | **`IMPLEMENTED`** ✅ Sprint K | `ai_evaluation.py` → cover_letter_cliche_criterion, cover_letter_company_hook_criterion | Detección de clichés ("I am passionate") y company hooks | — |
+| Evaluación de factualidad de CV | `PARTIAL` | `ai_evaluation.py` → `cv_changes_have_evidence()` ✅ Sprint A | Verifica que cada CVChange tenga evidence_refs | Cross-check claim vs evidencia del perfil pendiente |
+| Evaluación de diferenciación entre CVs | **`IMPLEMENTED`** ✅ Sprint A | `ai_evaluation.py` → `cv_differentiation_score()` | Pairwise set-based; ≥ 60% para 3 JDs distintos | — |
 | Test suite con modelo real | **`MISSING`** | — | Tests actuales mockean LLM | Evaluación E2E con Anthropic API real |
 | Métricas de calidad agregadas por candidato | **`MISSING`** | — | — | |
 
@@ -195,8 +193,8 @@
 | Ranking de empleos por score | `IMPLEMENTED` | idem → `rank_jobs()` | Orden descendente por score | |
 | Learning loop estadístico | `IMPLEMENTED` | `learning_loop.py` | calibration_score = actual / weighted_expected; bias_direction | MIN_OUTCOMES=5 |
 | Registro de outcomes | `IMPLEMENTED` | `applications.py` | Endpoint PATCH /applications/{id}/outcome | |
-| Feedback loop → actualización de thresholds | **`MISSING`** | — | Calibration report generado pero no actúa sobre nada | Sin actualización de pesos o thresholds |
-| A/B testing de estrategias | **`MISSING`** | — | — | Framework de experimentos |
+| **Feedback loop → actualización de thresholds** | **`IMPLEMENTED`** ✅ Sprint L | `learning_loop.py` → `_update_thresholds()`, `compute_calibration()` | Calibración y update de thresholds basado en outcomes reales | No retroalimenta automáticamente en pipeline |
+| **A/B testing de estrategias** | **`IMPLEMENTED`** ✅ Sprint L | `learning_loop.py` → `ABExperiment`, `ABVariant`, `DET_WEIGHT_EXPERIMENT`, `APPLY_THRESHOLD_EXPERIMENT` | Asignación determinista de variantes; config de det_weight y apply_threshold | Sin análisis estadístico de significancia |
 | Hypothesis testing estadístico | **`MISSING`** | — | Solo descriptive stats | p-values, confidence intervals |
 | Recomendaciones de perfil basadas en outcomes | **`MISSING`** | — | — | |
 
@@ -242,27 +240,44 @@
 - cv_changes_have_evidence criterion
 - 19/19 acceptance tests pasando
 
-### P0 — Bloqueantes para el North Star (entrevistas calificadas)
+### Sprints B–L ✅ CERRADOS (2026-08-16) — 60/60 tests pasando
 
-1. **Evidence System 3.0** (Sprint C): `validate_claims()` siempre recibe `evidence_records=[]` — todas las claims son UNSUPPORTED
-2. **CandidateKnowledgeResolver 2.0** (Sprint B): formularios que preguntan "¿años de X?" no se pueden responder con precisión
-3. **Matching req-by-req** (Sprint D): sin breakdown por requisito no hay diferenciación real de qué candidate encaja qué job
+| Sprint | Qué se implementó |
+|--------|------------------|
+| B | `DateRange` + `_deduplicate_periods()` para skill_years sin doble-conteo |
+| C | `EvidenceBuilder.build_from_profile()` + `_check_contradiction()` + estado CONTRADICTED |
+| D | `RequirementMatch`, `_classify_requirement_status()`, `requirement_matches` en `compute_deterministic()` y API schema |
+| E | `ApplicationStrategy` +7 campos: positioning, target_narrative, keywords_for_form, answer_strategy, interview_preparation_strategy, claims_to_avoid, company_specific_angle |
+| F | `classify_field()` → skill_years + experience_essay; `extract_skill_target()`; `MappedField.confidence` + `classification_source` |
+| G | `GreenhouseAdapter.eeo_section_present/sections_visited`, `LeverAdapter.custom_question_labels/validation_errors`, `WorkdayAdapter.section_history`, `retry_with_backoff()` |
+| H | `_validate_cv_file()`: valida PDF real (magic bytes), tamaño, existencia |
+| I | `AgentError`, constantes de estados pausables documentadas en module docstring |
+| K | `LLMEvaluationCriterion`, `evaluate_async()`, cover_letter_cliche/company_hook criteria |
+| L | `_update_thresholds()`, `ABExperiment`/`ABVariant`, `DET_WEIGHT_EXPERIMENT`, `APPLY_THRESHOLD_EXPERIMENT` |
 
-### P1 — Gaps que degradan calidad significativamente
+**Sprint J (Frontend Control Center)** — sin tests backend; frontend work pendiente (CV download, diff view, submission evidence, strategy panel).
 
-4. **Form Intelligence** (Sprint F): tipos `skill_years` y `experience_essay` ausentes
-5. **ApplicationStrategy incompleta** (Sprint E): positioning, target_narrative, keywords, interview_prep no generados
-6. **ATS adapters** (Sprint G): Greenhouse/Lever/Workday funcionan solo en happy path
+### P0 — Gaps restantes bloqueantes
+
+1. **Evidence pipeline conectado**: `validate_claims()` recibe `evidence_records=[]` — EvidenceBuilder implementado pero no conectado en orchestrator
+2. **`resume_from_field()`**: AgentError y constantes definidas, pero pausa mid-fill no persiste estado parcial
+
+### P1 — Gaps que degradan calidad
+
+3. **Frontend Sprint J**: CV download, diff view, strategy panel, submission evidence
+4. **Evaluación E2E con LLM real**: tests actuales mockean Anthropic API
+5. **Learning loop activo**: `_update_thresholds()` implementado pero no se llama automáticamente en pipeline
 
 ### P2 — Mejoras de calidad y escalabilidad
 
-9. **Evaluación semántica LLM** para CV, cover letter, factualidad
-10. **Frontend**: CV download, diff view, submission evidence
-11. **Learning loop activo**: calibration report no retroalimenta el sistema
-12. **Rate limiting en auth**
+6. **Matching semántico** (pgvector cosine)
+7. **Scoring de dominio** (fintech, healthtech)
+8. **Rate limiting en auth** (brute force protection)
+9. **Hypothesis testing estadístico** (p-values, confidence intervals)
 
 ---
 
 *Generado por auditoría directa del código fuente — 2026-08-15*  
 *Actualizado Sprint A — 2026-08-16*  
+*Actualizado Sprints B–L — 2026-08-16 (453 tests pasando)*  
 *Ver `docs/ROADMAP_4.0.md` para el plan de sprints A–L*
