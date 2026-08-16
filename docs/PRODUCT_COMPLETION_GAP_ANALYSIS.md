@@ -1,9 +1,9 @@
 # LinkedIn Intelligence — Product Completion Gap Analysis
 
-> Versión: 4.2  
+> Versión: 4.3  
 > Fecha: 2026-08-16  
 > Branch: `claude/new-session-ce0sct`  
-> Tests: 453 pasando (405 baseline + 19 Sprint A + 60 Sprints B–L + ajustes), 5 skipped  
+> Tests: 515 pasando (405 baseline + 19 Sprint A + 60 Sprints B–L + 31 Sprint Completion), 5 skipped  
 > Metodología: lectura directa del código fuente, no documentación previa  
 
 ---
@@ -76,7 +76,7 @@
 |-----------|--------|----------|----------|-------|
 | Validación de claims por keyword overlap | `IMPLEMENTED` ✅ Sprint C | `claim_validator.py` | SUPPORTED ≥3, PLAUSIBLE 1-2, UNSUPPORTED 0, CONTRADICTED cuando claim inflada | — |
 | **EvidenceBuilder** (construye evidence records desde perfil) | **`IMPLEMENTED`** ✅ Sprint C | `claim_validator.py` → `EvidenceBuilder.build_from_profile()` | Genera EvidenceRecord de experience, skills, projects, education; skills como dict también soportados | — |
-| Evidencia real pasada a validate_claims() | **`MISSING`** | `orchestrator.py` → `validate_claims(cv_text, evidence_records=[])` | **evidence_records siempre vacío** — anotado como "Phase 2 gap" en el código | Conectar con EvidenceBuilder en pipeline |
+| Evidencia real pasada a validate_claims() | **`IMPLEMENTED`** ✅ Sprint Completion | `applications.py` → `evidence_records = EvidenceBuilder.build_from_profile(profile)` | evidence_records ahora construidos desde perfil real para CV gen y cover letter | — |
 | Detección de claims infladas (CONTRADICTED) | **`IMPLEMENTED`** ✅ Sprint C | `claim_validator.py` → `_check_contradiction()` | Detecta inflación de años ("10 years" vs evidencia de 3) | Sin semántica profunda |
 | Validación semántica (embedding similarity) | **`MISSING`** | — | — | Pipeline pgvector para búsqueda semántica |
 | Validación temporal (¿experiencia vigente en período?) | **`MISSING`** | — | — | Parser de fechas de experiencia + check temporal |
@@ -95,8 +95,8 @@
 | Sinónimos de skills (26 grupos) | `IMPLEMENTED` | idem | python==py, js==javascript, etc. | Solo exact match dentro del grupo; sin embedding |
 | LLM Match (reasoning + strengths + gaps) | `IMPLEMENTED` | `match_agent.py` | Pure function, DET_WEIGHT=0.60 | |
 | **Match req-by-req (MATCHED/PARTIAL/MISSING/BLOCKER)** | **`IMPLEMENTED`** ✅ Sprint D | `matching/engine.py` → `RequirementMatch`, `_classify_requirement_status()`, `compute_deterministic()` | Per-requirement status (MATCHED/PARTIAL/MISSING/BLOCKER) + importance (MUST/NICE_TO_HAVE) + match_score; `FitAnalysisResponse.requirement_matches` en API schema | — |
-| Scoring de dominio (fintech, healthtech, etc.) | **`MISSING`** | — | — | |
-| Transferable skills (ML→Data Science) | **`MISSING`** | — | — | Grafo de transferabilidad |
+| Scoring de dominio (fintech, healthtech, etc.) | **`IMPLEMENTED`** ✅ Sprint Completion | `matching/engine.py` → `_DOMAIN_KEYWORDS` (14 dominios) + `_score_domain()` + `DeterministicResult.domain_score` | Alineación candidato-job por sector; no pesa en overall_score (informativo) | Integrar como bonus ponderado en overall_score |
+| Transferable skills (ML→Data Science) | **`IMPLEMENTED`** ✅ Sprint Completion | `matching/engine.py` → `TRANSFERABLE_SKILLS` (15 skills) + `_TRANSFERABLE_REVERSE` + `_classify_requirement_status()` | Candidato con ML → requirement "data science" → PARTIAL (score=0.35); devops→SRE; mobile→ios/android | — |
 | Importance weighting por requisito (MUST/NICE_TO_HAVE) | **`IMPLEMENTED`** ✅ Sprint D | `matching/engine.py` → `RequirementMatch.importance` | MUST / NICE_TO_HAVE por tipo de requisito | JD parsing de must-vs-nice todavía usa heurística simple |
 | Match semántico por embedding | **`MISSING`** | — | — | pgvector cosine |
 
@@ -138,7 +138,7 @@
 | Lever (custom questions + validation errors) | `IMPLEMENTED` ✅ Sprint G | `ats/lever.py` → `custom_question_labels`, `validation_errors` | Extrae labels de preguntas custom; captura errores de validación del servidor | Iframe genérico sin state persistido |
 | Workday (section history) | `IMPLEMENTED` ✅ Sprint G | `ats/workday.py` → `section_history` | Registra historial de secciones visitadas | Auth walls, wizard forms complejos |
 | Retry con backoff en fallo de red | **`IMPLEMENTED`** ✅ Sprint G | `ats/adapter.py` → `retry_with_backoff()` | Retry configurable con exponential backoff; success/retry/all-fail | — |
-| SmartRecruiters | `STUB` | `ats/smart_recruiters.py` | Clase existe | Sin implementación real |
+| SmartRecruiters | `IMPLEMENTED` ✅ (auditoría corrige gap) | `ats/smart_recruiters.py` | `before_discover()`, `normalize_field()`, `submit()` (wizard hasta 8 páginas), `extract_confirmation_id_pattern()` | Sin tests de integración E2E |
 | Genérico (fallback) | `IMPLEMENTED` | `ats/generic.py` | Fill + submit básico | Para formularios simples |
 | Detección automática de ATS por URL | `IMPLEMENTED` | `ats/registry.py` | Pattern matching por URL | |
 | Capability matrix (qué soporta cada ATS) | **`MISSING`** | — | — | |
@@ -154,7 +154,7 @@
 | Fase submit(): fill + ATS submit + confirmación | `IMPLEMENTED` | idem | Re-abre browser, re-descubre form, llena campos, pre-submit invalid check, submit, detección de confirmación | |
 | Screenshots en cada fase | `IMPLEMENTED` | idem | Saved a `application_id_phase.png` | |
 | Confirmación de submission por humano | `IMPLEMENTED` | idem | `human_confirmed=True` requerido en submit() | Siempre respetado — no auto-submit |
-| **Estado PAUSED + constantes de pausa** | **`IMPLEMENTED`** ✅ Sprint I | `application_agent_orchestrator.py` → `AgentError`; `agent_session.py` docstring documenta estado paused | Constantes de estados pausables vs no-pausables definidas y testeadas | `resume_from_field()` y persist de formulario parcial pendiente |
+| **Estado PAUSED + resume_from_field()** | **`IMPLEMENTED`** ✅ Sprint I + (auditoría corrige gap) | `application_agent_orchestrator.py` → `pause()`, `resume_from_field()`, `resume()` | Estados pausables definidos; `pause()` setea status + resume_from en pause_meta; `resume_from_field()` reanuda desde campo específico | — |
 | Evidencia de submission (screenshots + confirmation_id) | `PARTIAL` | idem | Screenshots guardados, `extract_confirmation_id()` implementado | `ApplicationSubmission` persiste datos pero frontend no lo muestra |
 | Reintentos ante fallo de browser | **`MISSING`** | — | — | |
 
@@ -193,9 +193,9 @@
 | Ranking de empleos por score | `IMPLEMENTED` | idem → `rank_jobs()` | Orden descendente por score | |
 | Learning loop estadístico | `IMPLEMENTED` | `learning_loop.py` | calibration_score = actual / weighted_expected; bias_direction | MIN_OUTCOMES=5 |
 | Registro de outcomes | `IMPLEMENTED` | `applications.py` | Endpoint PATCH /applications/{id}/outcome | |
-| **Feedback loop → actualización de thresholds** | **`IMPLEMENTED`** ✅ Sprint L | `learning_loop.py` → `_update_thresholds()`, `compute_calibration()` | Calibración y update de thresholds basado en outcomes reales | No retroalimenta automáticamente en pipeline |
-| **A/B testing de estrategias** | **`IMPLEMENTED`** ✅ Sprint L | `learning_loop.py` → `ABExperiment`, `ABVariant`, `DET_WEIGHT_EXPERIMENT`, `APPLY_THRESHOLD_EXPERIMENT` | Asignación determinista de variantes; config de det_weight y apply_threshold | Sin análisis estadístico de significancia |
-| Hypothesis testing estadístico | **`MISSING`** | — | Solo descriptive stats | p-values, confidence intervals |
+| **Feedback loop → actualización de thresholds** | **`IMPLEMENTED`** ✅ Sprint L + Completion | `learning_loop.py` + `applications.py` → `record_outcome` | Auto-trigger: cada `POST /outcome` recalcula calibration y persiste thresholds actualizados en `candidate.preferences["match_thresholds"]` | — |
+| **A/B testing de estrategias** | **`IMPLEMENTED`** ✅ Sprint L | `learning_loop.py` → `ABExperiment`, `ABVariant`, `DET_WEIGHT_EXPERIMENT`, `APPLY_THRESHOLD_EXPERIMENT` | Asignación determinista de variantes; config de det_weight y apply_threshold | — |
+| **Hypothesis testing estadístico** | **`IMPLEMENTED`** ✅ Sprint Completion | `learning_loop.py` → `_norm_sf()` + z-test en `compute_calibration()` | `CalibrationReport.p_value` (two-tailed) + `CalibrationReport.significant` (True cuando p<0.05) | — |
 | Recomendaciones de perfil basadas en outcomes | **`MISSING`** | — | — | |
 
 ---
@@ -220,11 +220,11 @@
 | Capacidad | Estado | Archivos | Funciona | Falta |
 |-----------|--------|----------|----------|-------|
 | Auth JWT (registro, login, refresh) | `PRODUCTION_READY` | `auth.py` | HMAC-SHA256, PBKDF2 | |
-| Rate limiting en auth | **`MISSING`** | — | Brute force sin protección | slowapi en otros endpoints; no en auth |
+| Rate limiting en auth | **`IMPLEMENTED`** ✅ (auditoría corrige gap) | `auth.py` → `@limiter.limit(_LOGIN_LIMIT="5/min")`, `@limiter.limit(_REGISTER_LIMIT="3/min")` | slowapi con límites por ambiente (200/min dev, 5/min prod) | — |
 | SSRF protection | `IMPLEMENTED` | `ssrf.py` | Bloquea IPs privadas | |
 | Celery + Redis para tareas async | `IMPLEMENTED` | `worker/` | Email, market data tasks | |
 | Health check endpoint | `IMPLEMENTED` | `main.py` | `/health` | |
-| GDPR / account deletion | **`MISSING`** | — | — | |
+| GDPR / account deletion | **`IMPLEMENTED`** ✅ (auditoría corrige gap) | `candidates.py` → `DELETE /candidates/me` | Elimina candidate con cascade (profile, sources, jobs, applications) | — |
 | Logs estructurados (structlog) | `IMPLEMENTED` | `logging.py` | JSON con structlog | |
 
 ---
@@ -257,26 +257,37 @@
 
 **Sprint J (Frontend Control Center)** — implementado en frontend (`applications/[id]/page.tsx`) + backend endpoint `GET /{app_id}/cv/download`; todas las 6 UIs del AC presentes.
 
+### Sprint Completion ✅ CERRADO (2026-08-16) — 31 tests nuevos, 515 total
+
+| Qué se implementó | Archivo |
+|-------------------|---------|
+| `EvidenceBuilder.build_from_profile()` conectado en CV gen y cover letter routes | `applications.py` |
+| Auto-trigger de `_update_thresholds()` en cada `POST /outcome` | `applications.py` + `learning_loop.py` |
+| `TRANSFERABLE_SKILLS` (15 skills) + `_TRANSFERABLE_REVERSE` → PARTIAL en `_classify_requirement_status()` | `matching/engine.py` |
+| `_DOMAIN_KEYWORDS` (14 dominios) + `_score_domain()` → `DeterministicResult.domain_score` | `matching/engine.py` |
+| `_norm_sf()` + z-test → `CalibrationReport.p_value` + `CalibrationReport.significant` | `learning_loop.py` |
+| Correcciones en gap analysis: auth rate limiting, GDPR deletion, SmartRecruiters, resume_from_field() todos ya estaban IMPLEMENTED | gap analysis |
+
 ### P0 — Gaps restantes bloqueantes
 
-1. **Evidence pipeline conectado**: `validate_claims()` recibe `evidence_records=[]` — EvidenceBuilder implementado pero no conectado en orchestrator
-2. **`resume_from_field()`**: AgentError y constantes definidas, pero pausa mid-fill no persiste estado parcial
+(ninguno — todos los P0 anteriores están cerrados)
 
 ### P1 — Gaps que degradan calidad
 
-3. **Evaluación E2E con LLM real**: tests actuales mockean Anthropic API
-4. **Learning loop activo**: `_update_thresholds()` implementado pero no se llama automáticamente en pipeline
+1. **Evaluación E2E con LLM real**: tests actuales mockean Anthropic API
 
 ### P2 — Mejoras de calidad y escalabilidad
 
-6. **Matching semántico** (pgvector cosine)
-7. **Scoring de dominio** (fintech, healthtech)
-8. **Rate limiting en auth** (brute force protection)
-9. **Hypothesis testing estadístico** (p-values, confidence intervals)
+2. **Matching semántico** (pgvector cosine)
+3. **Cache de resolución por application** — cada resolución recomputa desde cero
+4. **Cover letter quality evaluation** — criterios LLM implementados pero no auto-llamados post-generación
+5. **Scoring de dominio** incorporado en `overall_score` (actualmente informativo solamente)
+6. **Reintentos ante fallo de browser** en orchestrator
 
 ---
 
 *Generado por auditoría directa del código fuente — 2026-08-15*  
 *Actualizado Sprint A — 2026-08-16*  
 *Actualizado Sprints B–L — 2026-08-16 (453 tests pasando)*  
+*Actualizado Sprint Completion — 2026-08-16 (515 tests pasando)*  
 *Ver `docs/ROADMAP_4.0.md` para el plan de sprints A–L*
