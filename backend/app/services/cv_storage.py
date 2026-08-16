@@ -165,17 +165,30 @@ def _build_cv_dict(
                 "year": edu.get("year") or edu.get("end_year", ""),
             })
 
-    # Projects
+    # Projects — use personalized descriptions from CVVersion when available
     projects: list[dict] = []
+    personalized_proj: dict[str, dict] = {}
+    if cv_version and cv_version.projects_personalized:
+        for pp in cv_version.projects_personalized:
+            if isinstance(pp, dict) and pp.get("name"):
+                personalized_proj[pp["name"].lower()] = pp
+
     if profile and profile.projects:
         for proj in (profile.projects or []):
             if not isinstance(proj, dict):
                 continue
+            name = proj.get("name", "")
+            pp = personalized_proj.get(name.lower())
+            description = (
+                pp.get("description_adapted") or proj.get("description", "")
+            ) if pp else proj.get("description", "")
+            highlights = (pp.get("highlights_adapted") or []) if pp else []
             projects.append({
-                "name": proj.get("name", ""),
-                "description": proj.get("description", ""),
+                "name": name,
+                "description": description,
                 "tech": proj.get("tech") or proj.get("technologies") or [],
                 "url": proj.get("url", ""),
+                "highlights": highlights,
             })
 
     return {

@@ -226,3 +226,60 @@ async def evaluate_llm(
 
     results = await asyncio.gather(*(c.evaluate_async(text) for c in criteria))
     return EvalReport(results=list(results))
+
+
+# ── Sprint A: Deterministic CV differentiation scoring ────────────────────────
+
+def _extract_experience_bullets(cv: Any) -> list[str]:
+    """Return all adapted experience bullet texts from a PersonalizedCV."""
+    bullets: list[str] = []
+    for exp in (getattr(cv, "experience_personalized", None) or []):
+        for bc in (getattr(exp, "bullets_adapted", None) or []):
+            adapted = getattr(bc, "adapted", None) or (
+                bc.get("adapted") if isinstance(bc, dict) else None
+            )
+            if adapted:
+                bullets.append(adapted.strip().lower())
+    return bullets
+
+
+def cv_differentiation_score(cvs: list[Any]) -> float:
+    """Compute pairwise differentiation across N PersonalizedCV objects.
+
+    Returns the minimum pairwise differentiation ratio across all (i, j) pairs,
+    where differentiation = 1 - |shared_bullets| / max(|bullets_i|, |bullets_j|).
+    A ratio of 1.0 means no bullets are shared; 0.0 means all bullets are identical.
+    Returns 1.0 when fewer than 2 CVs are provided.
+    """
+    if len(cvs) < 2:
+        return 1.0
+
+    bullet_sets = [set(_extract_experience_bullets(cv)) for cv in cvs]
+    min_diff = 1.0
+    for i in range(len(bullet_sets)):
+        for j in range(i + 1, len(bullet_sets)):
+            a, b = bullet_sets[i], bullet_sets[j]
+            max_size = max(len(a), len(b))
+            if max_size == 0:
+                continue
+            shared = len(a & b)
+            diff = 1.0 - shared / max_size
+            if diff < min_diff:
+                min_diff = diff
+    return min_diff
+
+
+def cv_changes_have_evidence(cv: Any) -> EvalCriterion:
+    """Criterion: every CVChange in cv.changes has at least one evidence_ref."""
+    def check(_: Any) -> tuple[bool, str]:
+        changes = getattr(cv, "changes", None) or []
+        missing = [
+            i for i, c in enumerate(changes)
+            if not (getattr(c, "evidence_refs", None) or (
+                c.get("evidence_refs") if isinstance(c, dict) else None
+            ))
+        ]
+        ok = len(missing) == 0
+        detail = "all changes have evidence_refs" if ok else f"changes at indices {missing} have no evidence_refs"
+        return ok, detail
+    return EvalCriterion(name="changes_have_evidence", check=check)

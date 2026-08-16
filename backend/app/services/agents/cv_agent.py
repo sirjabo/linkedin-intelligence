@@ -20,12 +20,33 @@ MODEL = route_model("cv_personalize")
 
 class CVChange(BaseModel):
     section: str = Field(description="summary | skills | experience | projects | headline")
+    bullet_index: int | None = Field(
+        None, description="0-based index of bullet within the section; None for section-level changes"
+    )
     original: str = Field(description="The original text before adaptation")
     adapted: str = Field(description="The adapted text after personalization")
-    rationale: str = Field(description="Why this change improves fit for this job")
-    evidence_ref: str | None = Field(
-        None, description="Reference to the experience or skill this builds on"
+    reason: str = Field(description="Why this change improves fit for this job")
+    job_requirement: str = Field(
+        default="", description="The specific JD requirement this change addresses"
     )
+    evidence_refs: list[str] = Field(
+        default_factory=list,
+        description="Profile experiences, skills, or projects backing this claim",
+    )
+    confidence: float = Field(
+        default=0.8, ge=0.0, le=1.0,
+        description="Confidence (0-1) that this rewrite is accurate and the candidate can defend it",
+    )
+
+    @property
+    def evidence_ref(self) -> str | None:
+        """Backward-compat alias for the first evidence_refs entry."""
+        return self.evidence_refs[0] if self.evidence_refs else None
+
+    @property
+    def rationale(self) -> str:
+        """Backward-compat alias for reason."""
+        return self.reason
 
 
 class BulletChange(BaseModel):
@@ -112,7 +133,13 @@ PROHIBITED:
 - Adding technologies not in the original profile
 - Confidence > 0.9 when the original bullet is vague and the adaptation is interpretive
 
-For every change, explain what you changed, why it improves fit, and what evidence supports it.
+For every change, populate ALL fields:
+- bullet_index: the 0-based index of the bullet in that experience, or null for section-level changes
+- reason: concise explanation of why this change improves fit
+- job_requirement: copy the exact phrase from the JD this change addresses
+- evidence_refs: list of skills, projects, or experience items from the profile that back the claim
+- confidence: 0.9 if the original bullet is specific; 0.7-0.8 if it's vague and the adaptation is interpretive
+
 The candidate must be able to defend every claim in an interview.
 Produce experience_personalized for the top 3 most relevant experience entries only.
 Produce projects_personalized for the top 2 most relevant projects only."""
