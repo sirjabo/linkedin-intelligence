@@ -102,8 +102,8 @@ export default function DashboardPage() {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Cargando dashboard…</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-label="Cargando dashboard">
+        <div className="text-slate-400 animate-pulse" aria-hidden="true">Cargando dashboard…</div>
       </div>
     );
   }
@@ -114,7 +114,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
 
-      <main className="max-w-6xl mx-auto px-6 pt-10 pb-24">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 sm:pt-10 pb-24">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold">Dashboard</h1>
@@ -158,8 +158,8 @@ export default function DashboardPage() {
           <div className="md:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Postulaciones recientes</h2>
-              <Link href="/applications" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                Ver todas <ArrowRightIcon className="w-3 h-3" />
+              <Link href="/applications" aria-label="Ver todas las postulaciones" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+                Ver todas <ArrowRightIcon className="w-3 h-3" aria-hidden="true" />
               </Link>
             </div>
 
@@ -211,8 +211,8 @@ export default function DashboardPage() {
               <>
                 <div className="flex items-center justify-between mt-6">
                   <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Ofertas para vos</h2>
-                  <Link href="/recommendations" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                    Ver más <ArrowRightIcon className="w-3 h-3" />
+                  <Link href="/recommendations" aria-label="Ver más ofertas recomendadas" className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+                    Ver más <ArrowRightIcon className="w-3 h-3" aria-hidden="true" />
                   </Link>
                 </div>
                 <div className="space-y-2">
