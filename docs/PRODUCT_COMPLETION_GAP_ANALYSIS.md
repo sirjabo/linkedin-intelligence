@@ -207,11 +207,11 @@
 | UI de workflow de aplicación (8 estados) | `IMPLEMENTED` | `applications/[id]/page.tsx` | initializing → submitted/failed; polling 3s | |
 | Campos HUMAN_REQUIRED con dropdown/texto | `IMPLEMENTED` | idem | Select cuando hay options; text input con auto_fill | |
 | Readiness checklist | `IMPLEMENTED` | idem | CV / cover letter / strategy / applied | |
-| **Descarga de CV generado** | **`MISSING`** | — | — | Link a PDF endpoint |
-| **Vista diff de cambios de CV** | **`MISSING`** | — | — | Original vs personalizado por sección |
-| **Vista de estrategia completa** | **`MISSING`** | — | — | Expandir ApplicationStrategy |
-| **Evidencia de submission** | **`MISSING`** | — | Frontend no muestra confirmation_id ni screenshots | |
-| **Vista req-by-req del match** | **`MISSING`** | — | — | Depende de Matching 3.0 |
+| **Descarga de CV generado** | **`IMPLEMENTED`** ✅ Sprint J | `applications.py` → `GET /{app_id}/cv/download` + frontend download button | FileResponse PDF; regenera si no existe en disco | — |
+| **Vista diff de cambios de CV** | **`IMPLEMENTED`** ✅ Sprint J | `applications/[id]/page.tsx` → cvDiffOpen panel | Muestra original vs adapted por bullet con reason | — |
+| **Vista de estrategia completa** | **`IMPLEMENTED`** ✅ Sprint J | idem → strategyOpen panel | positioning, target_narrative, keywords, interview_prep, claims_to_avoid, company_specific_angle, strengths, risks | — |
+| **Evidencia de submission** | **`IMPLEMENTED`** ✅ Sprint J | idem → submission evidence panel | confirmation_id, final_url, fields_confirmed, ats_name | Screenshots no persistidos en DB |
+| **Vista req-by-req del match** | **`IMPLEMENTED`** ✅ Sprint J | idem → requirement_matches panel + `GET /{app_id}/fit-analysis` | MATCHED/PARTIAL/MISSING/BLOCKER con importancia y score | — |
 
 ---
 
@@ -255,7 +255,7 @@
 | K | `LLMEvaluationCriterion`, `evaluate_async()`, cover_letter_cliche/company_hook criteria |
 | L | `_update_thresholds()`, `ABExperiment`/`ABVariant`, `DET_WEIGHT_EXPERIMENT`, `APPLY_THRESHOLD_EXPERIMENT` |
 
-**Sprint J (Frontend Control Center)** — sin tests backend; frontend work pendiente (CV download, diff view, submission evidence, strategy panel).
+**Sprint J (Frontend Control Center)** — implementado en frontend (`applications/[id]/page.tsx`) + backend endpoint `GET /{app_id}/cv/download`; todas las 6 UIs del AC presentes.
 
 ### P0 — Gaps restantes bloqueantes
 
@@ -264,9 +264,8 @@
 
 ### P1 — Gaps que degradan calidad
 
-3. **Frontend Sprint J**: CV download, diff view, strategy panel, submission evidence
-4. **Evaluación E2E con LLM real**: tests actuales mockean Anthropic API
-5. **Learning loop activo**: `_update_thresholds()` implementado pero no se llama automáticamente en pipeline
+3. **Evaluación E2E con LLM real**: tests actuales mockean Anthropic API
+4. **Learning loop activo**: `_update_thresholds()` implementado pero no se llama automáticamente en pipeline
 
 ### P2 — Mejoras de calidad y escalabilidad
 

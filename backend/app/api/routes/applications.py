@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -44,6 +45,7 @@ from app.services.agents.application_agent import generate_strategy
 from app.services.agents.communication_agent import generate_application_answers, generate_cover_letter
 from app.services.agents.cv_agent import personalize_cv
 from app.services.claim_validator import validate_claims
+from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 logger = get_logger(__name__)
@@ -588,6 +590,35 @@ async def get_fit_analysis(
         llm_reasoning=match.llm_reasoning,
         requirement_matches=match.requirement_matches,
     )
+
+
+@router.get("/{app_id}/cv/download")
+async def download_cv(
+    app_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download the personalized CV PDF for this application.
+
+    Regenerates the PDF on-demand if not cached on disk.
+    """
+    candidate = await _get_candidate(user, db)
+    application = await _get_application(app_id, candidate, db, load_relations=False)
+
+    if not cv_exists(candidate.id, application.id):
+        profile_result = await db.execute(
+            select(CandidateProfile).where(CandidateProfile.candidate_id == candidate.id)
+        )
+        profile = profile_result.scalar_one_or_none()
+        app_with_cv = await _get_application(app_id, candidate, db, load_relations=True)
+        await generate_cv_file(candidate, profile, app_with_cv)
+
+    path = get_cv_path(candidate.id, application.id)
+    if not cv_exists(candidate.id, application.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CV not found")
+
+    filename = f"cv_{application.id}.pdf"
+    return FileResponse(path, media_type="application/pdf", filename=filename)
 
 
 @router.get("/{app_id}/decision", response_model=DecisionResponse)
