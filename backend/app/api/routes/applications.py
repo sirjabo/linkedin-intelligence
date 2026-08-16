@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -44,8 +44,9 @@ from app.schemas.application import (
 from app.services.agents.application_agent import generate_strategy
 from app.services.agents.communication_agent import generate_application_answers, generate_cover_letter
 from app.services.agents.cv_agent import personalize_cv
-from app.services.claim_validator import validate_claims
+from app.services.claim_validator import EvidenceBuilder, validate_claims
 from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
+from app.services.learning_loop import _update_thresholds, compute_calibration
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 logger = get_logger(__name__)
@@ -306,7 +307,7 @@ async def generate_cv(
         c.get("adapted", "") if isinstance(c, dict) else c.adapted
         for c in cv_result.changes
     )
-    evidence_records: list = []  # Will be populated when EvidenceRecord is filled
+    evidence_records = EvidenceBuilder.build_from_profile(profile)
     validation = validate_claims(all_generated_text, evidence_records)
 
     cv_version = CVVersion(
@@ -366,7 +367,7 @@ async def generate_cover_letter_route(
         match_tier=match.match_tier,
     )
 
-    validation = validate_claims(cl_result.content, [])
+    validation = validate_claims(cl_result.content, EvidenceBuilder.build_from_profile(profile))
 
     cover_letter = CoverLetter(
         id=uuid.uuid4(),
@@ -665,6 +666,40 @@ async def record_outcome(
     match.updated_at = datetime.utcnow()
     await db.commit()
     logger.info("application.outcome_recorded", app_id=str(app_id), outcome=payload.outcome)
+
+    # Learning loop: recompute calibration and update per-candidate thresholds
+    try:
+        outcomes_rows = await db.execute(
+            select(MatchAnalysis.match_tier, MatchAnalysis.outcome)
+            .where(MatchAnalysis.candidate_id == candidate.id)
+        )
+        outcomes = [{"tier": r.match_tier, "outcome": r.outcome} for r in outcomes_rows]
+        calibration = compute_calibration(outcomes)
+        if calibration.bias_direction != "insufficient_data":
+            prefs_row = await db.execute(
+                select(Candidate.preferences).where(Candidate.id == candidate.id)
+            )
+            current_prefs: dict = prefs_row.scalar_one_or_none() or {}
+            new_thresholds, threshold_updates = _update_thresholds(
+                calibration, current_prefs.get("match_thresholds")
+            )
+            new_prefs = dict(current_prefs)
+            new_prefs["match_thresholds"] = new_thresholds
+            await db.execute(
+                update(Candidate)
+                .where(Candidate.id == candidate.id)
+                .values(preferences=new_prefs)
+            )
+            await db.commit()
+            logger.info(
+                "learning_loop.thresholds_updated",
+                app_id=str(app_id),
+                bias=calibration.bias_direction,
+                updates=len(threshold_updates),
+            )
+    except Exception as exc:
+        logger.warning("learning_loop.threshold_update_failed", app_id=str(app_id), error=str(exc))
+
     return {"outcome": match.outcome, "match_tier": match.match_tier}
 
 

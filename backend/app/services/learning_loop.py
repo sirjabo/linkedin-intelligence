@@ -10,6 +10,11 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+
+def _norm_sf(z: float) -> float:
+    """Survival function (upper tail) of the standard normal — math-only, no scipy."""
+    return 0.5 * math.erfc(z / math.sqrt(2))
+
 # Outcomes counted as positive signals (candidate advanced)
 _POSITIVE = {"got_interview", "offer"}
 # Outcomes counted as negative signals
@@ -48,6 +53,8 @@ class CalibrationReport:
     bias_direction: str
     calibration_score: float | None  # actual / expected overall interview rate
     insights: list[str] = field(default_factory=list)
+    p_value: float | None = None   # two-tailed z-test p-value; None = insufficient data
+    significant: bool = False      # True when p_value is not None and p_value < 0.05
 
 
 def compute_calibration(
@@ -150,6 +157,20 @@ def compute_calibration(
 
     insights = _generate_insights(tier_insights, bias_direction, overall_interview_rate, calibration_score)
 
+    # Hypothesis test: z-test for proportion (observed rate vs weighted expected rate)
+    p_value: float | None = None
+    significant = False
+    if (
+        overall_interview_rate is not None
+        and weighted_expected > 0
+        and total_with_outcome >= MIN_OUTCOMES_FOR_CALIBRATION
+    ):
+        std_err = math.sqrt(weighted_expected * (1.0 - weighted_expected) / total_with_outcome)
+        if std_err > 0:
+            z_stat = (overall_interview_rate - weighted_expected) / std_err
+            p_value = round(min(1.0, 2.0 * _norm_sf(abs(z_stat))), 4)
+            significant = p_value < 0.05
+
     return CalibrationReport(
         total_outcomes=total_with_outcome,
         by_tier=tier_insights,
@@ -157,6 +178,8 @@ def compute_calibration(
         bias_direction=bias_direction,
         calibration_score=calibration_score,
         insights=insights,
+        p_value=p_value,
+        significant=significant,
     )
 
 
