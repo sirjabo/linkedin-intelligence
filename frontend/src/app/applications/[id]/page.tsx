@@ -328,15 +328,15 @@ export default function ApplicationDetailPage() {
 
   if (isLoading || loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Cargando…</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-label="Cargando postulación">
+        <div className="text-slate-400 animate-pulse" aria-hidden="true">Cargando…</div>
       </div>
     );
   }
 
   if (!app) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="alert">
         <div className="text-red-400">{error || "Postulación no encontrada"}</div>
       </div>
     );
@@ -359,8 +359,8 @@ export default function ApplicationDetailPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/applications" className="text-slate-400 hover:text-white transition-colors">
-            <ArrowLeftIcon size={20} />
+          <Link href="/applications" aria-label="Volver a mis postulaciones" className="text-slate-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+            <ArrowLeftIcon size={20} aria-hidden="true" />
           </Link>
           <div className="flex-1">
             <h1 className="font-bold text-white">
@@ -386,7 +386,7 @@ export default function ApplicationDetailPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         {error && (
-          <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+          <div role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
@@ -415,27 +415,29 @@ export default function ApplicationDetailPage() {
           <button
             onClick={handleGenerateCV}
             disabled={genCV}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={genCV}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <FileTextIcon size={15} />
+            <FileTextIcon size={15} aria-hidden="true" />
             {genCV ? "Generando CV…" : app.cv_versions.length > 0 ? "Regenerar CV" : "Generar CV"}
           </button>
 
           <button
             onClick={handleGenerateCoverLetter}
             disabled={genCL || !hasStrategy}
-            title={!hasStrategy ? "Generá el CV primero" : ""}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={genCL}
+            aria-label={!hasStrategy ? "Generar carta de presentación (generá el CV primero)" : "Generar carta de presentación"}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <MailIcon size={15} />
+            <MailIcon size={15} aria-hidden="true" />
             {genCL ? "Generando carta…" : "Generar carta de presentación"}
           </button>
 
           <Link
             href={`/applications/${id}/interview-prep`}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <BrainIcon size={15} />
+            <BrainIcon size={15} aria-hidden="true" />
             Preparación entrevista
           </Link>
         </div>
@@ -451,8 +453,8 @@ export default function ApplicationDetailPage() {
           </p>
 
           {agentError && (
-            <div className="mb-3 flex items-start gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2.5">
-              <AlertTriangleIcon size={14} className="flex-shrink-0 mt-0.5" />
+            <div role="alert" className="mb-3 flex items-start gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2.5">
+              <AlertTriangleIcon size={14} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
               {agentError}
             </div>
           )}
@@ -461,21 +463,24 @@ export default function ApplicationDetailPage() {
           {!agentSession && (
             <div className="flex gap-2">
               <input
+                id="agent-form-url"
                 type="url"
                 value={agentFormUrl}
                 onChange={(e) => setAgentFormUrl(e.target.value)}
                 placeholder="https://jobs.greenhouse.io/…"
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                aria-label="URL del formulario de postulación"
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
               />
               <button
                 onClick={handleStartAgent}
                 disabled={agentLoading || !agentFormUrl.trim()}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                aria-busy={agentLoading}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {agentLoading ? (
-                  <RefreshCwIcon size={14} className="animate-spin" />
+                  <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                 ) : (
-                  <BotIcon size={14} />
+                  <BotIcon size={14} aria-hidden="true" />
                 )}
                 {agentLoading ? "Iniciando…" : "Iniciar agente"}
               </button>
@@ -502,8 +507,8 @@ export default function ApplicationDetailPage() {
 
               {/* Polling spinner for in-progress states */}
               {["initializing", "discovering", "mapping", "filling", "previewing", "submitting"].includes(agentSession.status) && (
-                <div className="flex items-center gap-2 text-slate-400 text-sm">
-                  <RefreshCwIcon size={14} className="animate-spin" />
+                <div role="status" aria-label="Agente procesando" className="flex items-center gap-2 text-slate-400 text-sm">
+                  <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                   <span>Procesando, no cierres esta página…</span>
                 </div>
               )}
@@ -518,15 +523,16 @@ export default function ApplicationDetailPage() {
                     .filter((f) => f.human_required)
                     .map((field) => (
                     <div key={field.id} className="bg-slate-800 rounded-lg p-3">
-                      <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                      <label htmlFor={`field-${field.id}`} className="text-xs font-medium text-slate-300 block mb-1.5">
                         {field.label}
-                        {field.is_required && <span className="text-red-400 ml-1">*</span>}
+                        {field.is_required && <span className="text-red-400 ml-1" aria-label="(requerido)">*</span>}
                       </label>
                       {field.options && field.options.length > 0 ? (
                         <select
+                          id={`field-${field.id}`}
                           value={fieldAnswers[field.id] ?? field.human_answer ?? ""}
                           onChange={(e) => setFieldAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-600"
+                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           <option value="">Seleccioná…</option>
                           {field.options.map((opt) => (
@@ -535,11 +541,12 @@ export default function ApplicationDetailPage() {
                         </select>
                       ) : (
                         <input
+                          id={`field-${field.id}`}
                           type="text"
                           value={fieldAnswers[field.id] ?? field.human_answer ?? ""}
                           onChange={(e) => setFieldAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
                           placeholder={field.auto_fill_value ? `Sugerido: ${field.auto_fill_value}` : "Tu respuesta…"}
-                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                          className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                         />
                       )}
                       <div className="mt-2 flex items-center justify-between gap-2">
@@ -547,7 +554,7 @@ export default function ApplicationDetailPage() {
                           <button
                             type="button"
                             onClick={() => setFieldAnswers((prev) => ({ ...prev, [field.id]: field.auto_fill_value! }))}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                           >
                             Usar sugerencia
                           </button>
@@ -556,12 +563,13 @@ export default function ApplicationDetailPage() {
                         <button
                           onClick={() => handleAnswerField(field)}
                           disabled={savingField === field.id || !fieldAnswers[field.id]?.trim()}
-                          className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded transition-colors"
+                          aria-busy={savingField === field.id}
+                          className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           {savingField === field.id ? (
-                            <RefreshCwIcon size={11} className="animate-spin" />
+                            <RefreshCwIcon size={11} className="animate-spin" aria-hidden="true" />
                           ) : (
-                            <CheckIcon size={11} />
+                            <CheckIcon size={11} aria-hidden="true" />
                           )}
                           Guardar
                         </button>
@@ -577,12 +585,13 @@ export default function ApplicationDetailPage() {
                   <button
                     onClick={handlePreview}
                     disabled={previewing}
-                    className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold transition-colors mt-2"
+                    aria-busy={previewing}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 py-2 rounded-lg text-sm font-semibold transition-colors mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     {previewing ? (
-                      <RefreshCwIcon size={14} className="animate-spin" />
+                      <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                     ) : (
-                      <ZapIcon size={14} />
+                      <ZapIcon size={14} aria-hidden="true" />
                     )}
                     {previewing ? "Procesando…" : "Completar formulario"}
                   </button>
@@ -611,12 +620,13 @@ export default function ApplicationDetailPage() {
                   <button
                     onClick={handleConfirmSubmit}
                     disabled={confirming}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                    aria-busy={confirming}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 py-2.5 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   >
                     {confirming ? (
-                      <RefreshCwIcon size={14} className="animate-spin" />
+                      <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                     ) : (
-                      <SendIcon size={14} />
+                      <SendIcon size={14} aria-hidden="true" />
                     )}
                     {confirming ? "Enviando…" : "Confirmar y enviar postulación"}
                   </button>
@@ -625,7 +635,7 @@ export default function ApplicationDetailPage() {
 
               {/* Error state */}
               {agentSession.status === "failed" && agentSession.error_message && (
-                <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+                <div role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
                   {agentSession.error_message}
                 </div>
               )}
@@ -634,7 +644,7 @@ export default function ApplicationDetailPage() {
               {["failed", "submitted"].includes(agentSession.status) && (
                 <button
                   onClick={() => { setAgentSession(null); setAgentFormUrl(""); setFieldAnswers({}); }}
-                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                 >
                   Iniciar nueva sesión
                 </button>
@@ -644,8 +654,8 @@ export default function ApplicationDetailPage() {
 
           {/* Submitted */}
           {submitDone && (
-            <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-              <CheckIcon size={16} />
+            <div role="status" className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+              <CheckIcon size={16} aria-hidden="true" />
               ¡Postulación enviada exitosamente!
             </div>
           )}
@@ -655,46 +665,53 @@ export default function ApplicationDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <StickyNoteIcon size={16} className="text-blue-400" />
+              <StickyNoteIcon size={16} className="text-blue-400" aria-hidden="true" />
               Notas personales
             </h3>
+            <label htmlFor="app-notes" className="sr-only">Notas personales</label>
             <textarea
+              id="app-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               placeholder="Contacto de referencia, comentarios de la entrevista…"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none mb-3"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none mb-3"
             />
             <button
               onClick={handleSaveNotes}
               disabled={savingNotes}
-              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              aria-busy={savingNotes}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <SaveIcon size={12} />
+              <SaveIcon size={12} aria-hidden="true" />
               {notesSaved ? "¡Guardado!" : savingNotes ? "Guardando…" : "Guardar notas"}
             </button>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-              <CalendarIcon size={16} className="text-blue-400" />
+              <CalendarIcon size={16} className="text-blue-400" aria-hidden="true" />
               Fecha de seguimiento
             </h3>
-            <p className="text-xs text-slate-500 mb-3">
+            <p id="follow-up-hint" className="text-xs text-slate-500 mb-3">
               Recordatorio para hacer follow-up si no recibiste respuesta.
             </p>
+            <label htmlFor="app-follow-up-date" className="sr-only">Fecha de seguimiento</label>
             <input
+              id="app-follow-up-date"
               type="date"
               value={followUpDate}
               onChange={(e) => setFollowUpDate(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 mb-3 [color-scheme:dark]"
+              aria-describedby="follow-up-hint"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 mb-3 [color-scheme:dark]"
             />
             <button
               onClick={handleSaveFollowUp}
               disabled={savingDate}
-              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              aria-busy={savingDate}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <SaveIcon size={12} />
+              <SaveIcon size={12} aria-hidden="true" />
               {dateSaved ? "¡Guardado!" : savingDate ? "Guardando…" : "Guardar fecha"}
             </button>
           </div>
@@ -704,14 +721,15 @@ export default function ApplicationDetailPage() {
         {app.strategy && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <button
-              className="w-full flex items-center justify-between"
+              className="w-full flex items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
               onClick={() => setStrategyOpen((v) => !v)}
+              aria-expanded={strategyOpen}
             >
               <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                <ZapIcon size={16} className="text-blue-400" />
+                <ZapIcon size={16} className="text-blue-400" aria-hidden="true" />
                 Estrategia de postulación
               </h3>
-              {strategyOpen ? <ChevronUpIcon size={16} className="text-slate-400" /> : <ChevronDownIcon size={16} className="text-slate-400" />}
+              {strategyOpen ? <ChevronUpIcon size={16} className="text-slate-400" aria-hidden="true" /> : <ChevronDownIcon size={16} className="text-slate-400" aria-hidden="true" />}
             </button>
 
             {strategyOpen && (() => {
@@ -817,7 +835,7 @@ export default function ApplicationDetailPage() {
               <TargetIcon size={16} className="text-blue-400" />
               Análisis de requisitos
             </h3>
-            <div className="space-y-2">
+            <ul className="space-y-2">
               {fitAnalysis.requirement_matches.map((rm: RequirementMatch, i: number) => {
                 const statusColors: Record<string, string> = {
                   MATCHED: "bg-emerald-900/40 border-emerald-800/40 text-emerald-300",
@@ -827,12 +845,12 @@ export default function ApplicationDetailPage() {
                   UNCERTAIN: "bg-blue-900/40 border-blue-800/40 text-blue-300",
                 };
                 const statusLabel: Record<string, string> = {
-                  MATCHED: "✓ Cubierto", PARTIAL: "~ Parcial",
-                  MISSING: "✗ Faltante", BLOCKER: "⛔ Bloqueante", UNCERTAIN: "? Incierto",
+                  MATCHED: "Cubierto", PARTIAL: "Parcial",
+                  MISSING: "Faltante", BLOCKER: "Bloqueante", UNCERTAIN: "Incierto",
                 };
                 const cls = statusColors[rm.candidate_status] ?? "bg-slate-800 border-slate-700 text-slate-400";
                 return (
-                  <div key={i} className="flex items-start gap-3">
+                  <li key={i} className="flex items-start gap-3">
                     <span className={`text-xs px-2 py-0.5 rounded border flex-shrink-0 font-mono mt-0.5 ${cls}`}>
                       {statusLabel[rm.candidate_status] ?? rm.candidate_status}
                     </span>
@@ -842,10 +860,10 @@ export default function ApplicationDetailPage() {
                         {rm.importance === "MUST" ? "Obligatorio" : "Deseable"} · {Math.round(rm.match_score * 100)}%
                       </p>
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </div>
         )}
 
@@ -860,18 +878,20 @@ export default function ApplicationDetailPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCvDiffOpen((v) => !v)}
-                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                  aria-expanded={cvDiffOpen}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                 >
-                  {cvDiffOpen ? <ChevronUpIcon size={13} /> : <ChevronDownIcon size={13} />}
+                  {cvDiffOpen ? <ChevronUpIcon size={13} aria-hidden="true" /> : <ChevronDownIcon size={13} aria-hidden="true" />}
                   {cvDiffOpen ? "Ocultar cambios" : "Ver cambios"}
                 </button>
                 <a
                   href={`${downloadCVUrl(id)}?token=${token}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition-colors"
+                  aria-label="Descargar CV personalizado como PDF (abre en nueva pestaña)"
+                  className="flex items-center gap-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
-                  <DownloadIcon size={11} />
+                  <DownloadIcon size={11} aria-hidden="true" />
                   PDF
                 </a>
               </div>
@@ -965,23 +985,27 @@ export default function ApplicationDetailPage() {
         {/* Application answers */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
           <h3 className="font-semibold text-slate-200 mb-3 flex items-center gap-2">
-            <MessageSquareIcon size={16} className="text-blue-400" />
+            <MessageSquareIcon size={16} className="text-blue-400" aria-hidden="true" />
             Preguntas de la empresa
           </h3>
-          <p className="text-xs text-slate-500 mb-3">Pegá las preguntas del formulario, una por línea.</p>
+          <p id="questions-hint" className="text-xs text-slate-500 mb-3">Pegá las preguntas del formulario, una por línea.</p>
+          <label htmlFor="app-questions" className="sr-only">Preguntas del formulario</label>
           <textarea
+            id="app-questions"
             value={questions}
             onChange={(e) => setQuestions(e.target.value)}
             rows={4}
             placeholder={"¿Por qué querés trabajar en esta empresa?\n¿Cuál es tu mayor fortaleza?\n…"}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none mb-3"
+            aria-describedby="questions-hint"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none mb-3"
           />
           <button
             onClick={handleGenerateAnswers}
             disabled={genAnswers || !questions.trim()}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={genAnswers}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <ZapIcon size={14} />
+            <ZapIcon size={14} aria-hidden="true" />
             {genAnswers ? "Generando…" : "Generar respuestas"}
           </button>
           {answers.length > 0 && (
@@ -1000,20 +1024,20 @@ export default function ApplicationDetailPage() {
         {app.events.length > 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-slate-200 mb-4">Historial</h3>
-            <div className="space-y-3">
+            <ul className="space-y-3">
               {app.events.map((ev) => (
-                <div key={ev.id} className="flex gap-3 items-start">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0" />
+                <li key={ev.id} className="flex gap-3 items-start">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0" aria-hidden="true" />
                   <div>
                     <p className="text-sm text-slate-300 font-medium capitalize">{ev.event_type}</p>
                     {ev.notes && <p className="text-xs text-slate-500 mt-0.5">{ev.notes}</p>}
-                    <p className="text-xs text-slate-600 mt-0.5">
+                    <time dateTime={ev.occurred_at} className="text-xs text-slate-600 mt-0.5 block">
                       {new Date(ev.occurred_at).toLocaleString("es-AR")}
-                    </p>
+                    </time>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
       </main>

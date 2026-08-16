@@ -228,8 +228,8 @@ export default function ProfilePage() {
 
   if (isLoading || pageLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-slate-400 animate-pulse">Cargando…</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-label="Cargando perfil">
+        <div className="text-slate-400 animate-pulse" aria-hidden="true">Cargando…</div>
       </div>
     );
   }
@@ -253,8 +253,8 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">
-            <ArrowLeftIcon size={20} />
+          <Link href="/dashboard" aria-label="Volver al dashboard" className="text-slate-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+            <ArrowLeftIcon size={20} aria-hidden="true" />
           </Link>
           <div className="flex-1">
             <h1 className="font-bold text-white">Mi Perfil</h1>
@@ -262,13 +262,14 @@ export default function ProfilePage() {
           <button
             onClick={handleRebuild}
             disabled={rebuilding || sources.length === 0}
-            title={sources.length === 0 ? "Agregá fuentes primero" : ""}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            aria-busy={rebuilding}
+            aria-label={sources.length === 0 ? "Reconstruir perfil (agregá fuentes primero)" : "Reconstruir perfil con IA"}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             {rebuilding ? (
-              <RefreshCwIcon size={14} className="animate-spin" />
+              <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
             ) : (
-              <ZapIcon size={14} />
+              <ZapIcon size={14} aria-hidden="true" />
             )}
             {rebuilding ? "Reconstruyendo…" : "Reconstruir perfil"}
           </button>
@@ -277,7 +278,7 @@ export default function ProfilePage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         {error && (
-          <div className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
+          <div role="alert" className="text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
@@ -295,6 +296,7 @@ export default function ProfilePage() {
                   {candidate.target_roles.length > 1 && (
                     <div className="relative">
                       <select
+                        aria-label="Rol para benchmark"
                         value={benchmarkRole || candidate.target_roles[0]}
                         onChange={(e) => handleLoadBenchmark(e.target.value)}
                         className="appearance-none bg-slate-800 border border-slate-700 text-xs text-slate-300 rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-cyan-600 cursor-pointer"
@@ -308,9 +310,10 @@ export default function ProfilePage() {
                   )}
                   <button
                     onClick={() => handleLoadBenchmark(benchmarkRole || candidate.target_roles![0])}
-                    className="flex items-center gap-1.5 text-xs bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-800/50 px-3 py-1.5 rounded-lg transition-colors"
+                    aria-busy={loadingBenchmark}
+                    className="flex items-center gap-1.5 text-xs bg-cyan-900/30 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-800/50 px-3 py-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                   >
-                    <BarChart2Icon size={12} />
+                    <BarChart2Icon size={12} aria-hidden="true" />
                     {benchmark ? "Actualizar" : "Ver benchmark"}
                   </button>
                 </div>
@@ -318,14 +321,14 @@ export default function ProfilePage() {
             </div>
 
             {loadingBenchmark && (
-              <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
-                <RefreshCwIcon size={12} className="animate-spin" />
+              <div role="status" aria-label="Comparando skills" className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                <RefreshCwIcon size={12} className="animate-spin" aria-hidden="true" />
                 Comparando tus skills con el mercado…
               </div>
             )}
 
             {benchmarkError && (
-              <p className="text-xs text-red-400">{benchmarkError}</p>
+              <p role="alert" className="text-xs text-red-400">{benchmarkError}</p>
             )}
 
             {!benchmark && !loadingBenchmark && !benchmarkError && (
@@ -350,7 +353,14 @@ export default function ProfilePage() {
                         {benchmark.tier}
                       </span>
                     </div>
-                    <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      role="progressbar"
+                      aria-valuenow={benchmark.percentile}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`Percentil de skills para ${ROLE_LABELS[benchmark.role] ?? benchmark.role}: ${benchmark.percentile}`}
+                      className="h-2 bg-slate-800 rounded-full overflow-hidden"
+                    >
                       <div
                         className={`h-full rounded-full transition-all duration-700 ${
                           benchmark.percentile >= 75 ? "bg-emerald-500" :
@@ -415,7 +425,7 @@ export default function ProfilePage() {
                 {Math.round(health.score * 100)}%
               </span>
             </div>
-            <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-4">
+            <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-4" role="progressbar" aria-valuenow={Math.round(health.score * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Salud del perfil: ${Math.round(health.score * 100)}%`}>
               <div
                 className={`h-full rounded-full transition-all ${health.score >= 0.8 ? "bg-emerald-500" : health.score >= 0.5 ? "bg-yellow-500" : "bg-red-500"}`}
                 style={{ width: `${Math.round(health.score * 100)}%` }}
@@ -445,12 +455,13 @@ export default function ProfilePage() {
               <button
                 onClick={handleLoadOptimizer}
                 disabled={loadingOptimizer}
-                className="flex items-center gap-1.5 text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 border border-purple-800/50 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
+                aria-busy={loadingOptimizer}
+                className="flex items-center gap-1.5 text-xs bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 border border-purple-800/50 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
               >
                 {loadingOptimizer ? (
-                  <RefreshCwIcon size={12} className="animate-spin" />
+                  <RefreshCwIcon size={12} className="animate-spin" aria-hidden="true" />
                 ) : (
-                  <TrendingUpIcon size={12} />
+                  <TrendingUpIcon size={12} aria-hidden="true" />
                 )}
                 {loadingOptimizer ? "Analizando…" : "Ver recomendaciones"}
               </button>
@@ -459,7 +470,8 @@ export default function ProfilePage() {
               <button
                 onClick={handleLoadOptimizer}
                 disabled={loadingOptimizer}
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                aria-busy={loadingOptimizer}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
               >
                 {loadingOptimizer ? "Actualizando…" : "Actualizar"}
               </button>
@@ -467,7 +479,7 @@ export default function ProfilePage() {
           </div>
 
           {optimizerError && (
-            <p className="text-xs text-red-400">{optimizerError}</p>
+            <p role="alert" className="text-xs text-red-400">{optimizerError}</p>
           )}
 
           {!optimizer && !loadingOptimizer && !optimizerError && (
@@ -527,7 +539,7 @@ export default function ProfilePage() {
 
               {optimizer.tips.length === 0 && optimizer.top_skill_gaps.length === 0 && (
                 <p className="text-sm text-emerald-400 flex items-center gap-2">
-                  <CheckCircleIcon size={14} />
+                  <CheckCircleIcon size={14} aria-hidden="true" />
                   Tu perfil está bien alineado con tus postulaciones recientes.
                 </p>
               )}
@@ -545,7 +557,8 @@ export default function ProfilePage() {
             {!editMode && (
               <button
                 onClick={startEdit}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                aria-label="Editar información personal"
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
               >
                 Editar
               </button>
@@ -555,41 +568,47 @@ export default function ProfilePage() {
           {editMode ? (
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Nombre</label>
+                <label htmlFor="profile-edit-name" className="text-xs text-slate-500 block mb-1">Nombre</label>
                 <input
+                  id="profile-edit-name"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600"
+                  autoComplete="name"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Ubicación</label>
+                <label htmlFor="profile-edit-location" className="text-xs text-slate-500 block mb-1">Ubicación</label>
                 <input
+                  id="profile-edit-location"
                   value={editLocation}
                   onChange={(e) => setEditLocation(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600"
+                  autoComplete="address-level2"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Roles objetivo (separados por coma)</label>
+                <label htmlFor="profile-edit-roles" className="text-xs text-slate-500 block mb-1">Roles objetivo (separados por coma)</label>
                 <input
+                  id="profile-edit-roles"
                   value={editRoles}
                   onChange={(e) => setEditRoles(e.target.value)}
                   placeholder="Data Engineer, ML Engineer"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </div>
               <div className="flex gap-3 justify-end pt-1">
                 <button
                   onClick={() => setEditMode(false)}
-                  className="text-sm text-slate-400 hover:text-white transition-colors px-3 py-1.5"
+                  className="text-sm text-slate-400 hover:text-white transition-colors px-3 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors"
+                  aria-busy={saving}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
                   {saving ? "Guardando…" : "Guardar"}
                 </button>
@@ -627,11 +646,12 @@ export default function ProfilePage() {
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-slate-500 block mb-1">Tipo de fuente</label>
+              <label htmlFor="source-type" className="text-xs text-slate-500 block mb-1">Tipo de fuente</label>
               <select
+                id="source-type"
                 value={sourceType}
                 onChange={(e) => setSourceType(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600"
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {SOURCE_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -639,31 +659,33 @@ export default function ProfilePage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-slate-500 block mb-1">Pegá el contenido</label>
+              <label htmlFor="source-content" className="text-xs text-slate-500 block mb-1">Pegá el contenido</label>
               <textarea
+                id="source-content"
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
                 rows={6}
                 placeholder="Pegá tu CV, perfil de LinkedIn, bio de GitHub, etc."
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 resize-none"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none"
               />
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={handleIngest}
                 disabled={ingesting || !rawText.trim()}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                aria-busy={ingesting}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {ingesting ? (
-                  <RefreshCwIcon size={14} className="animate-spin" />
+                  <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
                 ) : (
-                  <PlusIcon size={14} />
+                  <PlusIcon size={14} aria-hidden="true" />
                 )}
                 {ingesting ? "Procesando…" : "Agregar fuente"}
               </button>
               {ingestSuccess && (
-                <span className="flex items-center gap-1.5 text-sm text-emerald-400">
-                  <CheckCircleIcon size={15} />
+                <span role="status" className="flex items-center gap-1.5 text-sm text-emerald-400">
+                  <CheckCircleIcon size={15} aria-hidden="true" />
                   Fuente agregada
                 </span>
               )}
@@ -677,9 +699,9 @@ export default function ProfilePage() {
             <h3 className="font-semibold text-slate-200 mb-4">
               Mis fuentes ({sources.length})
             </h3>
-            <div className="space-y-3">
+            <ul className="space-y-3">
               {sources.map((src) => (
-                <div key={src.id} className="flex items-start justify-between gap-4 py-2 border-b border-slate-800 last:border-0">
+                <li key={src.id} className="flex items-start justify-between gap-4 py-2 border-b border-slate-800 last:border-0">
                   <div>
                     <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded">
                       {SOURCE_TYPES.find((t) => t.value === src.source_type)?.label ?? src.source_type}
@@ -690,12 +712,12 @@ export default function ProfilePage() {
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-slate-600 flex-shrink-0">
+                  <time dateTime={src.created_at} className="text-xs text-slate-600 flex-shrink-0">
                     {new Date(src.created_at).toLocaleDateString("es-AR")}
-                  </span>
-                </div>
+                  </time>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
 
@@ -721,28 +743,34 @@ export default function ProfilePage() {
                 <h3 className="font-semibold text-slate-200 mb-4">
                   Skills ({skills.length})
                 </h3>
-                <div className="flex flex-wrap gap-2">
+                <ul className="flex flex-wrap gap-2" aria-label={`${skills.length} skills`}>
                   {skills.map((s, i) => (
-                    <SkillBadge key={i} skill={s} />
+                    <li key={i}>
+                      <SkillBadge skill={s} />
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
             {experience.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
                 <h3 className="font-semibold text-slate-200 mb-4">Experiencia</h3>
-                <div className="space-y-4">
+                <ul className="space-y-4">
                   {experience.map((exp, i) => (
-                    <div key={i} className="border-l-2 border-slate-700 pl-4">
+                    <li key={i} className="border-l-2 border-slate-700 pl-4">
                       <p className="text-sm font-medium text-slate-200">
                         {(exp.title ?? exp.role ?? "") as string}
                         {exp.company ? ` · ${exp.company as string}` : ""}
                       </p>
                       {(exp.start_date ?? exp.start) != null && (
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {(exp.start_date ?? exp.start) as string}
-                          {(exp.end_date ?? exp.end) != null ? ` – ${(exp.end_date ?? exp.end) as string}` : " – Presente"}
+                          <time dateTime={(exp.start_date ?? exp.start) as string}>
+                            {(exp.start_date ?? exp.start) as string}
+                          </time>
+                          {(exp.end_date ?? exp.end) != null ? (
+                            <> – <time dateTime={(exp.end_date ?? exp.end) as string}>{(exp.end_date ?? exp.end) as string}</time></>
+                          ) : " – Presente"}
                         </p>
                       )}
                       {exp.description != null && (
@@ -751,9 +779,9 @@ export default function ProfilePage() {
                           {(exp.description as string).length > 200 ? "…" : ""}
                         </p>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
