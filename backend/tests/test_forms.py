@@ -3,9 +3,9 @@ import pytest
 from httpx import AsyncClient
 
 from app.services.form_intelligence import (
+    FieldSpec,
     classify_field,
     map_candidate_to_form,
-    FieldSpec,
 )
 
 SAMPLE_JD = """\
@@ -71,7 +71,8 @@ def test_classify_cv_file():
 
 def test_classify_custom_essay():
     assert classify_field("Why do you want to join this company?") == "custom_essay"
-    assert classify_field("Describe your experience with distributed systems") == "custom_essay"
+    # Sprint F: "Describe your experience with X" is now experience_essay
+    assert classify_field("Describe your experience with distributed systems") == "experience_essay"
 
 
 def test_classify_unknown():

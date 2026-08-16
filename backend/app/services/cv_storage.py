@@ -123,7 +123,7 @@ def _build_cv_dict(
     # Experience — use personalized bullets from CVVersion when available
     experience: list[dict] = []
     personalized_bullets: dict[str, list[str]] = {}
-    if cv_version and cv_version.experience_personalized:
+    if cv_version and getattr(cv_version, "experience_personalized", None):
         for ep in cv_version.experience_personalized:
             if isinstance(ep, dict):
                 key = (ep.get("company", "") + "|" + ep.get("title", "")).lower()
@@ -168,7 +168,7 @@ def _build_cv_dict(
     # Projects — use personalized descriptions from CVVersion when available
     projects: list[dict] = []
     personalized_proj: dict[str, dict] = {}
-    if cv_version and cv_version.projects_personalized:
+    if cv_version and getattr(cv_version, "projects_personalized", None):
         for pp in cv_version.projects_personalized:
             if isinstance(pp, dict) and pp.get("name"):
                 personalized_proj[pp["name"].lower()] = pp

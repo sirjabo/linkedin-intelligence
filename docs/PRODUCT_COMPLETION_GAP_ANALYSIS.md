@@ -1,9 +1,9 @@
 # LinkedIn Intelligence — Product Completion Gap Analysis
 
-> Versión: 4.0  
-> Fecha: 2026-08-15  
+> Versión: 4.1  
+> Fecha: 2026-08-16  
 > Branch: `claude/new-session-ce0sct`  
-> Tests: 405 pasando, 5 skipped  
+> Tests: 424 pasando (405 baseline + 19 Sprint A), 5 skipped  
 > Metodología: lectura directa del código fuente, no documentación previa  
 
 ---
@@ -59,13 +59,13 @@
 |-----------|--------|----------|----------|-------|
 | Análisis de JD y extracción de requisitos | `IMPLEMENTED` | `cv_agent.py` | LLM extrae keywords ATS, fit score, reasoning | Sin extracción estructurada req-by-req |
 | Personalización de summary y headline | `IMPLEMENTED` | `cv_agent.py` → `PersonalizedCV` | summary_adapted, headline_adapted, ats_keywords_added | |
-| Personalización de experience bullets | **`MISSING`** | — | cv_agent produce `CVChange` por sección pero sin bullet-level edits | Rework bullet-by-bullet con evidence_ref |
-| Personalización de projects section | **`MISSING`** | — | idem | |
+| Personalización de experience bullets | **`IMPLEMENTED`** ✅ Sprint A | `cv_agent.py` → `BulletChange`, `ExperiencePersonalized` | bullet_index, original, adapted, reason, job_requirement, evidence_ref, confidence por bullet | — |
+| Personalización de projects section | **`IMPLEMENTED`** ✅ Sprint A | `cv_agent.py` → `ProjectPersonalized`, `cv_storage.py` | description_adapted, highlights_adapted en PDF rebuild | — |
 | Ordenamiento de skills por relevancia al JD | `IMPLEMENTED` | `cv_agent.py` → `skills_ordered` | Lista reordenada | Sin separación por proficiency o relevance score |
-| Traceabilidad de cambios (original/personalizado/reason) | `IMPLEMENTED` | `CVChange`: section, original, adapted, rationale, evidence_ref | | evidence_ref no siempre completado |
-| Evaluación de personalización (factuality / differentiation) | **`MISSING`** | — | `ai_evaluation.py` hace checks estructurales únicamente | Motor LLM para evaluar factuality, clichés, fortaleza de evidencia |
-| CVs materialmente distintos para 3 tipos de JD | **`MISSING`** | — | cv_agent genera un único CV adaptado | Lógica de differentiation per JD type |
-| Reconstrucción PDF desde PersonalizedCV | `PARTIAL` | `cv_storage.py` + `pdf_generator.py` | Usa summary_adapted + skills_ordered; sections restantes vienen del perfil crudo | Integración bullet-level para experience/projects |
+| Traceabilidad de cambios (original/personalizado/reason) | `IMPLEMENTED` ✅ Sprint A | `CVChange`: section, bullet_index, original, adapted, reason, job_requirement, evidence_refs (list), confidence | Todos los campos completos; backward-compat via `.evidence_ref` y `.rationale` | — |
+| Evaluación de diferenciación entre CVs | **`IMPLEMENTED`** ✅ Sprint A | `ai_evaluation.py` → `cv_differentiation_score()` | Pairwise set-based ≥ 60% diferenciación validada en tests | Motor LLM para factuality/clichés pendiente (Sprint K) |
+| CVs materialmente distintos para 3 tipos de JD | **`IMPLEMENTED`** ✅ Sprint A | `cv_agent.py` schema + test_sprint_a.py | 19 acceptance tests; diferenciación ≥ 60% para AI/Data/ML JDs | — |
+| Reconstrucción PDF desde PersonalizedCV | **`IMPLEMENTED`** ✅ Sprint A | `cv_storage.py` → `_build_cv_dict()` | projects_personalized aplicado; experience_personalized ya conectado | — |
 | Evaluación de ATS score post-generación | **`MISSING`** | — | — | Pipeline de scoring contra JD |
 
 ---
@@ -180,7 +180,7 @@
 | Evaluación estructural de campos | `IMPLEMENTED` | `ai_evaluation.py` | field_not_empty, field_in_range, field_contains_keyword, field_one_of, list_items_have_field | |
 | Evaluación semántica LLM | **`MISSING`** | — | — | LLM judge por criterio |
 | Evaluación de factualidad de CV | **`MISSING`** | — | — | Cross-check claim vs evidencia |
-| Evaluación de diferenciación entre CVs | **`MISSING`** | — | — | Distancia entre narrativas |
+| Evaluación de diferenciación entre CVs | **`IMPLEMENTED`** ✅ Sprint A | `ai_evaluation.py` → `cv_differentiation_score()` | Pairwise set-based; ≥ 60% para 3 JDs distintos | |
 | Evaluación de personalización de cover letter | **`MISSING`** | — | — | Detección de clichés, hooks específicos |
 | Test suite con modelo real | **`MISSING`** | — | Tests actuales mockean LLM | Evaluación E2E con Anthropic API real |
 | Métricas de calidad agregadas por candidato | **`MISSING`** | — | — | |
@@ -233,19 +233,26 @@
 
 ## Resumen ejecutivo — Prioridades por impacto
 
+### Sprint A ✅ CERRADO (2026-08-16)
+
+- CVChange schema completo: bullet_index, reason, job_requirement, evidence_refs, confidence
+- PersonalizedCV con experience_personalized + projects_personalized
+- PDF rebuild usa projects_personalized descriptions
+- cv_differentiation_score() ≥ 60% para 3 JDs distintos
+- cv_changes_have_evidence criterion
+- 19/19 acceptance tests pasando
+
 ### P0 — Bloqueantes para el North Star (entrevistas calificadas)
 
-1. **Evidence System 3.0**: `validate_claims()` siempre recibe `evidence_records=[]` — todas las claims son UNSUPPORTED
-2. **CV Engine**: experience/project bullets no se personalizan — el CV "personalizado" tiene solo summary + skill order distintos
-3. **Matching req-by-req**: sin breakdown por requisito no hay diferenciación real de qué candidate encaja qué job
-4. **Skill years resolver**: formularios que preguntan "¿años de X?" no se pueden responder con precisión
+1. **Evidence System 3.0** (Sprint C): `validate_claims()` siempre recibe `evidence_records=[]` — todas las claims son UNSUPPORTED
+2. **CandidateKnowledgeResolver 2.0** (Sprint B): formularios que preguntan "¿años de X?" no se pueden responder con precisión
+3. **Matching req-by-req** (Sprint D): sin breakdown por requisito no hay diferenciación real de qué candidate encaja qué job
 
 ### P1 — Gaps que degradan calidad significativamente
 
-5. **Form Intelligence**: tipos `skill_years` y `experience_essay` ausentes
-6. **ApplicationStrategy incompleta**: positioning, target_narrative, keywords, interview_prep no generados
-7. **ATS adapters**: Greenhouse/Lever/Workday funcionan solo en happy path
-8. **CV differentiation**: mismo CV para todos los tipos de JD
+4. **Form Intelligence** (Sprint F): tipos `skill_years` y `experience_essay` ausentes
+5. **ApplicationStrategy incompleta** (Sprint E): positioning, target_narrative, keywords, interview_prep no generados
+6. **ATS adapters** (Sprint G): Greenhouse/Lever/Workday funcionan solo en happy path
 
 ### P2 — Mejoras de calidad y escalabilidad
 
@@ -257,4 +264,5 @@
 ---
 
 *Generado por auditoría directa del código fuente — 2026-08-15*  
+*Actualizado Sprint A — 2026-08-16*  
 *Ver `docs/ROADMAP_4.0.md` para el plan de sprints A–L*
