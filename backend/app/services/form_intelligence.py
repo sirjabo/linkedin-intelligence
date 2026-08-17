@@ -24,6 +24,15 @@ SemanticType = Literal[
     "start_date", "availability",
     "custom_essay",
     "experience_essay",    # Sprint F: open-ended "Tell us about your experience with X"
+    # Sensitive/EEO fields — always require human confirmation
+    "demographic",
+    "race",
+    "ethnicity",
+    "gender",
+    "disability",
+    "veteran_status",
+    "relocation",
+    "sponsorship",
     "unknown",
 ]
 
@@ -45,7 +54,15 @@ _LABEL_RULES: list[tuple[re.Pattern, SemanticType]] = [
     (re.compile(r"\byears?\b.*(python|java|kotlin|rust|go|ruby|php|swift|scala|react|vue|angular|node|django|flask|spring|rails|docker|kubernetes|k8s|aws|azure|gcp|sql|postgres|mysql|mongo|redis|typescript|javascript|typescript|css|html)\b", re.IGNORECASE), "skill_years"),
     (re.compile(r"\b(python|java|kotlin|rust|go|ruby|php|swift|scala|react|vue|angular|node|django|flask|spring|rails|docker|kubernetes|k8s|aws|azure|gcp|sql|postgres|mysql|mongo|redis|typescript|javascript|css|html)\b.*\byears?\b", re.IGNORECASE), "skill_years"),
     (re.compile(r"\byears?\b.*(experience|exp)\b|\b(experience|exp).*\byears?\b", re.IGNORECASE), "years_experience"),
-    (re.compile(r"\bwork[\s_-]?auth(orization)?\b|\bvisa\b|\bsponsorship\b|\bauthorized\b.*(work|us)\b", re.IGNORECASE), "work_authorization"),
+    (re.compile(r"\bwork[\s_-]?auth(orization)?\b|\bauthorized\b.*(work|us)\b", re.IGNORECASE), "work_authorization"),
+    (re.compile(r"\bsponsorship\b|\bvisa[\s_-]?sponsor\b|\brequire[\s_-]?sponsor\b", re.IGNORECASE), "sponsorship"),
+    (re.compile(r"\brelocation\b|\bwilling[\s_-]?to[\s_-]?relocate\b", re.IGNORECASE), "relocation"),
+    (re.compile(r"\brace\b|\bracial\b", re.IGNORECASE), "race"),
+    (re.compile(r"\bethnicity\b|\bethnic\b", re.IGNORECASE), "ethnicity"),
+    (re.compile(r"\bgender\b|\bsex\b(?!ual)", re.IGNORECASE), "gender"),
+    (re.compile(r"\bdisabilit", re.IGNORECASE), "disability"),
+    (re.compile(r"\bveteran\b|\bmilitary\b", re.IGNORECASE), "veteran_status"),
+    (re.compile(r"\bdemographic\b|equal[\s_-]?opportunity\b|eeo\b", re.IGNORECASE), "demographic"),
     # cover_letter_file must come BEFORE cover_letter so file-upload fields are captured first
     (re.compile(r"\b(upload|attach|attach(ment)?|file)\b.*(cover[\s_-]?letter)\b|(cover[\s_-]?letter)\b.*(upload|attach|file)\b", re.IGNORECASE), "cover_letter_file"),
     (re.compile(r"\bcover[\s_-]?letter\b", re.IGNORECASE), "cover_letter"),
@@ -65,8 +82,14 @@ _SKILL_YEARS_EXTRACT = re.compile(
     re.IGNORECASE,
 )
 
-# Semantic types that can never be auto-filled — always require human input
-_ALWAYS_HUMAN = {"phone", "cv_file", "cover_letter_file", "custom_essay", "experience_essay", "unknown"}
+# Semantic types that can never be auto-filled — always require human input.
+# Sensitive legal/EEO types are included so the candidate confirms them per-submission.
+_ALWAYS_HUMAN = {
+    "phone", "cv_file", "cover_letter_file", "custom_essay", "experience_essay", "unknown",
+    # Sensitive: require explicit human confirmation each submission
+    "salary_expectation", "work_authorization", "sponsorship", "relocation",
+    "demographic", "race", "ethnicity", "gender", "disability", "veteran_status",
+}
 
 # Semantic types where auto-fill value comes from the candidate record
 _CANDIDATE_FIELD_MAP: dict[SemanticType, str] = {

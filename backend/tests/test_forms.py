@@ -57,7 +57,8 @@ def test_classify_salary():
 def test_classify_work_authorization():
     assert classify_field("Work Authorization") == "work_authorization"
     assert classify_field("Are you authorized to work?") == "work_authorization"
-    assert classify_field("Visa Sponsorship Required") == "work_authorization"
+    # "Visa Sponsorship" is now correctly classified as 'sponsorship', not 'work_authorization'
+    assert classify_field("Visa Sponsorship Required") == "sponsorship"
 
 
 def test_classify_cover_letter():
@@ -121,14 +122,16 @@ def test_map_email_autofill():
     assert result[0].auto_fill_value == "alice@example.com"
 
 
-def test_map_salary_autofill():
+def test_map_salary_requires_human():
+    """Salary fields must never be auto-filled — they require human confirmation."""
     fields = [FieldSpec(label="Expected Salary")]
     result = map_candidate_to_form(
         fields=fields, candidate_name=None, candidate_email=None,
         candidate_location=None, candidate_salary_min=120_000,
         candidate_work_authorization=None, candidate_availability=None,
     )
-    assert result[0].auto_fill_value == "120000"
+    assert result[0].human_required is True
+    assert result[0].auto_fill_value is None
 
 
 def test_map_phone_always_human():
@@ -214,9 +217,10 @@ async def test_register_form_success(client: AsyncClient, mock_job_agent):
     # Phone should be human_required
     phone_field = next(f for f in data["fields"] if f["semantic_type"] == "phone")
     assert phone_field["human_required"] is True
-    # Salary auto-fill
+    # Salary must be human_required (sensitive field, never auto-filled)
     sal_field = next(f for f in data["fields"] if f["semantic_type"] == "salary_expectation")
-    assert sal_field["auto_fill_value"] == "90000"
+    assert sal_field["human_required"] is True
+    assert sal_field["auto_fill_value"] is None
 
 
 @pytest.mark.asyncio
