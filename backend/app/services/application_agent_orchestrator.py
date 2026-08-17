@@ -42,6 +42,7 @@ from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
 from app.services.pre_submit_validator import PreSubmitValidationError, PreSubmitValidator
 from app.services.form_intelligence import classify_field, classify_field_llm
 from app.services.matching.engine import compute_deterministic, tier_from_score
+from app.services.cost_tracker import check_budget_and_log, estimate_session_cost
 from app.services.matching.semantic import compute_hybrid_score, compute_semantic
 
 logger = get_logger(__name__)
@@ -572,10 +573,21 @@ class ApplicationAgentOrchestrator:
                 app.status = "applied"
                 app.applied_at = datetime.utcnow()
 
+            # Budget tracking: estimate cost for this session's LLM operations
+            ops = ["cv_generation", "cover_letter", "match_reasoning", "claim_validation"]
+            ops.extend(["field_classify"] * max(session.fields_total, 1))
+            cost_estimate = estimate_session_cost(ops)
+            check_budget_and_log(
+                estimate=cost_estimate,
+                application_id=str(session.application_id),
+                session_id=str(session.id),
+            )
+
             await db.commit()
             logger.info(
                 "agent.submit.complete",
                 session_id=str(session.id),
+                application_id=str(session.application_id),
                 success=success,
                 confirmation_id=confirmation_id,
             )
