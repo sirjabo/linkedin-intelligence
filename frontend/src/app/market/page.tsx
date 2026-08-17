@@ -1,70 +1,100 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
-import { TrendingUp, ArrowLeft, Zap } from "lucide-react";
+import { getMarketSkills, getMarketTrends } from "@/lib/api";
+import { MarketTrendsResponse, ROLE_LABELS, TargetRole } from "@/types/analysis";
 
-const mockStats = [
-  { label: "Ofertas analizadas", value: "12.400+", sub: "últimas 4 semanas" },
-  { label: "Roles tracked", value: "8", sub: "AI, Data, Analytics, ML..." },
-  { label: "Empresas activas", value: "340+", sub: "contratando ahora" },
-  { label: "Skills indexadas", value: "2.100+", sub: "actualizadas semanalmente" },
-];
+const ROLES = Object.keys(ROLE_LABELS) as TargetRole[];
 
 export default function MarketPage() {
+  const [role, setRole] = useState<TargetRole>("ai_engineer");
+  const [jobs, setJobs] = useState(0);
+  const [skillCount, setSkillCount] = useState(0);
+  const [trends, setTrends] = useState<MarketTrendsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getMarketSkills(role), getMarketTrends(role)])
+      .then(([skills, trendData]) => {
+        if (cancelled) return;
+        setJobs(skills.total_jobs_analyzed);
+        setSkillCount(skills.skills.length);
+        setTrends(trendData);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar mercado");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
+
+  const stats = [
+    { label: "Menciones analizadas", value: jobs ? jobs.toLocaleString("es-AR") : "—", sub: "rol seleccionado" },
+    { label: "Skills tracked", value: String(skillCount || "—"), sub: ROLE_LABELS[role] },
+    { label: "Skills en alza", value: String(trends?.rising.length ?? "—"), sub: "últimos 7 días" },
+    { label: "Skills en baja", value: String(trends?.declining.length ?? "—"), sub: "últimos 7 días" },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
-
       <div className="max-w-3xl mx-auto px-6 pt-16 pb-24">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-sm mb-10 transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Volver al inicio
+        <Link href="/" className="text-sm text-slate-500 hover:text-slate-300">
+          ← Volver al inicio
         </Link>
+        <h1 className="text-2xl font-bold mt-8 mb-2">Inteligencia de Mercado</h1>
+        <p className="text-sm text-slate-500 mb-6">
+          Tendencias de skills para roles tech en Latam (MVP con catálogo de demanda)
+        </p>
 
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-white/8 flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-slate-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Inteligencia de Mercado</h1>
-            <p className="text-sm text-slate-500">Tendencias, salarios y empresas que contratan tech</p>
-          </div>
+        <div className="flex flex-wrap gap-2 mb-8">
+          {ROLES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRole(r)}
+              className={`px-3 py-1.5 rounded-full text-sm border ${
+                role === r ? "bg-blue-600 border-blue-500" : "border-white/10 text-slate-400"
+              }`}
+            >
+              {ROLE_LABELS[r]}
+            </button>
+          ))}
         </div>
 
-        {/* Coming soon banner */}
-        <div className="mt-8 rounded-2xl border border-blue-500/20 bg-blue-950/20 p-6 mb-10 flex items-start gap-4">
-          <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center shrink-0 mt-0.5">
-            <Zap className="w-4 h-4 text-blue-400" />
-          </div>
-          <div>
-            <p className="font-medium text-blue-300 mb-1">En desarrollo</p>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              El dashboard de mercado laboral tech estará disponible en las próximas semanas.
-              Incluirá tendencias de skills en tiempo real, comparación de salarios por rol y región,
-              y alertas de oportunidades que encajan con tu perfil.
-            </p>
-          </div>
-        </div>
+        {error && <p className="text-rose-400 text-sm mb-4">{error}</p>}
 
-        {/* Stats preview (blurred) */}
-        <div className="relative">
-          <div className="grid grid-cols-2 gap-4 blur-sm pointer-events-none">
-            {mockStats.map(({ label, value, sub }) => (
-              <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                <p className="text-2xl font-bold text-white mb-0.5">{value}</p>
-                <p className="text-sm font-medium text-slate-300">{label}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
-              </div>
-            ))}
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center bg-slate-950/80 rounded-2xl px-8 py-5 border border-white/10 backdrop-blur-sm">
-              <p className="font-semibold text-white mb-1">Próximamente</p>
-              <p className="text-sm text-slate-400">Dashboard de mercado laboral tech en Latam</p>
+        <div className="grid grid-cols-2 gap-4 mb-10">
+          {stats.map(({ label, value, sub }) => (
+            <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-2xl font-bold mb-0.5">{value}</p>
+              <p className="text-sm font-medium text-slate-300">{label}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
             </div>
-          </div>
+          ))}
         </div>
+
+        {trends && trends.rising.length > 0 && (
+          <div>
+            <h2 className="font-semibold mb-3">En alza esta semana</h2>
+            <ul className="space-y-2">
+              {trends.rising.map((item) => (
+                <li
+                  key={item.skill}
+                  className="rounded-xl border border-emerald-500/20 bg-emerald-950/20 px-4 py-3 text-sm"
+                >
+                  <span className="text-emerald-300 font-medium">{item.skill}</span>
+                  <span className="text-slate-400"> · +{item.change_pct}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

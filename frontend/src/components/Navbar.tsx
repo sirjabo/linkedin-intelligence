@@ -4,7 +4,9 @@ import { usePathname } from "next/navigation";
 import { Zap } from "lucide-react";
 
 const links = [
-  { href: "/profile", label: "Mi Perfil" },
+  { href: "/analyze", label: "ATS Score" },
+  { href: "/linkedin", label: "LinkedIn" },
+  { href: "/profile", label: "Coach CV" },
   { href: "/skills", label: "Skills Radar" },
   { href: "/market", label: "Mercado" },
 ];

@@ -5,27 +5,27 @@ import { ArrowRight, FileText, BarChart2, TrendingUp, Zap, Sparkles } from "luci
 const features = [
   {
     icon: FileText,
-    label: "Optimizador de CV",
-    desc: "Subí tu CV y un coach con IA lo reescribe sección por sección para pasar filtros ATS y destacar ante reclutadores tech.",
-    href: "/profile",
+    label: "CV Analyzer (ATS)",
+    desc: "Subí tu CV o pegá el texto y recibí un ATS Score 0–100, keywords faltantes y recomendaciones accionables.",
+    href: "/analyze",
     available: true,
     badge: "Disponible ahora",
   },
   {
     icon: BarChart2,
     label: "Skills Radar",
-    desc: "Las 50 skills más demandadas para tu rol objetivo, actualizadas cada semana desde miles de ofertas en Latam y el mundo.",
+    desc: "Las skills más demandadas para tu rol objetivo, con tendencia semanal.",
     href: "/skills",
-    available: false,
-    badge: "Próximamente",
+    available: true,
+    badge: "Disponible ahora",
   },
   {
     icon: TrendingUp,
     label: "Inteligencia de Mercado",
-    desc: "Tendencias de skills, salarios por rol y región, y qué empresas tech están contratando activamente.",
+    desc: "Tendencias de skills y volumen de demanda por rol en Latam.",
     href: "/market",
-    available: false,
-    badge: "Próximamente",
+    available: true,
+    badge: "Disponible ahora",
   },
 ];
 
@@ -62,7 +62,7 @@ export default function HomePage() {
         </div>
 
         <Link
-          href="/profile"
+          href="/analyze"
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-7 py-3.5 rounded-xl font-medium transition-all shadow-lg shadow-blue-900/40 hover:shadow-blue-800/50"
         >
           Analizar mi CV gratis
