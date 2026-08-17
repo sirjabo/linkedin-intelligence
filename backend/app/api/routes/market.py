@@ -496,7 +496,7 @@ async def get_market_trends(
         for s in skills
         if isinstance(s.get("trend"), str)
         and s["trend"] == "rising"
-        and isinstance(s.get("change_pct"), (int, float))
+        and isinstance(s.get("change_pct"), int | float)
         and float(s["change_pct"]) >= 15
     ]
     declining = [

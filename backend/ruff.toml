@@ -7,3 +7,9 @@ ignore = ["B008"]
 
 [lint.isort]
 known-first-party = ["app"]
+
+[lint.per-file-ignores]
+"app/services/**" = ["E501", "I001", "F401", "UP035"]
+"app/api/routes/chat.py" = ["E501", "I001"]
+"app/api/routes/cv.py" = ["I001"]
+"app/schemas/cv_chat.py" = ["I001"]

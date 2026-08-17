@@ -203,29 +203,38 @@ async def _parse_request(request: Request) -> tuple[str, str, str | None]:
 
 @router.post("/linkedin", response_model=LinkedInAnalysisResponse)
 @limiter.limit("30/minute")
-async def analyze_linkedin(request: Request, body: LinkedInAnalysisRequest) -> LinkedInAnalysisResponse:
+async def analyze_linkedin(request: Request) -> LinkedInAnalysisResponse:
     """Analyze a pasted LinkedIn profile and return section scores."""
     started = time.perf_counter()
-    if body.target_role not in SUPPORTED_ROLES:
+    try:
+        raw = await request.json()
+        payload = LinkedInAnalysisRequest.model_validate(raw)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "VALIDATION_ERROR", "message": str(exc)},
+        ) from exc
+
+    if payload.target_role not in SUPPORTED_ROLES:
         raise HTTPException(
             status_code=400,
             detail={
                 "code": "INVALID_ROLE",
                 "message": (
-                    f"El rol '{body.target_role}' no es válido. Roles soportados: "
+                    f"El rol '{payload.target_role}' no es válido. Roles soportados: "
                     f"{', '.join(sorted(SUPPORTED_ROLES))}"
                 ),
             },
         )
 
-    parsed = ProfileParser().parse(body.profile_text)
-    result = ProfileScorer().score(parsed, body.target_role)
+    parsed = ProfileParser().parse(payload.profile_text)
+    result = ProfileScorer().score(parsed, payload.target_role)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     return LinkedInAnalysisResponse(
         analysis_id=str(uuid.uuid4()),
         overall_score=result.overall_score,
-        target_role=body.target_role,
+        target_role=payload.target_role,
         section_scores={
             "title": result.section_scores.title,
             "about": result.section_scores.about,
