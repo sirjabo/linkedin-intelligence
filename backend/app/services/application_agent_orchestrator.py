@@ -39,6 +39,7 @@ from app.services.browser.playwright_adapter import PlaywrightAdapter
 from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
 from app.services.claim_validator import EvidenceBuilder, validate_claims
 from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
+from app.services.pre_submit_validator import PreSubmitValidationError, PreSubmitValidator
 from app.services.form_intelligence import classify_field, classify_field_llm
 from app.services.matching.engine import compute_deterministic, tier_from_score
 from app.services.matching.semantic import compute_hybrid_score, compute_semantic
@@ -387,6 +388,30 @@ class ApplicationAgentOrchestrator:
         if session.status != "ready_to_fill":
             raise AgentError(f"Cannot submit from session status '{session.status}' — must be 'ready_to_fill'")
 
+        # Duplicate submit protection: reject if the application is already submitted
+        app_check = await db.get(Application, session.application_id)
+        if app_check and app_check.status in ("applied",):
+            raise AgentError(
+                f"Duplicate submit blocked: application {session.application_id} is already in status "
+                f"'{app_check.status}'. Check ApplicationSubmission records for the confirmation."
+            )
+
+        # Also reject if another session for this application is actively submitting
+        from sqlalchemy import select as sa_select
+        dup_q = await db.execute(
+            sa_select(ApplicationAgentSession).where(
+                ApplicationAgentSession.application_id == session.application_id,
+                ApplicationAgentSession.id != session.id,
+                ApplicationAgentSession.status.in_(["submitting", "submitted"]),
+            )
+        )
+        dup_session = dup_q.scalars().first()
+        if dup_session:
+            raise AgentError(
+                f"Duplicate submit blocked: session {dup_session.id} already has status '{dup_session.status}' "
+                f"for application {session.application_id}."
+            )
+
         form = await _load_form(session.application_id, db)
         app, candidate, profile = await _load_application_context(session.application_id, db)
 
@@ -455,10 +480,22 @@ class ApplicationAgentOrchestrator:
                 # Screenshot after filling, before submit
                 _filled_bytes = await browser.capture_screenshot()
 
-                # Phase 6: pre-submit validation — warn on HTML5 invalid fields
+                # Phase 6: structured pre-submit validation
+                pre_submit_report = PreSubmitValidator().validate(form.fields)
+                logger.info(
+                    "pre_submit_validation",
+                    session_id=str(session.id),
+                    passed=pre_submit_report.passed,
+                    errors=len(pre_submit_report.errors),
+                    warnings=len(pre_submit_report.warnings),
+                )
+                if not pre_submit_report.passed:
+                    raise PreSubmitValidationError(pre_submit_report)
+
+                # Secondary: HTML5 browser-side invalid fields (best-effort)
                 try:
                     if await browser.has_element(":invalid"):
-                        logger.warning("form_has_invalid_fields", session_id=str(session.id))
+                        logger.warning("form_has_html5_invalid_fields", session_id=str(session.id))
                 except Exception:
                     pass
 

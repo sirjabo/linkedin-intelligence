@@ -158,6 +158,40 @@ class ClaimVerification:
 
 
 @dataclass
+class ClaimScore:
+    """Numeric summary of a validation result for use in eval reports."""
+    total: int
+    supported: int
+    plausible: int
+    unsupported: int
+    contradicted: int
+
+    @property
+    def support_rate(self) -> float:
+        """Fraction of claims that are SUPPORTED or PLAUSIBLE."""
+        if self.total == 0:
+            return 1.0
+        return (self.supported + self.plausible) / self.total
+
+    @property
+    def contradiction_rate(self) -> float:
+        """Fraction of claims that are CONTRADICTED."""
+        if self.total == 0:
+            return 0.0
+        return self.contradicted / self.total
+
+    @classmethod
+    def from_result(cls, result: "ValidationResult") -> "ClaimScore":
+        return cls(
+            total=len(result.detailed),
+            supported=len(result.verified_claims),
+            plausible=len(result.plausible_claims),
+            unsupported=len(result.unverified_claims),
+            contradicted=len(result.contradicted_claims),
+        )
+
+
+@dataclass
 class ValidationResult:
     verified_claims: list[str] = field(default_factory=list)       # SUPPORTED (backwards compat)
     unverified_claims: list[str] = field(default_factory=list)     # UNSUPPORTED (backwards compat)
@@ -200,11 +234,11 @@ def _tf_vector(text: str) -> dict[str, float]:
     return {w: c / total for w, c in counts.items()}
 
 
-def _semantic_similarity(claim: str, evidence: str) -> float:
+def _lexical_similarity(claim: str, evidence: str) -> float:
     """Term-frequency cosine similarity between claim and evidence text.
 
-    Returns a float in [0.0, 1.0]. Uses no external dependencies.
-    A score ≥ 0.10 is treated as a weak semantic match by _classify_claim.
+    Returns a float in [0.0, 1.0]. Uses no external dependencies (lexical only,
+    no embeddings). A score ≥ 0.10 is treated as a weak lexical match by _classify_claim.
     """
     q = _tf_vector(claim)
     d = _tf_vector(evidence)
@@ -314,7 +348,7 @@ def _classify_claim(claim: str, evidence_records: list) -> ClaimVerification:
         overlap = list(claim_words & evidence_words)
         if len(overlap) > len(best_overlap):
             best_overlap = overlap
-        sim = _semantic_similarity(claim, combined)
+        sim = _lexical_similarity(claim, combined)
         if sim > best_semantic:
             best_semantic = sim
 
@@ -333,7 +367,7 @@ def _classify_claim(claim: str, evidence_records: list) -> ClaimVerification:
     elif n >= 1:
         status = "PLAUSIBLE"
     elif best_semantic >= 0.10:
-        # Weak semantic similarity without keyword hits → PLAUSIBLE
+        # Weak lexical similarity without keyword hits → PLAUSIBLE
         status = "PLAUSIBLE"
     else:
         status = "UNSUPPORTED"

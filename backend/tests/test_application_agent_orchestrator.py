@@ -310,7 +310,26 @@ class TestOrchestratorSubmit:
         tmp.close()
         cv_path = tmp.name
 
+        # Sensitive semantic types require human answers even if not flagged human_required
+        _SENSITIVE_TYPES = {
+            "salary", "salary_expectation", "sponsorship", "work_authorization",
+            "demographic", "race", "ethnicity", "gender", "disability",
+            "veteran_status", "eeo",
+        }
+        all_fields_result = await db.execute(
+            select(ApplicationFormField).where(ApplicationFormField.form_id == form.id)
+        )
+        all_form_fields = all_fields_result.scalars().all()
+        for field in all_form_fields:
+            if field.semantic_type in _SENSITIVE_TYPES and not field.human_answer:
+                if field.semantic_type in ("salary", "salary_expectation"):
+                    field.human_answer = "90000"
+                else:
+                    field.human_answer = "yes"
+
         for field in human_fields:
+            if field.human_answer:
+                continue  # already set above
             if field.semantic_type == "phone":
                 field.human_answer = "+1-555-000-9999"
             elif field.semantic_type == "cv_file":
@@ -340,3 +359,57 @@ class TestOrchestratorSubmit:
         await db.refresh(application)
         assert application.status == "applied"
         assert application.applied_at is not None
+
+    @pytest.mark.asyncio
+    async def test_duplicate_submit_blocked_when_application_already_applied(self, application, db):
+        """Duplicate submit protection: reject if app.status == 'applied'."""
+        orchestrator = ApplicationAgentOrchestrator()
+
+        # Manually set application to 'applied' to simulate prior submission
+        application.status = "applied"
+        await db.commit()
+
+        # Create a session in ready_to_fill state
+        session = ApplicationAgentSession(
+            application_id=application.id,
+            status="ready_to_fill",
+            form_url="https://example.com/apply",
+        )
+        db.add(session)
+        await db.commit()
+
+        with pytest.raises(AgentError, match="Duplicate submit blocked"):
+            await orchestrator.submit(
+                session_id=session.id,
+                human_confirmed=True,
+                db=db,
+            )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_submit_blocked_when_other_session_submitting(self, application, db):
+        """Duplicate submit protection: reject if sibling session already submitting."""
+        orchestrator = ApplicationAgentOrchestrator()
+
+        # Create session 1 (already submitting)
+        session_1 = ApplicationAgentSession(
+            application_id=application.id,
+            status="submitting",
+            form_url="https://example.com/apply",
+        )
+        db.add(session_1)
+
+        # Create session 2 (ready_to_fill — will try to submit)
+        session_2 = ApplicationAgentSession(
+            application_id=application.id,
+            status="ready_to_fill",
+            form_url="https://example.com/apply",
+        )
+        db.add(session_2)
+        await db.commit()
+
+        with pytest.raises(AgentError, match="Duplicate submit blocked"):
+            await orchestrator.submit(
+                session_id=session_2.id,
+                human_confirmed=True,
+                db=db,
+            )
