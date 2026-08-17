@@ -314,8 +314,8 @@ CALIBRATION_PAIRS: list[CalibrationPair] = [
         label="senior_de_nyc_relocation_required",
         candidate=_SENIOR_DE,
         job=_SENIOR_DE_JOB_NYC,
-        expected="stretch",
-        rationale="Strong skill match but requires relocation to NYC and no sponsorship",
+        expected="skip",
+        rationale="visa_required + no sponsorship is a hard blocker regardless of skill match or relocation",
     ),
     CalibrationPair(
         label="data_scientist_to_staff_de",
