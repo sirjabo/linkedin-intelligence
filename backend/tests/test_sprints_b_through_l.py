@@ -688,7 +688,7 @@ def test_fit_analysis_response_has_requirement_matches():
         importance="high",
         candidate_status="MATCHED",
         match_score=1.0,
-        evidence_ref=None,
+        evidence_refs=[],
     )]
     resp2 = FitAnalysisResponse(
         job_fit_score=0.8,
@@ -717,7 +717,7 @@ def test_requirement_match_item_fields():
         importance="medium",
         candidate_status="PARTIAL",
         match_score=0.5,
-        evidence_ref="exp:2",
+        evidence_refs=["exp:2"],
     )
-    assert item.evidence_ref == "exp:2"
+    assert item.evidence_refs == ["exp:2"]
     assert item.match_score == 0.5

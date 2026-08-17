@@ -127,7 +127,7 @@ class RequirementMatchItem(BaseModel):
     importance: str
     candidate_status: str
     match_score: float
-    evidence_ref: str | None = None
+    evidence_refs: list[str] = []
 
 
 class FitAnalysisResponse(BaseModel):

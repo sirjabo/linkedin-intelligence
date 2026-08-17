@@ -39,9 +39,11 @@ async def test_workday_before_discover_clicks_apply():
         return "applyButton" in selector or "Apply Now" in selector
 
     browser.has_element.side_effect = _has
+    browser.click.return_value = True
 
     await adapter.before_discover(browser)
-    browser.click_next.assert_called_once()
+    browser.click.assert_called_once()
+    browser.click_next.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -127,6 +129,8 @@ async def test_ashby_before_discover_clicks_apply():
         return "Apply" in selector
 
     browser.has_element.side_effect = _has
+    browser.click.return_value = True
 
     await adapter.before_discover(browser)
-    browser.click_next.assert_called_once()
+    browser.click.assert_called_once()
+    browser.click_next.assert_not_called()

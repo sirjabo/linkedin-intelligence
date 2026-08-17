@@ -31,6 +31,10 @@ class GreenhouseAdapter:
         re.compile(r"greenhouse\.io/.*jobs", re.IGNORECASE),
     ]
 
+    def __init__(self) -> None:
+        self.eeo_section_present: bool = False
+        self.sections_visited: list[str] = []
+
     # Greenhouse-specific label normalization (their labels are usually clean)
     _LABEL_OVERRIDES: dict[str, str] = {
         "Resume/CV": "Resume",
@@ -52,6 +56,10 @@ class GreenhouseAdapter:
             pass  # no banner, continue
 
     def normalize_field(self, field: RawFormField) -> RawFormField:
+        if field.section_title and field.section_title not in self.sections_visited:
+            self.sections_visited.append(field.section_title)
+        if field.section_title and any(p.search(field.section_title) for p in _EEO_SECTION_PATTERNS):
+            self.eeo_section_present = True
         label = self._LABEL_OVERRIDES.get(field.label, field.label)
         return RawFormField(
             field_id=field.field_id,

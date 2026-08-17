@@ -89,8 +89,8 @@ class MockLLMProvider:
                         "Senior Data Engineer with 7 years building PB-scale Spark pipelines on AWS, "
                         "specializing in Airflow orchestration and dbt transformations."
                     ),
-                    rationale="Incorporates JD keywords and quantifies scale",
-                    evidence_ref="BigCo Spark pipeline redesign",
+                    reason="Incorporates JD keywords and quantifies scale",
+                    evidence_refs=["BigCo Spark pipeline redesign"],
                 ),
             ],
             evidence_refs=["BigCo Spark pipeline redesign (2021-Present)"],

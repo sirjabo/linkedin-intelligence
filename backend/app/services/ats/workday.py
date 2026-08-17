@@ -40,6 +40,9 @@ class WorkdayAdapter:
         re.compile(r"workday\.com", re.IGNORECASE),
     ]
 
+    def __init__(self) -> None:
+        self.section_history: list[str] = []
+
     @property
     def capabilities(self) -> ATSCapabilities:
         return _CAPABILITIES

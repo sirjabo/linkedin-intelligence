@@ -19,6 +19,7 @@ SemanticType = Literal[
     "salary_expectation",
     "work_authorization",
     "cover_letter",
+    "cover_letter_file",
     "cv_file",
     "start_date", "availability",
     "custom_essay",
@@ -45,6 +46,8 @@ _LABEL_RULES: list[tuple[re.Pattern, SemanticType]] = [
     (re.compile(r"\b(python|java|kotlin|rust|go|ruby|php|swift|scala|react|vue|angular|node|django|flask|spring|rails|docker|kubernetes|k8s|aws|azure|gcp|sql|postgres|mysql|mongo|redis|typescript|javascript|css|html)\b.*\byears?\b", re.IGNORECASE), "skill_years"),
     (re.compile(r"\byears?\b.*(experience|exp)\b|\b(experience|exp).*\byears?\b", re.IGNORECASE), "years_experience"),
     (re.compile(r"\bwork[\s_-]?auth(orization)?\b|\bvisa\b|\bsponsorship\b|\bauthorized\b.*(work|us)\b", re.IGNORECASE), "work_authorization"),
+    # cover_letter_file must come BEFORE cover_letter so file-upload fields are captured first
+    (re.compile(r"\b(upload|attach|attach(ment)?|file)\b.*(cover[\s_-]?letter)\b|(cover[\s_-]?letter)\b.*(upload|attach|file)\b", re.IGNORECASE), "cover_letter_file"),
     (re.compile(r"\bcover[\s_-]?letter\b", re.IGNORECASE), "cover_letter"),
     (re.compile(r"\bresume\b|curriculum\b|cv\b", re.IGNORECASE), "cv_file"),
     (re.compile(r"\bstart[\s_-]?date\b|earliest\b.*start\b", re.IGNORECASE), "start_date"),
@@ -63,7 +66,7 @@ _SKILL_YEARS_EXTRACT = re.compile(
 )
 
 # Semantic types that can never be auto-filled — always require human input
-_ALWAYS_HUMAN = {"phone", "cv_file", "custom_essay", "experience_essay", "unknown"}
+_ALWAYS_HUMAN = {"phone", "cv_file", "cover_letter_file", "custom_essay", "experience_essay", "unknown"}
 
 # Semantic types where auto-fill value comes from the candidate record
 _CANDIDATE_FIELD_MAP: dict[SemanticType, str] = {

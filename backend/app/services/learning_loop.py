@@ -358,6 +358,100 @@ class ABExperiment:
         return self.variants[-1]  # safety fallback
 
 
+def update_apply_threshold(
+    calibration: CalibrationReport,
+    current_thresholds: dict[str, float] | None = None,
+) -> tuple[dict[str, float], list[ThresholdUpdate]]:
+    """Public wrapper: compute updated match-score thresholds from a calibration report.
+
+    Only updates tiers where outcomes_recorded ≥ 10 and the signal is significant.
+    Returns (new_thresholds, updates) so the caller can persist or log the changes.
+    """
+    return _update_thresholds(calibration, current_thresholds)
+
+
+@dataclass
+class HypothesisTestResult:
+    variant_a: str
+    variant_b: str
+    interview_rate_a: float | None
+    interview_rate_b: float | None
+    p_value: float | None
+    significant: bool
+    direction: str  # "a_better" | "b_better" | "no_difference" | "insufficient_data"
+    summary: str
+
+
+def hypothesis_test(
+    outcomes_a: list[dict],
+    outcomes_b: list[dict],
+    variant_a_name: str = "control",
+    variant_b_name: str = "treatment",
+) -> HypothesisTestResult:
+    """Two-proportion z-test comparing interview rates of two A/B variants.
+
+    Args:
+        outcomes_a: list of outcome dicts for variant A {"outcome": str | None}
+        outcomes_b: list of outcome dicts for variant B {"outcome": str | None}
+
+    Returns a HypothesisTestResult with p_value and direction.
+    A p_value < 0.05 is considered significant.
+    """
+    def _rates(outcomes: list[dict]) -> tuple[int, int]:
+        recorded = [o for o in outcomes if o.get("outcome") is not None]
+        positives = [o for o in recorded if o.get("outcome") in _POSITIVE]
+        return len(positives), len(recorded)
+
+    pos_a, n_a = _rates(outcomes_a)
+    pos_b, n_b = _rates(outcomes_b)
+
+    rate_a = pos_a / n_a if n_a > 0 else None
+    rate_b = pos_b / n_b if n_b > 0 else None
+
+    if n_a < MIN_OUTCOMES_FOR_CALIBRATION or n_b < MIN_OUTCOMES_FOR_CALIBRATION:
+        return HypothesisTestResult(
+            variant_a=variant_a_name, variant_b=variant_b_name,
+            interview_rate_a=rate_a, interview_rate_b=rate_b,
+            p_value=None, significant=False,
+            direction="insufficient_data",
+            summary=(
+                f"Insufficient data: {variant_a_name}={n_a} outcomes, "
+                f"{variant_b_name}={n_b} outcomes (need ≥{MIN_OUTCOMES_FOR_CALIBRATION} each)"
+            ),
+        )
+
+    # Pooled proportion z-test
+    p_pool = (pos_a + pos_b) / (n_a + n_b)
+    std_err = math.sqrt(p_pool * (1 - p_pool) * (1 / n_a + 1 / n_b))
+    if std_err == 0.0:
+        p_value = 1.0
+        z_stat = 0.0
+    else:
+        z_stat = ((rate_a or 0.0) - (rate_b or 0.0)) / std_err  # type: ignore[operator]
+        p_value = round(min(1.0, 2.0 * _norm_sf(abs(z_stat))), 4)
+
+    significant = p_value < 0.05
+    if not significant:
+        direction = "no_difference"
+    elif (rate_a or 0.0) > (rate_b or 0.0):
+        direction = "a_better"
+    else:
+        direction = "b_better"
+
+    summary = (
+        f"{variant_a_name}: {rate_a:.1%} ({n_a} outcomes), "
+        f"{variant_b_name}: {rate_b:.1%} ({n_b} outcomes), "
+        f"p={p_value:.4f} {'(significant)' if significant else '(not significant)'}"
+    )
+
+    return HypothesisTestResult(
+        variant_a=variant_a_name, variant_b=variant_b_name,
+        interview_rate_a=rate_a, interview_rate_b=rate_b,
+        p_value=p_value, significant=significant,
+        direction=direction, summary=summary,
+    )
+
+
 # Pre-built experiments
 DET_WEIGHT_EXPERIMENT = ABExperiment(
     experiment_id="det_weight_v1",

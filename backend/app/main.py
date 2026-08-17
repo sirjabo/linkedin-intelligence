@@ -17,6 +17,7 @@ from app.api.routes import (
     candidates,
     chat,
     cv,
+    experiments,
     forms,
     interview,
     jobs,
@@ -101,6 +102,7 @@ app.include_router(agent.router, prefix="/api/v2")
 app.include_router(market.router, prefix="/api/v2")
 app.include_router(analyze.router, prefix="/api/v2")
 app.include_router(answers.router, prefix="/api/v2")
+app.include_router(experiments.router, prefix="/api/v2")
 
 
 @app.get("/health")

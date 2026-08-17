@@ -26,6 +26,11 @@ class LeverAdapter:
         re.compile(r"lever\.co/.*apply", re.IGNORECASE),
     ]
 
+    def __init__(self) -> None:
+        self.custom_question_labels: list[str] = []
+        self.validation_errors: list[str] = []
+        self.last_validation_errors: list[str] = []
+
     @property
     def capabilities(self) -> ATSCapabilities:
         return _CAPABILITIES

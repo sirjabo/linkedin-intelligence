@@ -141,8 +141,8 @@ def mock_application_agents():
                 section="summary",
                 original="Experienced data professional",
                 adapted="Experienced Senior Data Engineer with 5+ years building Python data pipelines.",
-                rationale="Aligns with JD seniority and Python requirements",
-                evidence_ref="5+ years Python experience",
+                reason="Aligns with JD seniority and Python requirements",
+                evidence_refs=["5+ years Python experience"],
             )
         ],
         evidence_refs=["Python experience", "SQL experience"],

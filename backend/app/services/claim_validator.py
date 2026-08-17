@@ -6,6 +6,7 @@ Produces SUPPORTED / PLAUSIBLE / UNSUPPORTED / CONTRADICTED classifications.
 EvidenceBuilder constructs evidence records from the candidate's profile so
 the orchestrator can pass real data instead of an empty list.
 """
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -187,6 +188,69 @@ def _keywords(text: str) -> set[str]:
     return {w.lower() for w in re.findall(r"\b\w{3,}\b", text)}
 
 
+def _tf_vector(text: str) -> dict[str, float]:
+    """Term frequency vector for a text string (bag-of-words, normalised)."""
+    words = re.findall(r"\b\w{3,}\b", text.lower())
+    if not words:
+        return {}
+    counts: dict[str, float] = {}
+    for w in words:
+        counts[w] = counts.get(w, 0.0) + 1.0
+    total = sum(counts.values())
+    return {w: c / total for w, c in counts.items()}
+
+
+def _semantic_similarity(claim: str, evidence: str) -> float:
+    """Term-frequency cosine similarity between claim and evidence text.
+
+    Returns a float in [0.0, 1.0]. Uses no external dependencies.
+    A score ≥ 0.10 is treated as a weak semantic match by _classify_claim.
+    """
+    q = _tf_vector(claim)
+    d = _tf_vector(evidence)
+    common = set(q) & set(d)
+    if not common:
+        return 0.0
+    dot = sum(q[t] * d[t] for t in common)
+    q_norm = math.sqrt(sum(v * v for v in q.values()))
+    d_norm = math.sqrt(sum(v * v for v in d.values()))
+    if q_norm == 0.0 or d_norm == 0.0:
+        return 0.0
+    return round(dot / (q_norm * d_norm), 4)
+
+
+def _temporal_consistency(claim: str, experiences: list) -> bool:
+    """Return True if year claims in `claim` are consistent with experience records.
+
+    Checks whether a stated year (e.g. "since 2019", "in 2022") falls within
+    the date range of at least one experience record that shares keywords with
+    the claim. Returns True (consistent) when no contradiction is found or when
+    there is not enough temporal data to make a determination.
+    """
+    year_match = re.search(r"\b(19|20)(\d{2})\b", claim)
+    if not year_match:
+        return True  # no year claim — nothing to validate
+
+    claimed_year = int(year_match.group(0))
+    claim_words = _keywords(claim)
+
+    for record in experiences:
+        ev_text = getattr(record, "content", "") or ""
+        ev_words = _keywords(ev_text)
+        overlap = claim_words & ev_words - {"years", "experience", "the", "and"}
+        if not overlap:
+            continue
+        # Look for year ranges in the evidence text like "2015–2018" or "2015-2018"
+        range_m = re.search(r"\b(19|20)(\d{2})\s*[-–]\s*(19|20)(\d{2})\b", ev_text)
+        if range_m:
+            start_year = int(f"{range_m.group(1)}{range_m.group(2)}")
+            end_year = int(f"{range_m.group(3)}{range_m.group(4)}")
+            if claimed_year < start_year or claimed_year > end_year + 1:
+                return False  # year falls outside the experience window
+
+    return True
+
+
 def _check_contradiction(claim: str, evidence_records: list) -> str | None:
     """Detect if a years-of-experience claim contradicts computed evidence.
 
@@ -240,19 +304,36 @@ def _classify_claim(claim: str, evidence_records: list) -> ClaimVerification:
 
     claim_words = _keywords(claim)
     best_overlap: list[str] = []
+    best_semantic: float = 0.0
 
     for record in evidence_records:
         evidence_text = getattr(record, "content", "") or getattr(record, "claim", "") or ""
         source_text = getattr(record, "source_text", "") or ""
-        evidence_words = _keywords(evidence_text + " " + source_text)
+        combined = evidence_text + " " + source_text
+        evidence_words = _keywords(combined)
         overlap = list(claim_words & evidence_words)
         if len(overlap) > len(best_overlap):
             best_overlap = overlap
+        sim = _semantic_similarity(claim, combined)
+        if sim > best_semantic:
+            best_semantic = sim
+
+    # Temporal consistency check (returns True when there is nothing to flag)
+    experience_records = [r for r in evidence_records if getattr(r, "source_type", "") == "experience"]
+    temporally_ok = _temporal_consistency(claim, experience_records)
+    if not temporally_ok:
+        return ClaimVerification(
+            claim=claim, status="CONTRADICTED",
+            contradiction_source="year claim is outside the recorded experience window",
+        )
 
     n = len(best_overlap)
     if n >= 3:
         status: VerificationStatus = "SUPPORTED"
     elif n >= 1:
+        status = "PLAUSIBLE"
+    elif best_semantic >= 0.10:
+        # Weak semantic similarity without keyword hits → PLAUSIBLE
         status = "PLAUSIBLE"
     else:
         status = "UNSUPPORTED"
