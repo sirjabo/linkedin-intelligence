@@ -261,10 +261,7 @@ class ApplicationAgentOrchestrator:
             )
         session.status = "paused"
         if resume_from_field:
-            # Store JSON-like metadata in error_message; a real impl would use a separate column
-            import json
-            pause_meta = {"resume_from_field": resume_from_field}
-            session.error_message = json.dumps(pause_meta)
+            session.pause_metadata = {"resume_from_field": resume_from_field}
         await db.commit()
         logger.info(
             "agent.paused",
@@ -296,11 +293,9 @@ class ApplicationAgentOrchestrator:
 
         # Determine effective resume field
         effective_label = field_label
-        if not effective_label and session.error_message:
-            import json
+        if not effective_label and session.pause_metadata:
             with contextlib.suppress(Exception):
-                meta = json.loads(session.error_message)
-                effective_label = meta.get("resume_from_field")
+                effective_label = session.pause_metadata.get("resume_from_field")
 
         # Mark fields before the resume point as skipped
         skipped = 0
@@ -325,7 +320,7 @@ class ApplicationAgentOrchestrator:
         ]
         session.fields_human_pending = len(unanswered)
         session.status = "awaiting_human" if unanswered else "ready_to_fill"
-        session.error_message = None  # clear pause metadata
+        session.pause_metadata = None  # clear pause metadata on resume
 
         form.status = "ready" if not unanswered else "mapped"
         await db.commit()
@@ -463,16 +458,40 @@ class ApplicationAgentOrchestrator:
                     elif ftype == "number":
                         # Only fill if value is a valid numeric string
                         if value and value.replace(".", "", 1).lstrip("-").isdigit():
-                            await browser.fill_text(selector, value)
-                            filled += 1
+                            ok = await browser.fill_text(selector, value)
+                            if not ok:
+                                # Stale element recovery: re-discover form and retry once
+                                raw_form = await browser.discover_form()
+                                _field_map = {f.name: f for f in raw_form.fields}
+                                fresh = _find_matching_raw_field(db_field.label, db_field.field_type, raw_form.fields)
+                                if fresh:
+                                    ok = await browser.fill_text(fresh.css_selector, value)
+                                logger.warning(
+                                    "stale_element_recovery",
+                                    field=db_field.label, recovered=ok,
+                                )
+                            if ok:
+                                filled += 1
                     elif ftype == "url":
                         # Only fill if value is a well-formed URL; invalid URLs trigger browser validation
                         if value and value.startswith(("http://", "https://")):
                             await browser.fill_text(selector, value)
                             filled += 1
                     elif value:
-                        await browser.fill_text(selector, value)
-                        filled += 1
+                        ok = await browser.fill_text(selector, value)
+                        if not ok:
+                            # Stale element recovery: re-discover form and retry once
+                            raw_form = await browser.discover_form()
+                            _field_map = {f.name: f for f in raw_form.fields}
+                            fresh = _find_matching_raw_field(db_field.label, db_field.field_type, raw_form.fields)
+                            if fresh:
+                                ok = await browser.fill_text(fresh.css_selector, value)
+                            logger.warning(
+                                "stale_element_recovery",
+                                field=db_field.label, recovered=ok,
+                            )
+                        if ok:
+                            filled += 1
 
                 session.fields_confirmed = filled
                 session.filled_at = datetime.utcnow()

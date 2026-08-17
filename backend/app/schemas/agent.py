@@ -71,6 +71,7 @@ class AgentSessionResponse(BaseModel):
     confirmation_id: str | None
     final_url: str | None
     error_message: str | None
+    pause_metadata: dict | None = None
     fields: list[AgentFormFieldResponse] | None = None
 
     @classmethod
@@ -93,5 +94,6 @@ class AgentSessionResponse(BaseModel):
             confirmation_id=session.confirmation_id,
             final_url=session.final_url,
             error_message=session.error_message,
+            pause_metadata=session.pause_metadata,
             fields=[AgentFormFieldResponse.model_validate(f) for f in fields] if fields else None,
         )

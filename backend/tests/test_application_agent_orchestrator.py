@@ -413,3 +413,123 @@ class TestOrchestratorSubmit:
                 human_confirmed=True,
                 db=db,
             )
+
+
+# ── PR-5: pause_metadata and crash simulation tests ──────────────────────────
+
+class TestPauseMetadata:
+    @pytest.mark.asyncio
+    async def test_pause_stores_resume_field_in_pause_metadata(self, mock_ats_url, application, db):
+        """Pause with resume_from_field stores data in pause_metadata, not error_message."""
+        orchestrator = ApplicationAgentOrchestrator()
+        session = await orchestrator.start(
+            application_id=application.id,
+            form_url=f"{mock_ats_url}/apply",
+            db=db,
+        )
+
+        # Force status to 'filling' so pause is allowed
+        session.status = "filling"
+        await db.commit()
+
+        paused = await orchestrator.pause(
+            session_id=session.id,
+            resume_from_field="Email",
+            db=db,
+        )
+        assert paused.status == "paused"
+        # pause_metadata must hold the resume point
+        assert paused.pause_metadata is not None
+        assert paused.pause_metadata["resume_from_field"] == "Email"
+        # error_message must NOT be overwritten with JSON
+        assert paused.error_message is None
+
+    @pytest.mark.asyncio
+    async def test_resume_from_field_clears_pause_metadata(self, mock_ats_url, application, db):
+        """After resume_from_field(), pause_metadata is cleared."""
+        orchestrator = ApplicationAgentOrchestrator()
+        session = await orchestrator.start(
+            application_id=application.id,
+            form_url=f"{mock_ats_url}/apply",
+            db=db,
+        )
+
+        # Pause the session
+        session.status = "filling"
+        await db.commit()
+        await orchestrator.pause(
+            session_id=session.id,
+            resume_from_field="Email",
+            db=db,
+        )
+
+        # Resume from the field
+        resumed = await orchestrator.resume_from_field(
+            session_id=session.id,
+            db=db,
+        )
+        assert resumed.status in ("awaiting_human", "ready_to_fill")
+        assert resumed.pause_metadata is None
+
+    @pytest.mark.asyncio
+    async def test_pause_without_resume_field_sets_no_metadata(self, mock_ats_url, application, db):
+        """Pause without resume_from_field leaves pause_metadata as None."""
+        orchestrator = ApplicationAgentOrchestrator()
+        session = await orchestrator.start(
+            application_id=application.id,
+            form_url=f"{mock_ats_url}/apply",
+            db=db,
+        )
+        session.status = "filling"
+        await db.commit()
+
+        paused = await orchestrator.pause(session_id=session.id, db=db)
+        assert paused.status == "paused"
+        assert paused.pause_metadata is None
+        assert paused.error_message is None
+
+
+class TestCrashSimulation:
+    @pytest.mark.asyncio
+    async def test_failed_submit_sets_error_message(self, application, db):
+        """When submit() fails due to bad status, error_message is not touched (no crash)."""
+        orchestrator = ApplicationAgentOrchestrator()
+
+        # Create a session in 'failed' status — submit should raise immediately
+        session = ApplicationAgentSession(
+            application_id=application.id,
+            status="failed",
+            form_url="https://example.com/apply",
+        )
+        db.add(session)
+        await db.commit()
+
+        with pytest.raises(AgentError):
+            await orchestrator.submit(
+                session_id=session.id,
+                human_confirmed=True,
+                db=db,
+            )
+
+    @pytest.mark.asyncio
+    async def test_session_status_failed_after_bad_url(self, application, db):
+        """start() with a non-existent URL leaves session in failed state."""
+        orchestrator = ApplicationAgentOrchestrator()
+
+        with pytest.raises(Exception):
+            await orchestrator.start(
+                application_id=application.id,
+                form_url="http://localhost:1/nonexistent-url-that-fails",
+                db=db,
+            )
+
+        # Session should be in failed state with error_message set
+        result = await db.execute(
+            select(ApplicationAgentSession).where(
+                ApplicationAgentSession.application_id == application.id
+            )
+        )
+        sessions = result.scalars().all()
+        failed = [s for s in sessions if s.status == "failed"]
+        assert len(failed) >= 1
+        assert failed[-1].error_message is not None
