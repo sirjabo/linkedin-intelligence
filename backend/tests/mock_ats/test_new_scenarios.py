@@ -281,3 +281,52 @@ class TestScenarioIdempotent:
             follow_redirects=False,
         )
         assert r2.status_code == 409
+
+
+# ── Scenario 33: File upload ───────────────────────────────────────────────────
+
+class TestScenarioFileUpload:
+    def test_get_returns_form(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/fileupload")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+        assert 'type="file"' in r.text
+        assert "resume" in r.text
+
+    def test_submit_with_resume_echoes_filename(self, mock_ats_url):
+        resume_bytes = b"%PDF-1.4 fake resume content"
+        r = httpx.post(
+            f"{mock_ats_url}/apply/fileupload/submit",
+            data={"full_name": "Jane Doe", "email": "jane@example.com"},
+            files={"resume": ("my_resume.pdf", resume_bytes, "application/pdf")},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "submitted"
+        assert body["resume_filename"] == "my_resume.pdf"
+        assert body["ref"].startswith("APP-")
+
+    def test_submit_with_resume_and_cover_letter(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/fileupload/submit",
+            data={"full_name": "Jane Doe", "email": "jane@example.com"},
+            files={
+                "resume": ("resume.pdf", b"pdf content", "application/pdf"),
+                "cover_letter": ("cover.txt", b"Dear Hiring Manager...", "text/plain"),
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["resume_filename"] == "resume.pdf"
+        assert body["cover_letter_filename"] == "cover.txt"
+
+    def test_submit_without_file_returns_200(self, mock_ats_url):
+        """Server is lenient — missing optional cover_letter is fine."""
+        r = httpx.post(
+            f"{mock_ats_url}/apply/fileupload/submit",
+            data={"full_name": "Jane Doe", "email": "jane@example.com"},
+            files={"resume": ("r.pdf", b"data", "application/pdf")},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["cover_letter_filename"] is None

@@ -16,6 +16,7 @@ Scenarios covered (current):
  24. /apply        — already covers work_authorization (work auth)
  29. /apply/fail   — failed submission (500 response)
  32. /apply/idempotent — duplicate submit protection
+ 33. /apply/fileupload — file upload with filename echo in JSON response
 
 Run standalone: uvicorn tests.mock_ats.server:app --port 8888
 Used in tests via the mock_ats_url fixture in conftest_ats.py.
@@ -552,3 +553,46 @@ async def submit_idempotent(
         _submitted_idempotency_keys.add(idempotency_key)
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
+
+
+# ── Scenario 33: File upload with filename echo ───────────────────────────────
+
+_FILEUPLOAD_HTML = """\
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Apply — File Upload</title></head><body>
+<h1>Apply — Resume Upload</h1>
+<form method="POST" action="/apply/fileupload/submit" enctype="multipart/form-data">
+  <label for="full_name">Full Name *</label>
+  <input type="text" id="full_name" name="full_name" required><br>
+  <label for="email">Email *</label>
+  <input type="email" id="email" name="email" required><br>
+  <label for="resume">Resume (PDF, DOCX) *</label>
+  <input type="file" id="resume" name="resume" accept=".pdf,.docx" required><br>
+  <label for="cover_letter">Cover Letter (optional)</label>
+  <input type="file" id="cover_letter" name="cover_letter" accept=".pdf,.txt"><br>
+  <button type="submit">Submit Application</button>
+</form></body></html>"""
+
+
+@app.get("/apply/fileupload", response_class=HTMLResponse)
+async def get_fileupload_form():
+    return HTMLResponse(_FILEUPLOAD_HTML)
+
+
+@app.post("/apply/fileupload/submit")
+async def submit_fileupload(
+    full_name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    resume: Optional[UploadFile] = File(None),
+    cover_letter: Optional[UploadFile] = File(None),
+):
+    resume_name = resume.filename if resume else None
+    cover_letter_name = cover_letter.filename if cover_letter else None
+    ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
+    # Return JSON so tests can assert on uploaded filenames
+    return JSONResponse({
+        "status": "submitted",
+        "ref": ref,
+        "resume_filename": resume_name,
+        "cover_letter_filename": cover_letter_name,
+    })
