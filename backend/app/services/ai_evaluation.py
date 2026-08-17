@@ -140,14 +140,29 @@ class LLMEvaluationCriterion:
     async def evaluate_async(self, text: str) -> EvalResult:
         """Call the LLM and parse PASS/FAIL from the response."""
         try:
+            import os
             import anthropic
 
             from app.core.config import settings
 
-            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+            if openrouter_key:
+                client = anthropic.AsyncAnthropic(
+                    api_key=openrouter_key,
+                    base_url="https://openrouter.ai/api/v1",
+                    default_headers={
+                        "HTTP-Referer": "https://linkedin-intelligence",
+                        "X-Title": "LinkedIn Intelligence",
+                    },
+                )
+                model = f"anthropic/{self.model}"
+            else:
+                client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+                model = self.model
+
             prompt = self.prompt_template.format(text=text[:4000])
             resp = await client.messages.create(
-                model=self.model,
+                model=model,
                 max_tokens=80,
                 messages=[{"role": "user", "content": prompt}],
             )
