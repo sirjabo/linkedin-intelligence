@@ -20,6 +20,16 @@
   box-sizing: border-box;
 }
 
+@keyframes progress-slide {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(50%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-progress {
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
+
 html,
 body {
   height: 100%;
