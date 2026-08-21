@@ -11,20 +11,19 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.api.deps import get_current_user
 from app.db.base import Base
-from app.db.models.user import User
+from app.db.models.application import Application
 from app.db.models.candidate import Candidate
 from app.db.models.job import Job
 from app.db.models.match import MatchAnalysis
-from app.db.models.application import Application
-from app.main import app
+from app.db.models.user import User
 from app.db.session import get_db
-from app.api.deps import get_current_user
-
+from app.main import app
 
 # ── In-memory SQLite DB ───────────────────────────────────────────────────────
 

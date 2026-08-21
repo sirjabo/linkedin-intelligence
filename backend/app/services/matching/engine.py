@@ -645,7 +645,7 @@ async def _parse_requirements(jd_text: str) -> list[dict]:
             f"Job description:\n{jd_text[:4000]}"
         )
         resp = await client.messages.create(
-            model=route_model("requirements_parse"),
+            model=route_model("jd_parse"),
             max_tokens=800,
             messages=[{"role": "user", "content": prompt}],
         )

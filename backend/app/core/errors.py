@@ -3,10 +3,10 @@
 Use ErrorCode values in API responses and log events so errors are
 machine-filterable in observability dashboards.
 """
-from enum import Enum
+from enum import StrEnum
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     # Auth
     UNAUTHORIZED = "auth.unauthorized"
     FORBIDDEN = "auth.forbidden"

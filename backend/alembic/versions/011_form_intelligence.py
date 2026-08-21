@@ -4,8 +4,9 @@ Revision ID: 011_form_intelligence
 Revises: 010_evidence_v2
 Create Date: 2026-08-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "011_form_intelligence"
 down_revision = "010_evidence_v2"

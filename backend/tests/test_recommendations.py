@@ -1,12 +1,11 @@
 """Tests for Phase 5 — Job Discovery / Recommendations."""
-import pytest
 from collections import Counter
-from unittest.mock import AsyncMock, patch, MagicMock
+
+import pytest
 from httpx import AsyncClient
 
-from app.services.job_recommender import rank_jobs, score_job, _candidate_keywords, _compute_idf
+from app.services.job_recommender import _candidate_keywords, _compute_idf, rank_jobs, score_job
 from app.services.job_sources.base import JobRaw
-
 
 # ── Unit tests: job recommender ───────────────────────────────────────────────
 

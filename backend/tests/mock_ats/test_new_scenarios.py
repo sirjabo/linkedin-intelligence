@@ -3,11 +3,9 @@
 Validates that each new endpoint serves the correct HTML form and accepts
 a valid POST submission, returning the expected response.
 """
-import pytest
 import httpx
 
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401
-
 
 # ── Scenario 5: Radio buttons ──────────────────────────────────────────────────
 

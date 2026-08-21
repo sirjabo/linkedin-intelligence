@@ -7,9 +7,7 @@ Verifies:
   - rank_jobs() orders by descending score
   - High-overlap job beats low-overlap job in ranking
 """
-import math
 
-import pytest
 
 from app.services.job_recommender import (
     _candidate_keywords,

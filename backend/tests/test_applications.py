@@ -95,7 +95,6 @@ def test_claim_validator_to_dict_has_plausible_key():
 
 def test_claim_validator_detailed_field():
     """detailed field provides per-claim ClaimVerification objects."""
-    from app.services.claim_validator import VerificationStatus
     result = validate_claims("Saved $100k by optimizing systems.", [])
     assert hasattr(result, "detailed")
     assert len(result.detailed) > 0

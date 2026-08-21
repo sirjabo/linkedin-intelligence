@@ -1,13 +1,11 @@
 """Tests for PreSubmitValidator and structured pre-submit validation."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 import pytest
 
 from app.services.pre_submit_validator import (
-    PreSubmitReport,
     PreSubmitValidationError,
     PreSubmitValidator,
 )

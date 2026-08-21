@@ -4,9 +4,10 @@ Revision ID: 015_skill_snapshots
 Revises: 014_session_screenshot_after
 Create Date: 2026-08-15
 """
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
+
+from alembic import op
 
 revision = "015_skill_snapshots"
 down_revision = "014_session_screenshot_after"

@@ -7,10 +7,8 @@ Acceptance criteria (from ACCEPTANCE_CRITERIA_REAL_AGENT.md):
 import re
 
 import httpx
-import pytest
 
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401 — re-exported fixture
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

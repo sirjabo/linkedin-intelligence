@@ -6,12 +6,11 @@ Verifies:
   - PlaywrightAdapter.switch_to_main_frame() clears active frame
   - PlaywrightAdapter.get_current_url() returns page URL
 """
-import re
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.ats.lever import LeverAdapter
-
 
 # ── LeverAdapter.url_patterns ────────────────────────────────────────────────
 

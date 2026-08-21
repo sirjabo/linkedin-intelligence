@@ -7,7 +7,7 @@ These tests require:
 Skip on environments without Playwright/Chromium.
 """
 import os
-import sys
+
 import pytest
 
 # Skip entire module if Playwright is not importable (e.g. minimal CI)
@@ -23,11 +23,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 if playwright_available:
+    from app.services.browser.adapter import RawForm
     from app.services.browser.playwright_adapter import PlaywrightAdapter, _find_chromium
-    from app.services.browser.adapter import RawForm, RawFormField
 
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401 — re-export fixture
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

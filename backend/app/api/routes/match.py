@@ -158,8 +158,8 @@ async def run_match(
     )
 
     # ── Semantic scoring ───────────────────────────────────────────────────────
-    profile_experience: list = profile.experience if profile else []
-    profile_projects: list = profile.projects if profile else []
+    profile_experience: list = (profile.experience or []) if profile else []
+    profile_projects: list = (profile.projects or []) if profile else []
     evidence_records = EvidenceBuilder.build_from_profile(profile)
 
     sem_result = await compute_semantic(

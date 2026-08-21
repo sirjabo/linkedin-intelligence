@@ -141,6 +141,7 @@ class LLMEvaluationCriterion:
         """Call the LLM and parse PASS/FAIL from the response."""
         try:
             import os
+
             import anthropic
 
             from app.core.config import settings

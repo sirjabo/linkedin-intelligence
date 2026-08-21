@@ -1,6 +1,5 @@
 """Tests for prompt injection sanitization (app/core/sanitize.py)."""
-import pytest
-from app.core.sanitize import sanitize_for_prompt, sanitize_batch
+from app.core.sanitize import sanitize_batch, sanitize_for_prompt
 
 
 class TestSanitizeForPrompt:

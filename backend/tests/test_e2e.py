@@ -13,7 +13,6 @@ Covers every implemented phase:
 import pytest
 from httpx import AsyncClient
 
-
 SAMPLE_JD = """\
 Senior Data Engineer — TechCorp
 We are looking for a Senior Data Engineer with 5+ years of experience.

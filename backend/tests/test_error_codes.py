@@ -1,5 +1,4 @@
 """Tests for ErrorCode taxonomy (app/core/errors.py)."""
-import pytest
 from app.core.errors import ErrorCode
 
 

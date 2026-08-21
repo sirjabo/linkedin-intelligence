@@ -38,12 +38,12 @@ from app.services.browser.adapter import RawFormField
 from app.services.browser.playwright_adapter import PlaywrightAdapter
 from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
 from app.services.claim_validator import EvidenceBuilder, validate_claims
+from app.services.cost_tracker import check_budget_and_log, estimate_session_cost
 from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
-from app.services.pre_submit_validator import PreSubmitValidationError, PreSubmitValidator
 from app.services.form_intelligence import classify_field, classify_field_llm
 from app.services.matching.engine import compute_deterministic, tier_from_score
-from app.services.cost_tracker import check_budget_and_log, estimate_session_cost
 from app.services.matching.semantic import compute_hybrid_score, compute_semantic
+from app.services.pre_submit_validator import PreSubmitValidationError, PreSubmitValidator
 
 logger = get_logger(__name__)
 
@@ -386,7 +386,7 @@ class ApplicationAgentOrchestrator:
 
         # Duplicate submit protection: reject if the application is already submitted
         app_check = await db.get(Application, session.application_id)
-        if app_check and app_check.status in ("applied",):
+        if app_check and app_check.status == "applied":
             raise AgentError(
                 f"Duplicate submit blocked: application {session.application_id} is already in status "
                 f"'{app_check.status}'. Check ApplicationSubmission records for the confirmation."

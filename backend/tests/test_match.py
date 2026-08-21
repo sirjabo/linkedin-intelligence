@@ -3,13 +3,13 @@ import pytest
 from httpx import AsyncClient
 
 from app.services.matching.engine import (
-    compute_deterministic,
-    tier_from_score,
     DeterministicResult,
+    HardConstraintResult,
     check_hard_constraints,
     compute_career_fit,
+    compute_deterministic,
     decide_application,
-    HardConstraintResult,
+    tier_from_score,
 )
 
 SAMPLE_JD = """\

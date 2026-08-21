@@ -1,12 +1,9 @@
 """Tests for cost tracker and budget alert logic."""
-import pytest
-from unittest.mock import patch
 
 from app.services.cost_tracker import (
     CostEstimate,
     check_budget_and_log,
     estimate_session_cost,
-    TYPICAL_TOKENS,
 )
 
 

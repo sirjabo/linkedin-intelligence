@@ -12,13 +12,11 @@ Key assertions:
 These tests use a mock LLM that returns realistic JSON responses without
 making real API calls.
 """
-import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.services.agents.cv_agent import PersonalizedCV, personalize_cv
-
 
 # ── Shared candidate fixture ──────────────────────────────────────────────────
 

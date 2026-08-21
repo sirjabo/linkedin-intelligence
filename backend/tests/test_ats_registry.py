@@ -4,14 +4,13 @@ Tests are pure unit tests — no browser, no server.
 """
 import pytest
 
-from app.services.ats.registry import ATSRegistry, detect_ats
+from app.services.ats.ashby import AshbyAdapter
+from app.services.ats.generic import GenericFormAgent
 from app.services.ats.greenhouse import GreenhouseAdapter
 from app.services.ats.lever import LeverAdapter
-from app.services.ats.ashby import AshbyAdapter
-from app.services.ats.workday import WorkdayAdapter
+from app.services.ats.registry import ATSRegistry, detect_ats
 from app.services.ats.smart_recruiters import SmartRecruitersAdapter
-from app.services.ats.generic import GenericFormAgent
-
+from app.services.ats.workday import WorkdayAdapter
 
 registry = ATSRegistry()
 
@@ -47,7 +46,7 @@ def test_detect_ats_returns_correct_adapter(url, expected_class):
 
 def test_registry_detect_method_matches_detect_ats():
     url = "https://boards.greenhouse.io/acme/jobs/1"
-    assert type(registry.detect(url)) == type(detect_ats(url))
+    assert isinstance(registry.detect(url), type(detect_ats(url)))
 
 
 def test_registry_supported_ats_lists_all_named_adapters():

@@ -22,9 +22,9 @@ Run standalone: uvicorn tests.mock_ats.server:app --port 8888
 Used in tests via the mock_ats_url fixture in conftest_ats.py.
 """
 import uuid
-from fastapi import FastAPI, Form, UploadFile, File, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from typing import Optional
+
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 # In-memory idempotency store for scenario 32
 _submitted_idempotency_keys: set[str] = set()
@@ -154,20 +154,20 @@ async def get_form():
 
 @app.post("/submit")
 async def submit_form(
-    first_name: Optional[str] = Form(None),
-    last_name: Optional[str] = Form(None),
-    email: Optional[str] = Form(None),
-    phone: Optional[str] = Form(None),
-    location: Optional[str] = Form(None),
-    linkedin_url: Optional[str] = Form(None),
-    years_experience: Optional[str] = Form(None),
-    salary_expectation: Optional[str] = Form(None),
-    work_authorization: Optional[str] = Form(None),
-    cover_letter_text: Optional[str] = Form(None),
-    why_company: Optional[str] = Form(None),
-    relocation_willing: Optional[str] = Form(None),
-    remote_ok: Optional[str] = Form(None),
-    resume: Optional[UploadFile] = File(None),
+    first_name: str | None = Form(None),
+    last_name: str | None = Form(None),
+    email: str | None = Form(None),
+    phone: str | None = Form(None),
+    location: str | None = Form(None),
+    linkedin_url: str | None = Form(None),
+    years_experience: str | None = Form(None),
+    salary_expectation: str | None = Form(None),
+    work_authorization: str | None = Form(None),
+    cover_letter_text: str | None = Form(None),
+    why_company: str | None = Form(None),
+    relocation_willing: str | None = Form(None),
+    remote_ok: str | None = Form(None),
+    resume: UploadFile | None = File(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -207,8 +207,8 @@ async def get_radio_form():
 
 @app.post("/apply/radio/submit")
 async def submit_radio(
-    full_name: Optional[str] = Form(None),
-    employment_type: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    employment_type: str | None = Form(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -242,7 +242,7 @@ async def get_multiselect_form():
 
 @app.post("/apply/multiselect/submit")
 async def submit_multiselect(request: Request):
-    form = await request.form()
+    await request.form()
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
 
@@ -271,9 +271,9 @@ async def get_number_form():
 
 @app.post("/apply/number/submit")
 async def submit_number(
-    full_name: Optional[str] = Form(None),
-    years_python: Optional[str] = Form(None),
-    salary: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    years_python: str | None = Form(None),
+    salary: str | None = Form(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -301,8 +301,8 @@ async def get_date_form():
 
 @app.post("/apply/date/submit")
 async def submit_date(
-    full_name: Optional[str] = Form(None),
-    start_date: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    start_date: str | None = Form(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -347,9 +347,9 @@ async def get_step1():
 
 @app.post("/apply/step2", response_class=HTMLResponse)
 async def post_step2(
-    full_name: Optional[str] = Form(None),
-    email: Optional[str] = Form(None),
-    phone: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
+    phone: str | None = Form(None),
 ):
     return HTMLResponse(_STEP2_HTML.format(
         full_name=full_name or "", email=email or "", phone=phone or ""
@@ -358,11 +358,11 @@ async def post_step2(
 
 @app.post("/apply/step2/submit")
 async def submit_step2(
-    full_name: Optional[str] = Form(None),
-    email: Optional[str] = Form(None),
-    phone: Optional[str] = Form(None),
-    why_company: Optional[str] = Form(None),
-    resume: Optional[UploadFile] = File(None),
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
+    phone: str | None = Form(None),
+    why_company: str | None = Form(None),
+    resume: UploadFile | None = File(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -398,8 +398,8 @@ async def get_validation_error_form():
 
 @app.post("/apply/validation-error/submit", response_class=HTMLResponse)
 async def submit_validation_error(
-    full_name: Optional[str] = Form(None),
-    email: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
 ):
     missing = []
     if not full_name:
@@ -445,9 +445,9 @@ async def get_salary_form():
 
 @app.post("/apply/salary/submit")
 async def submit_salary(
-    full_name: Optional[str] = Form(None),
-    salary: Optional[str] = Form(None),
-    salary_range: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    salary: str | None = Form(None),
+    salary_range: str | None = Form(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -480,8 +480,8 @@ async def get_sponsorship_form():
 
 @app.post("/apply/sponsorship/submit")
 async def submit_sponsorship(
-    full_name: Optional[str] = Form(None),
-    sponsorship: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    sponsorship: str | None = Form(None),
 ):
     ref = f"APP-{uuid.uuid4().hex[:8].upper()}"
     return RedirectResponse(f"/confirm?ref={ref}", status_code=303)
@@ -543,9 +543,9 @@ async def get_idempotent_form():
 
 @app.post("/apply/idempotent/submit", response_class=HTMLResponse)
 async def submit_idempotent(
-    idempotency_key: Optional[str] = Form(None),
-    full_name: Optional[str] = Form(None),
-    email: Optional[str] = Form(None),
+    idempotency_key: str | None = Form(None),
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
 ):
     if idempotency_key in _submitted_idempotency_keys:
         return HTMLResponse(_DUPLICATE_HTML, status_code=409)
@@ -581,10 +581,10 @@ async def get_fileupload_form():
 
 @app.post("/apply/fileupload/submit")
 async def submit_fileupload(
-    full_name: Optional[str] = Form(None),
-    email: Optional[str] = Form(None),
-    resume: Optional[UploadFile] = File(None),
-    cover_letter: Optional[UploadFile] = File(None),
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
+    resume: UploadFile | None = File(None),
+    cover_letter: UploadFile | None = File(None),
 ):
     resume_name = resume.filename if resume else None
     cover_letter_name = cover_letter.filename if cover_letter else None

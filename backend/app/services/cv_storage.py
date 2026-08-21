@@ -124,7 +124,7 @@ def _build_cv_dict(
     experience: list[dict] = []
     personalized_bullets: dict[str, list[str]] = {}
     if cv_version and getattr(cv_version, "experience_personalized", None):
-        for ep in cv_version.experience_personalized:
+        for ep in (cv_version.experience_personalized or []):
             if isinstance(ep, dict):
                 key = (ep.get("company", "") + "|" + ep.get("title", "")).lower()
                 adapted = [
@@ -169,7 +169,7 @@ def _build_cv_dict(
     projects: list[dict] = []
     personalized_proj: dict[str, dict] = {}
     if cv_version and getattr(cv_version, "projects_personalized", None):
-        for pp in cv_version.projects_personalized:
+        for pp in (cv_version.projects_personalized or []):
             if isinstance(pp, dict) and pp.get("name"):
                 personalized_proj[pp["name"].lower()] = pp
 

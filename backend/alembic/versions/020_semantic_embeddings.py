@@ -13,6 +13,7 @@ Adds:
 - HNSW indexes on embedding columns for cosine similarity search
 """
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "020"

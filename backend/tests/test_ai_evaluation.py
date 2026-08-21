@@ -1,12 +1,13 @@
 """Unit tests for the AI Evaluation framework (no LLM calls)."""
 from dataclasses import dataclass
+
 from app.services.ai_evaluation import (
-    evaluate,
     EvalCriterion,
     EvalReport,
-    field_not_empty,
-    field_in_range,
+    evaluate,
     field_contains_keyword,
+    field_in_range,
+    field_not_empty,
     field_one_of,
     list_items_have_field,
 )

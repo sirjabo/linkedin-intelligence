@@ -8,14 +8,14 @@ Verifies:
   - SmartRecruitersAdapter.before_discover() tries cookie banner + apply
   - AshbyAdapter.before_discover() navigates to /application URL
 """
-import pytest
 from unittest.mock import AsyncMock
 
-from app.services.ats.workday import WorkdayAdapter
-from app.services.ats.smart_recruiters import SmartRecruitersAdapter
-from app.services.ats.ashby import AshbyAdapter
-from app.services.browser.adapter import RawFormField
+import pytest
 
+from app.services.ats.ashby import AshbyAdapter
+from app.services.ats.smart_recruiters import SmartRecruitersAdapter
+from app.services.ats.workday import WorkdayAdapter
+from app.services.browser.adapter import RawFormField
 
 # ── WorkdayAdapter ────────────────────────────────────────────────────────────
 

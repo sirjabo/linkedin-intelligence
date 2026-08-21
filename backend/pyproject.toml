@@ -39,7 +39,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Test files can use assert and don't need all the same guards
-"tests/**" = ["S101", "S106", "BLE001", "ASYNC230"]
+# F811: pytest fixture re-exports via import are a valid pytest pattern
+# E402: late imports inside test functions / conditional imports are common
+# ASYNC240: os.path calls in async test functions are OK (no event loop contention)
+# DTZ001/DTZ007: naive datetimes in test fixtures are fine
+# E501: test helper strings can exceed 120 chars
+"tests/**" = ["S101", "S106", "BLE001", "ASYNC230", "ASYNC240", "F811", "E402", "B017", "SIM117", "DTZ001", "DTZ007", "E501"]
 # Legacy v1 routes (Supabase auth) — kept as-is
 "app/api/routes/cv.py" = ["ALL"]
 "app/api/routes/chat.py" = ["ALL"]
@@ -57,4 +62,7 @@ ignore = [
 "app/services/form_intelligence.py" = ["E501"]
 "app/main.py" = ["E501"]
 # Playwright adapter uses assert for internal invariant checks, not test assertions
-"app/services/browser/playwright_adapter.py" = ["S101"]
+# ASYNC109: timeout parameter name is intentional (mirrors Playwright's own API)
+"app/services/browser/playwright_adapter.py" = ["S101", "ASYNC109"]
+# Alembic migration files have long inline SQL/comment strings
+"alembic/**" = ["E501"]

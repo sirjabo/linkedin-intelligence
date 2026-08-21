@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # Semantic types that MUST have a human answer, never an auto-filled value
 _HUMAN_REQUIRED_TYPES: frozenset[str] = frozenset({
     "salary",

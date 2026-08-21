@@ -479,4 +479,4 @@ class TestCVStorageProjectsPersonalized:
             self._make_candidate(), self._make_profile(), app
         )
         assert path.endswith(".pdf")
-        assert os.path.getsize(path) > 0  # noqa: ASYNC240
+        assert os.path.getsize(path) > 0

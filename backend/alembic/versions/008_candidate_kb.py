@@ -4,8 +4,9 @@ Revision ID: 008_candidate_kb
 Revises: 007_career_fit
 Create Date: 2026-08-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "008_candidate_kb"
 down_revision = "007_career_fit"

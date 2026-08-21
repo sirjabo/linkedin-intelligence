@@ -5,13 +5,14 @@ Tests are marked to skip when ANTHROPIC_API_KEY is not set.
 Uses claude-haiku-4-5-20251001 for fast, inexpensive evaluation.
 """
 import os
+
 import pytest
 
 from app.services.ai_evaluation import (
-    CVFactualityCriterion,
-    CVPersonalizationCriterion,
     CoverLetterClicheCriterion,
     CoverLetterCompanyHookCriterion,
+    CVFactualityCriterion,
+    CVPersonalizationCriterion,
     EvalReport,
     cv_differentiation_score,
     evaluate_llm,

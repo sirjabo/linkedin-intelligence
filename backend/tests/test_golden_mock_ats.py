@@ -13,7 +13,6 @@ Run via: pytest tests/test_golden_mock_ats.py -v
 import uuid
 
 import httpx
-import pytest
 
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401
 

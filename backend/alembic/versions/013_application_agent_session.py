@@ -4,8 +4,9 @@ Revision ID: 013_application_agent_session
 Revises: 012_application_submissions
 Create Date: 2026-08-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "013_application_agent_session"
 down_revision = "012_application_submissions"

@@ -83,7 +83,7 @@ class LeverAdapter:
         if not success:
             self.last_validation_errors = await self.collect_validation_errors(browser)
         else:
-            self.last_validation_errors: list[str] = []
+            self.last_validation_errors = []
         return success
 
     def extract_confirmation_id_pattern(self) -> re.Pattern | None:

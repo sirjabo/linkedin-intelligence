@@ -17,7 +17,9 @@ import re
 # Patterns that signal an injection attempt — instructions addressed to the model.
 _INJECTION_PATTERNS: list[re.Pattern] = [
     # Direct role/instruction overrides
-    re.compile(r"\bignore\s+(all\s+)?(previous|above|prior|earlier)\s+(instructions?|text|context|prompt)\b", re.IGNORECASE),
+    re.compile(
+        r"\bignore\s+(all\s+)?(previous|above|prior|earlier)\s+(instructions?|text|context|prompt)\b", re.IGNORECASE
+    ),
     re.compile(r"\bdo\s+not\s+(follow|obey|adhere\s+to)\b", re.IGNORECASE),
     re.compile(r"\byou\s+are\s+now\s+a?\s*\w+\b", re.IGNORECASE),
     re.compile(r"\bact\s+as\s+(if\s+you\s+(are|were)|a)\b", re.IGNORECASE),

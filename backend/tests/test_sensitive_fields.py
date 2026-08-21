@@ -10,10 +10,10 @@ classification layer so sensitive fields never slip through as auto-filled.
 import pytest
 
 from app.services.form_intelligence import (
+    _ALWAYS_HUMAN,
+    FieldSpec,
     classify_field,
     map_candidate_to_form,
-    FieldSpec,
-    _ALWAYS_HUMAN,
 )
 
 

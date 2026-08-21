@@ -6,16 +6,14 @@ Verifies:
   - Multi-source recommendations deduplication
   - /recommendations/sources endpoint returns available source names
 """
-import json
-import pytest
 import httpx
+import pytest
 import respx
 
-from app.services.job_sources.arbeitnow import ArbeitnowSource
-from app.services.job_sources.remoteok import RemoteOKSource
-from app.services.job_sources.base import JobRaw
 from app.services.job_recommender import rank_jobs
-
+from app.services.job_sources.arbeitnow import ArbeitnowSource
+from app.services.job_sources.base import JobRaw
+from app.services.job_sources.remoteok import RemoteOKSource
 
 ARBEITNOW_SAMPLE = {
     "data": [

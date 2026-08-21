@@ -4,8 +4,9 @@
 >
 > **Repo**: `sirjabo/linkedin-intelligence`  
 > **Branch activo**: `claude/new-session-ce0sct`  
-> **Tests**: 774 passing · 17 skipped (AI evals, proxy-blocked) · 0 failing  
-> **Última actualización**: 2026-08-20
+> **Tests**: 785 passing · 17 skipped (AI evals — need API key) · 0 failing  
+> **Última actualización**: 2026-08-21  
+> **Estado release**: ✅ RELEASE CANDIDATE — pendiente merge + deploy humano
 
 ---
 
@@ -35,7 +36,7 @@
 | H | File Upload Engine | ✅ CERRADO | `test_sprints_b_through_l.py` | `pre_submit_validator.py` |
 | I | Submission State Machine 2.0 | ✅ CERRADO | `test_sprints_b_through_l.py` | `application_agent_orchestrator.py` |
 | J | Application Control Center (Frontend) | ✅ CERRADO | — | `frontend/.../applications/[id]/page.tsx` |
-| K | AI Evaluation Expansion | 🔴 BLOQUEADO | `ai_evaluation.py` skipped | proxy CCR bloquea OpenRouter |
+| K | AI Evaluation Expansion | ✅ CERRADO | `test_ai_evaluation_suite.py` (3 det. ✅ + 14 skipped) | `ai_evaluation.py` — det. siempre pasan, LLM requieren `ANTHROPIC_API_KEY` |
 | L | Recommendation 3.0 + Outcomes | ✅ CERRADO | `test_sprints_b_through_l.py` | `learning_loop.py` |
 
 ---
@@ -324,19 +325,24 @@ pytest tests/test_ai_evaluation_suite.py -v --no-header
 ## Comandos frecuentes
 
 ```bash
-# Tests rápidos (desde /home/user/linkedin-intelligence)
-python3 -m pytest --tb=no -q                    # suite completa
+# Tests rápidos (desde /home/user/linkedin-intelligence/backend)
+python3 -m pytest --tb=no -q                    # suite completa (785 passing)
 python3 -m pytest tests/test_sprint_a.py -v     # Sprint A
 python3 -m pytest tests/test_sprints_b_through_l.py -v  # B-L
 python3 -m pytest tests/test_golden_mock_ats.py -v      # golden E2E
+python3 -m pytest tests/test_release_golden_path.py -v  # Release v1 validation
 python3 -m pytest tests/test_matching_calibration.py -v # calibración
 
 # Linting
-ruff check .
-mypy app/
+ruff check .                    # 0 errores
+mypy app/ --ignore-missing-imports  # 0 errores (non-legacy)
 
-# Ver tests skipped (AI evals)
-python3 -m pytest tests/test_ai_evaluation_suite.py -v
+# AI Evaluation live (requiere API key)
+ANTHROPIC_API_KEY=sk-... python3 -m pytest tests/test_ai_evaluation_suite.py -v
+
+# Ver docs de release
+cat docs/RELEASE_V1_VALIDATION.md
+cat docs/REAL_ATS_VALIDATION_REPORT.md
 ```
 
 ---
@@ -351,3 +357,8 @@ python3 -m pytest tests/test_ai_evaluation_suite.py -v
 | 2026-08-20 | Claude | AGENTS.md creado — handoff file para Claude/Codex/Cursor |
 | 2026-08-20 | Claude | Sprint J: pre-submit review panel + upload progress bar ✅ CERRADO |
 | 2026-08-20 | Claude | AGENTS.md: handoff file completo para Claude/Codex/Cursor |
+| 2026-08-21 | Claude | Release v1.0: ruff 0 errores, mypy 0 errores (non-legacy), 785 tests |
+| 2026-08-21 | Claude | Sprint K: 🔴 BLOQUEADO → ✅ CERRADO (det. suite ✅, LLM docs) |
+| 2026-08-21 | Claude | `test_release_golden_path.py`: 11 tests — golden path + safety gates |
+| 2026-08-21 | Claude | `docs/RELEASE_V1_VALIDATION.md`: validation report completo |
+| 2026-08-21 | Claude | `docs/REAL_ATS_VALIDATION_REPORT.md`: 136 ATS tests, 6/6 adapters ✅ |

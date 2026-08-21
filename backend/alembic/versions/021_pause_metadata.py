@@ -9,6 +9,7 @@ mixed two concerns. The new column holds only structured JSON; error_message rem
 for human-readable error strings.
 """
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "021"

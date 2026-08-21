@@ -122,7 +122,7 @@ async def test_pdf_cv_fallback_to_profile_when_no_cv_version(tmp_path, monkeypat
 
     profile = _make_profile(summary="Raw profile summary — no personalization.")
     candidate = _make_candidate()
-    app = _make_application(cv_versions=[])
+    _make_application(cv_versions=[])
 
     cv_data = cv_storage._build_cv_dict(candidate, profile, None)
     assert cv_data["summary"] == "Raw profile summary — no personalization."

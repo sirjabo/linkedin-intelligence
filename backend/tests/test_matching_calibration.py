@@ -13,13 +13,13 @@ Thresholds (must pass):
 Run via: pytest tests/test_matching_calibration.py -v
 """
 import pytest
+
 from tests.fixtures.matching_calibration import (
     CALIBRATION_PAIRS,
     CalibrationPair,
     CandidateSnapshot,
     JobSnapshot,
 )
-
 
 # ── Deterministic scorer ──────────────────────────────────────────────────────
 
@@ -67,10 +67,7 @@ def _score_match(candidate: CandidateSnapshot, job: JobSnapshot) -> str:
         return "skip"
 
     # ── SALARY SIGNALS ────────────────────────────────────────────────────────
-    if job.salary_max_usd:
-        salary_ratio = candidate.salary_min_usd / job.salary_max_usd
-    else:
-        salary_ratio = 1.0
+    salary_ratio = candidate.salary_min_usd / job.salary_max_usd if job.salary_max_usd else 1.0
     salary_hard_over = salary_ratio > 2.0   # extreme: >2× over ceiling
     salary_soft_over = salary_ratio > 1.15  # moderate: >15% over ceiling
 

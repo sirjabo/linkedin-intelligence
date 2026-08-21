@@ -10,7 +10,7 @@ Used to measure:
 
 Run via: pytest tests/test_matching_calibration.py
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 Decision = Literal["apply", "skip", "stretch"]

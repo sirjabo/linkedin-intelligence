@@ -3,25 +3,29 @@
 AC-02 / AC-07 / AC-10 / AC-12: orchestrator.start() → resume() → submit()
 Uses real SQLite in-memory DB + real Playwright + mock ATS server.
 """
+# ── Skip if no Chromium ───────────────────────────────────────────────────────
+import os
 import uuid
+
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
 from app.db.base import Base
 from app.db.models import (
-    User, Candidate, CandidateProfile, Application,
-    ApplicationForm, ApplicationFormField,
+    Application,
+    ApplicationForm,
+    ApplicationFormField,
+    Candidate,
+    CandidateProfile,
+    User,
 )
 from app.db.models.agent_session import ApplicationAgentSession
 from app.db.models.job import Job
-from app.services.application_agent_orchestrator import ApplicationAgentOrchestrator, AgentError
-
+from app.services.application_agent_orchestrator import AgentError, ApplicationAgentOrchestrator
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401
 
-# ── Skip if no Chromium ───────────────────────────────────────────────────────
-import os
 _CHROMIUM_CANDIDATES = [
     "/opt/pw-browsers/chromium/chrome",
     "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
@@ -304,11 +308,11 @@ class TestOrchestratorSubmit:
         human_fields = fields_result.scalars().all()
 
         # Create a real temp CV file
-        import tempfile, os
-        tmp = tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w")
-        tmp.write("Jane Doe\nSenior Data Engineer\n")
-        tmp.close()
-        cv_path = tmp.name
+        import os
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w") as tmp:
+            tmp.write("Jane Doe\nSenior Data Engineer\n")
+            cv_path = tmp.name
 
         # Sensitive semantic types require human answers even if not flagged human_required
         _SENSITIVE_TYPES = {

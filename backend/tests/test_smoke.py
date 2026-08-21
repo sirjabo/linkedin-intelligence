@@ -13,9 +13,9 @@ import pytest
 from app.core.config import settings
 from app.services.ai_evaluation import (
     evaluate,
-    field_not_empty,
-    field_in_range,
     field_contains_keyword,
+    field_in_range,
+    field_not_empty,
     field_one_of,
     list_items_have_field,
 )
