@@ -61,13 +61,13 @@ REMOTEOK_SAMPLE = [
 
 
 @pytest.mark.asyncio
-@respx.mock
 async def test_arbeitnow_fetch():
-    respx.get("https://www.arbeitnow.com/api/job-board-api").mock(
-        return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
-    )
-    src = ArbeitnowSource()
-    jobs = await src.fetch(query="python", limit=10, category=None)
+    with respx.mock:
+        respx.get("https://www.arbeitnow.com/api/job-board-api", params={"page": 1}).mock(
+            return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
+        )
+        src = ArbeitnowSource()
+        jobs = await src.fetch(query="python", limit=10, category=None)
     assert len(jobs) == 1  # only the Python job matches
     assert jobs[0].title == "Senior Data Engineer"
     assert jobs[0].remote_type == "remote"
@@ -75,24 +75,24 @@ async def test_arbeitnow_fetch():
 
 
 @pytest.mark.asyncio
-@respx.mock
 async def test_arbeitnow_fetch_no_filter():
-    respx.get("https://www.arbeitnow.com/api/job-board-api").mock(
-        return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
-    )
-    src = ArbeitnowSource()
-    jobs = await src.fetch(query="", limit=10, category=None)
+    with respx.mock:
+        respx.get("https://www.arbeitnow.com/api/job-board-api", params={"page": 1}).mock(
+            return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
+        )
+        src = ArbeitnowSource()
+        jobs = await src.fetch(query="", limit=10, category=None)
     assert len(jobs) == 2  # no query filter → both jobs returned
 
 
 @pytest.mark.asyncio
-@respx.mock
 async def test_remoteok_fetch():
-    respx.get("https://remoteok.com/api").mock(
-        return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
-    )
-    src = RemoteOKSource()
-    jobs = await src.fetch(query="ml", limit=10, category=None)
+    with respx.mock:
+        respx.get("https://remoteok.com/api", params={"tag": "ml"}).mock(
+            return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
+        )
+        src = RemoteOKSource()
+        jobs = await src.fetch(query="ml", limit=10, category=None)
     assert len(jobs) == 1
     assert jobs[0].title == "ML Engineer"
     assert jobs[0].remote_type == "remote"
@@ -100,14 +100,14 @@ async def test_remoteok_fetch():
 
 
 @pytest.mark.asyncio
-@respx.mock
 async def test_remoteok_skips_legal_notice():
     """Legal notice (first element) must be skipped."""
-    respx.get("https://remoteok.com/api").mock(
-        return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
-    )
-    src = RemoteOKSource()
-    jobs = await src.fetch(query="", limit=10, category=None)
+    with respx.mock:
+        respx.get("https://remoteok.com/api").mock(
+            return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
+        )
+        src = RemoteOKSource()
+        jobs = await src.fetch(query="", limit=10, category=None)
     assert all(j.title != "" for j in jobs)
 
 
@@ -134,12 +134,12 @@ def test_rank_jobs_deduplication():
 
 
 @pytest.mark.asyncio
-@respx.mock
 async def test_arbeitnow_handles_api_error():
-    """fetch() should return empty list on HTTP error."""
-    respx.get("https://www.arbeitnow.com/api/job-board-api").mock(
-        return_value=httpx.Response(503)
-    )
-    src = ArbeitnowSource()
-    with pytest.raises(Exception):
-        await src.fetch(query="python", limit=10, category=None)
+    """fetch() should raise on HTTP error."""
+    with respx.mock:
+        respx.get("https://www.arbeitnow.com/api/job-board-api", params={"page": 1}).mock(
+            return_value=httpx.Response(503)
+        )
+        src = ArbeitnowSource()
+        with pytest.raises(Exception):
+            await src.fetch(query="python", limit=10, category=None)
