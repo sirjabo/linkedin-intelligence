@@ -783,19 +783,19 @@ export default function ApplicationDetailPage() {
               const s = app.strategy as Record<string, unknown>;
               return (
                 <div className="mt-4 space-y-4 text-sm">
-                  {s.positioning && (
+                  {Boolean(s.positioning) && (
                     <div>
                       <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Posicionamiento</p>
                       <p className="text-slate-300 leading-relaxed">{String(s.positioning)}</p>
                     </div>
                   )}
-                  {s.target_narrative && (
+                  {Boolean(s.target_narrative) && (
                     <div>
                       <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Narrativa objetivo</p>
                       <p className="text-slate-300 leading-relaxed">{String(s.target_narrative)}</p>
                     </div>
                   )}
-                  {s.overall_approach && (
+                  {Boolean(s.overall_approach) && (
                     <div>
                       <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Enfoque general</p>
                       <p className="text-slate-400 leading-relaxed">{String(s.overall_approach)}</p>
@@ -839,7 +839,7 @@ export default function ApplicationDetailPage() {
                       </ul>
                     </div>
                   )}
-                  {s.company_specific_angle && (
+                  {Boolean(s.company_specific_angle) && (
                     <div>
                       <p className="text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-wider">Ángulo empresa</p>
                       <p className="text-slate-300 leading-relaxed">{String(s.company_specific_angle)}</p>

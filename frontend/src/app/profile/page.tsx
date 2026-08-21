@@ -382,8 +382,8 @@ export default function ProfilePage() {
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {benchmark.matched_skills.slice(0, 8).map((s) => (
-                          <span key={s} className="text-xs bg-emerald-950/30 text-emerald-300 border border-emerald-800/40 px-2 py-0.5 rounded">
-                            {s}
+                          <span key={s.skill} className="text-xs bg-emerald-950/30 text-emerald-300 border border-emerald-800/40 px-2 py-0.5 rounded">
+                            {s.skill}
                           </span>
                         ))}
                       </div>
@@ -396,8 +396,8 @@ export default function ProfilePage() {
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {benchmark.missing_skills.slice(0, 8).map((s) => (
-                          <span key={s} className="text-xs bg-red-950/30 text-red-300 border border-red-800/40 px-2 py-0.5 rounded">
-                            + {s}
+                          <span key={s.skill} className="text-xs bg-red-950/30 text-red-300 border border-red-800/40 px-2 py-0.5 rounded">
+                            + {s.skill}
                           </span>
                         ))}
                       </div>

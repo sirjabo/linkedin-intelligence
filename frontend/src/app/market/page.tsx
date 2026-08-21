@@ -28,17 +28,17 @@ function SalaryCard({ salary }: { salary: SalaryRange }) {
       <div className="grid grid-cols-3 gap-3">
         <div className="text-center">
           <p className="text-xs text-slate-500 mb-1">Mínimo</p>
-          <p className="text-lg font-bold text-white">${salary.min_usd.toLocaleString()}</p>
+          <p className="text-lg font-bold text-white">${(salary.min_usd ?? 0).toLocaleString()}</p>
           <p className="text-xs text-slate-600">USD/mes</p>
         </div>
         <div className="text-center border-x border-emerald-800/20">
           <p className="text-xs text-slate-500 mb-1">Mediana</p>
-          <p className="text-xl font-bold text-emerald-400">${salary.median_usd.toLocaleString()}</p>
+          <p className="text-xl font-bold text-emerald-400">${(salary.median_usd ?? 0).toLocaleString()}</p>
           <p className="text-xs text-slate-600">USD/mes</p>
         </div>
         <div className="text-center">
           <p className="text-xs text-slate-500 mb-1">Máximo</p>
-          <p className="text-lg font-bold text-white">${salary.max_usd.toLocaleString()}</p>
+          <p className="text-lg font-bold text-white">${(salary.max_usd ?? 0).toLocaleString()}</p>
           <p className="text-xs text-slate-600">USD/mes</p>
         </div>
       </div>
