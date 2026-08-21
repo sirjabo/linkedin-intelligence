@@ -5,6 +5,7 @@ Uses structured output (tool_use) — never XML tag parsing.
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
+from app.core.sanitize import sanitize_for_prompt
 from app.services.ai.cache import llm_cache
 from app.services.ai.model_router import route_model
 from app.services.ai.provider import LLMProvider, default_provider
@@ -80,12 +81,15 @@ async def parse_job_description(
         logger.info("job_agent.parse_cache_hit", jd_length=len(raw_jd))
         return ParsedJob.model_validate(cached)
 
+    clean_jd, injection_detected = sanitize_for_prompt(raw_jd, max_length=12000, field_name="job_description")
+    if injection_detected:
+        logger.warning("job_agent.injection_detected", jd_length=len(raw_jd))
     logger.info("job_agent.parse_start", jd_length=len(raw_jd))
     result = await provider.structured_output(
         system=PARSE_SYSTEM,
         messages=[{
             "role": "user",
-            "content": f"Parse this job description and extract all structured information:\n\n{raw_jd[:12000]}"
+            "content": f"Parse this job description and extract all structured information:\n\n{clean_jd}"
         }],
         schema=ParsedJob,
         model=MODEL_PARSE,

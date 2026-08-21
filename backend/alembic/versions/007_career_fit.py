@@ -4,8 +4,9 @@ Revision ID: 007_career_fit
 Revises: 006_match_outcome
 Create Date: 2026-08-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "007_career_fit"
 down_revision = "006_match_outcome"

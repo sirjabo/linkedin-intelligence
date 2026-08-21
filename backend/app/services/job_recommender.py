@@ -161,3 +161,40 @@ def rank_jobs(jobs: list[JobRaw], profile_data: dict) -> list[ScoredJob]:
     scored = [score_job(j, candidate, idf) for j in jobs]
     scored.sort(key=lambda s: s.score, reverse=True)
     return scored
+
+
+def rank_jobs_with_outcomes(
+    jobs: list[JobRaw],
+    profile_data: dict,
+    positive_outcome_jobs: list[JobRaw] | None = None,
+    outcome_boost: float = 1.5,
+) -> list[ScoredJob]:
+    """Score and rank jobs, boosting IDF for tokens from jobs with positive outcomes.
+
+    Tokens appearing in `positive_outcome_jobs` (jobs where the candidate got an
+    interview or offer) receive an IDF boost so that similar jobs rank higher.
+
+    Args:
+        jobs: candidate jobs to rank
+        profile_data: candidate profile dict (same format as rank_jobs)
+        positive_outcome_jobs: jobs the candidate got interviews/offers from
+        outcome_boost: multiplicative IDF boost for outcome-validated tokens (default 1.5×)
+    """
+    if not jobs:
+        return []
+
+    candidate = _candidate_keywords(profile_data)
+    idf = _compute_idf(jobs)
+
+    if positive_outcome_jobs:
+        # Collect tokens that appeared in jobs with positive outcomes
+        outcome_tokens: set[str] = set()
+        for job in positive_outcome_jobs:
+            doc_counter = _job_token_counter(job)
+            outcome_tokens.update(doc_counter.keys())
+        # Boost IDF for those tokens so similar jobs rank higher
+        idf = {tok: val * outcome_boost if tok in outcome_tokens else val for tok, val in idf.items()}
+
+    scored = [score_job(j, candidate, idf) for j in jobs]
+    scored.sort(key=lambda s: s.score, reverse=True)
+    return scored

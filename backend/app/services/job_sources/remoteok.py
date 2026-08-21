@@ -59,6 +59,7 @@ class RemoteOKSource:
             if not title:
                 continue
 
+            raw_date = item.get("date")
             jobs.append(JobRaw(
                 external_id=str(item.get("id", item.get("slug", ""))),
                 title=title,
@@ -69,7 +70,7 @@ class RemoteOKSource:
                 description=item.get("description", ""),
                 tech_tags=_extract_tags(item),
                 salary_range=_salary_string(item),
-                published_at=item.get("date"),
+                published_at=str(raw_date) if raw_date is not None else None,
             ))
 
             if len(jobs) >= limit:

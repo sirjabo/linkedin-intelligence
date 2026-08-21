@@ -7,28 +7,30 @@ Verifies that orchestrator.start() with a mock LLMProvider populates:
 
 Uses real SQLite in-memory DB + real Playwright + mock ATS server.
 """
+import os
 import uuid
+
 import pytest
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.base import Base
 from app.db.models import (
-    User, Candidate, CandidateProfile, Application,
+    Application,
+    Candidate,
+    CandidateProfile,
+    User,
 )
-from app.db.models.application import CVVersion, CoverLetter
+from app.db.models.application import CoverLetter, CVVersion
 from app.db.models.job import Job, JobRequirement
-from app.services.application_agent_orchestrator import ApplicationAgentOrchestrator
-from app.services.agents.match_agent import LLMMatchResult
 from app.services.agents.application_agent import ApplicationStrategy, CVChangeGuidance
-from app.services.agents.cv_agent import PersonalizedCV, CVChange
 from app.services.agents.communication_agent import CoverLetterResult
-
+from app.services.agents.cv_agent import CVChange, PersonalizedCV
+from app.services.agents.match_agent import LLMMatchResult
+from app.services.application_agent_orchestrator import ApplicationAgentOrchestrator
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401
 
-import os
 _CHROMIUM_CANDIDATES = [
     "/opt/pw-browsers/chromium/chrome",
     "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
@@ -89,8 +91,8 @@ class MockLLMProvider:
                         "Senior Data Engineer with 7 years building PB-scale Spark pipelines on AWS, "
                         "specializing in Airflow orchestration and dbt transformations."
                     ),
-                    rationale="Incorporates JD keywords and quantifies scale",
-                    evidence_ref="BigCo Spark pipeline redesign",
+                    reason="Incorporates JD keywords and quantifies scale",
+                    evidence_refs=["BigCo Spark pipeline redesign"],
                 ),
             ],
             evidence_refs=["BigCo Spark pipeline redesign (2021-Present)"],

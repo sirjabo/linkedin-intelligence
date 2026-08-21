@@ -6,6 +6,7 @@ Produces SUPPORTED / PLAUSIBLE / UNSUPPORTED / CONTRADICTED classifications.
 EvidenceBuilder constructs evidence records from the candidate's profile so
 the orchestrator can pass real data instead of an empty list.
 """
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -32,6 +33,7 @@ class EvidenceRecord:
     source_type: str  # experience | education | skill | project | certification
     content: str      # free text describing the evidence
     skills_mentioned: list[str] = field(default_factory=list)
+    embedding: list[float] | None = field(default=None, repr=False)
     # backward-compat aliases used by _classify_claim
     claim: str = field(init=False)
     source_text: str = field(init=False)
@@ -156,6 +158,40 @@ class ClaimVerification:
 
 
 @dataclass
+class ClaimScore:
+    """Numeric summary of a validation result for use in eval reports."""
+    total: int
+    supported: int
+    plausible: int
+    unsupported: int
+    contradicted: int
+
+    @property
+    def support_rate(self) -> float:
+        """Fraction of claims that are SUPPORTED or PLAUSIBLE."""
+        if self.total == 0:
+            return 1.0
+        return (self.supported + self.plausible) / self.total
+
+    @property
+    def contradiction_rate(self) -> float:
+        """Fraction of claims that are CONTRADICTED."""
+        if self.total == 0:
+            return 0.0
+        return self.contradicted / self.total
+
+    @classmethod
+    def from_result(cls, result: "ValidationResult") -> "ClaimScore":
+        return cls(
+            total=len(result.detailed),
+            supported=len(result.verified_claims),
+            plausible=len(result.plausible_claims),
+            unsupported=len(result.unverified_claims),
+            contradicted=len(result.contradicted_claims),
+        )
+
+
+@dataclass
 class ValidationResult:
     verified_claims: list[str] = field(default_factory=list)       # SUPPORTED (backwards compat)
     unverified_claims: list[str] = field(default_factory=list)     # UNSUPPORTED (backwards compat)
@@ -184,6 +220,69 @@ def _extract_claim_sentences(text: str) -> list[str]:
 
 def _keywords(text: str) -> set[str]:
     return {w.lower() for w in re.findall(r"\b\w{3,}\b", text)}
+
+
+def _tf_vector(text: str) -> dict[str, float]:
+    """Term frequency vector for a text string (bag-of-words, normalised)."""
+    words = re.findall(r"\b\w{3,}\b", text.lower())
+    if not words:
+        return {}
+    counts: dict[str, float] = {}
+    for w in words:
+        counts[w] = counts.get(w, 0.0) + 1.0
+    total = sum(counts.values())
+    return {w: c / total for w, c in counts.items()}
+
+
+def _lexical_similarity(claim: str, evidence: str) -> float:
+    """Term-frequency cosine similarity between claim and evidence text.
+
+    Returns a float in [0.0, 1.0]. Uses no external dependencies (lexical only,
+    no embeddings). A score ≥ 0.10 is treated as a weak lexical match by _classify_claim.
+    """
+    q = _tf_vector(claim)
+    d = _tf_vector(evidence)
+    common = set(q) & set(d)
+    if not common:
+        return 0.0
+    dot = sum(q[t] * d[t] for t in common)
+    q_norm = math.sqrt(sum(v * v for v in q.values()))
+    d_norm = math.sqrt(sum(v * v for v in d.values()))
+    if q_norm == 0.0 or d_norm == 0.0:
+        return 0.0
+    return round(dot / (q_norm * d_norm), 4)
+
+
+def _temporal_consistency(claim: str, experiences: list) -> bool:
+    """Return True if year claims in `claim` are consistent with experience records.
+
+    Checks whether a stated year (e.g. "since 2019", "in 2022") falls within
+    the date range of at least one experience record that shares keywords with
+    the claim. Returns True (consistent) when no contradiction is found or when
+    there is not enough temporal data to make a determination.
+    """
+    year_match = re.search(r"\b(19|20)(\d{2})\b", claim)
+    if not year_match:
+        return True  # no year claim — nothing to validate
+
+    claimed_year = int(year_match.group(0))
+    claim_words = _keywords(claim)
+
+    for record in experiences:
+        ev_text = getattr(record, "content", "") or ""
+        ev_words = _keywords(ev_text)
+        overlap = claim_words & ev_words - {"years", "experience", "the", "and"}
+        if not overlap:
+            continue
+        # Look for year ranges in the evidence text like "2015–2018" or "2015-2018"
+        range_m = re.search(r"\b(19|20)(\d{2})\s*[-–]\s*(19|20)(\d{2})\b", ev_text)
+        if range_m:
+            start_year = int(f"{range_m.group(1)}{range_m.group(2)}")
+            end_year = int(f"{range_m.group(3)}{range_m.group(4)}")
+            if claimed_year < start_year or claimed_year > end_year + 1:
+                return False  # year falls outside the experience window
+
+    return True
 
 
 def _check_contradiction(claim: str, evidence_records: list) -> str | None:
@@ -239,19 +338,36 @@ def _classify_claim(claim: str, evidence_records: list) -> ClaimVerification:
 
     claim_words = _keywords(claim)
     best_overlap: list[str] = []
+    best_semantic: float = 0.0
 
     for record in evidence_records:
         evidence_text = getattr(record, "content", "") or getattr(record, "claim", "") or ""
         source_text = getattr(record, "source_text", "") or ""
-        evidence_words = _keywords(evidence_text + " " + source_text)
+        combined = evidence_text + " " + source_text
+        evidence_words = _keywords(combined)
         overlap = list(claim_words & evidence_words)
         if len(overlap) > len(best_overlap):
             best_overlap = overlap
+        sim = _lexical_similarity(claim, combined)
+        if sim > best_semantic:
+            best_semantic = sim
+
+    # Temporal consistency check (returns True when there is nothing to flag)
+    experience_records = [r for r in evidence_records if getattr(r, "source_type", "") == "experience"]
+    temporally_ok = _temporal_consistency(claim, experience_records)
+    if not temporally_ok:
+        return ClaimVerification(
+            claim=claim, status="CONTRADICTED",
+            contradiction_source="year claim is outside the recorded experience window",
+        )
 
     n = len(best_overlap)
     if n >= 3:
         status: VerificationStatus = "SUPPORTED"
     elif n >= 1:
+        status = "PLAUSIBLE"
+    elif best_semantic >= 0.10:
+        # Weak lexical similarity without keyword hits → PLAUSIBLE
         status = "PLAUSIBLE"
     else:
         status = "UNSUPPORTED"

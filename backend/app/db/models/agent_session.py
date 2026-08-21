@@ -9,7 +9,7 @@ State machine:
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -66,6 +66,8 @@ class ApplicationAgentSession(Base):
 
     # ── Error tracking ────────────────────────────────────────────────────────
     error_message: Mapped[str | None] = mapped_column(Text)
+    # Structured pause/resume context — replaces JSON-in-error_message antipattern
+    pause_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # ── Timestamps ────────────────────────────────────────────────────────────

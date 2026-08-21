@@ -14,14 +14,14 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import all models so autogenerate can detect them
-from app.db.base import Base  # noqa: F401, E402
+import app.db.models.application  # noqa: E402
+import app.db.models.candidate  # noqa: E402
+import app.db.models.cv_session  # noqa: E402
+import app.db.models.interview  # noqa: E402
+import app.db.models.job  # noqa: E402
+import app.db.models.match  # noqa: E402
 import app.db.models.user  # noqa: F401, E402
-import app.db.models.candidate  # noqa: F401, E402
-import app.db.models.job  # noqa: F401, E402
-import app.db.models.match  # noqa: F401, E402
-import app.db.models.application  # noqa: F401, E402
-import app.db.models.interview  # noqa: F401, E402
-import app.db.models.cv_session  # noqa: F401, E402
+from app.db.base import Base  # noqa: E402
 
 target_metadata = Base.metadata
 

@@ -5,6 +5,7 @@ Uses structured output (tool_use) — never XML tag parsing.
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
+from app.core.sanitize import sanitize_for_prompt
 from app.services.ai.model_router import route_model
 from app.services.ai.provider import LLMProvider, default_provider
 
@@ -158,12 +159,15 @@ async def extract_from_source(
     provider: LLMProvider = default_provider,
 ) -> ExtractedProfile:
     """Extract structured profile data from a single source text."""
+    clean_text, injection_detected = sanitize_for_prompt(raw_text, max_length=12000, field_name=source_type)
+    if injection_detected:
+        logger.warning("profile_agent.injection_detected", source_type=source_type, text_length=len(raw_text))
     logger.info("profile_agent.extract_start", source_type=source_type, text_length=len(raw_text))
     result = await provider.structured_output(
         system=EXTRACT_SYSTEM,
         messages=[{
             "role": "user",
-            "content": f"Extract profile data from this {source_type}:\n\n{raw_text[:12000]}"
+            "content": f"Extract profile data from this {source_type}:\n\n{clean_text}"
         }],
         schema=ExtractedProfile,
         model=MODEL_EXTRACT,

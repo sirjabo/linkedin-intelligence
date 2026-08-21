@@ -4,8 +4,9 @@ Revision ID: 009_job_intelligence
 Revises: 008_candidate_kb
 Create Date: 2026-08-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "009_job_intelligence"
 down_revision = "008_candidate_kb"

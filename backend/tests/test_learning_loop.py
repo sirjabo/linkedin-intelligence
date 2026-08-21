@@ -2,7 +2,7 @@
 import pytest
 from httpx import AsyncClient
 
-from app.services.learning_loop import compute_calibration, MIN_OUTCOMES_FOR_CALIBRATION
+from app.services.learning_loop import compute_calibration
 
 SAMPLE_JD = """\
 Senior Data Engineer — TechCorp

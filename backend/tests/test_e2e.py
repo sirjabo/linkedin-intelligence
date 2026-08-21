@@ -13,7 +13,6 @@ Covers every implemented phase:
 import pytest
 from httpx import AsyncClient
 
-
 SAMPLE_JD = """\
 Senior Data Engineer — TechCorp
 We are looking for a Senior Data Engineer with 5+ years of experience.
@@ -127,7 +126,8 @@ async def test_golden_e2e(
     assert full_name_f["human_required"] is False
 
     salary_f = next(f for f in form_data["fields"] if f["semantic_type"] == "salary_expectation")
-    assert salary_f["auto_fill_value"] == "90000"
+    assert salary_f["human_required"] is True  # salary is sensitive, must not be auto-filled
+    assert salary_f["auto_fill_value"] is None
 
     # Human-required fields
     phone_f = next(f for f in form_data["fields"] if f["semantic_type"] == "phone")
@@ -135,8 +135,8 @@ async def test_golden_e2e(
     essay_f = next(f for f in form_data["fields"] if f["semantic_type"] == "custom_essay")
     assert essay_f["human_required"] is True
 
-    # 2 human fields pending (phone + essay)
-    assert form_data["human_fields_pending"] == 2
+    # 3 human fields pending (phone + essay + salary)
+    assert form_data["human_fields_pending"] == 3
 
     # ── Phase 6b: Answer human fields ─────────────────────────────────────────
     # Submitting while form has pending human fields should be blocked
@@ -152,6 +152,12 @@ async def test_golden_e2e(
         f"/api/v2/applications/{app_id}/form/answer",
         headers=headers,
         json={"field_id": essay_f["id"], "human_answer": "I admire TechCorp's data-driven culture."},
+    )
+    # Answer the salary field (sensitive — always requires human confirmation)
+    await client.patch(
+        f"/api/v2/applications/{app_id}/form/answer",
+        headers=headers,
+        json={"field_id": salary_f["id"], "human_answer": "90000"},
     )
     # Answer the phone field — still 1 pending
     form_after_essay = await client.patch(

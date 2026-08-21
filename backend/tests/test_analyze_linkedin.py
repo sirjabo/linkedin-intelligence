@@ -1,8 +1,9 @@
 """Tests for POST /api/v2/analyze/linkedin."""
-import pytest
 import json
-from httpx import AsyncClient, ASGITransport
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.services.linkedin_analyzer import (

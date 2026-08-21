@@ -156,8 +156,9 @@ async def test_benchmark_fallback_when_no_snapshot(client: AsyncClient):
     """Falls back to _aggregate_skills when DB has no snapshot for the role."""
     token = await _register_and_login(client, "bench_fallback@example.com")
 
-    from app.services.job_sources.base import JobRaw
     from collections import Counter
+
+    from app.services.job_sources.base import JobRaw
 
     fake_jobs = [JobRaw(
         external_id="1",

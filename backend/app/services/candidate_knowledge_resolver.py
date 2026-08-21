@@ -60,7 +60,7 @@ def _parse_year(s: str | None) -> float | None:
     for fmt in ("%Y", "%Y-%m", "%Y-%m-%d"):
         try:
             import datetime
-            return float(datetime.datetime.strptime(s[:len(fmt.replace("%Y","0000").replace("%m","00").replace("%d","00"))], fmt).year)
+            return float(datetime.datetime.strptime(s[:len(fmt.replace("%Y","0000").replace("%m","00").replace("%d","00"))], fmt).year)  # noqa: DTZ007
         except ValueError:
             pass
     # Try extracting 4-digit year anywhere in string

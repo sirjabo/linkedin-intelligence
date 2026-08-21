@@ -4,8 +4,9 @@ Revision ID: 006_match_outcome
 Revises: 005_interview
 Create Date: 2026-08-13
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "006_match_outcome"
 down_revision = "005_interview"

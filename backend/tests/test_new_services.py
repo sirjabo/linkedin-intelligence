@@ -3,12 +3,11 @@
 All pure-unit — no real HTTP, no DB, no LLM calls required.
 """
 import json
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ── about_writer._parse_json ──────────────────────────────────────────────────
-
 from app.services.about_writer import _parse_json
 
 
@@ -163,10 +162,10 @@ def test_benchmark_percentile_zero_total():
 # ── rate limiter storage URI ──────────────────────────────────────────────────
 
 def test_limiter_uses_memory_fallback_when_no_redis(monkeypatch):
-    import os
     monkeypatch.delenv("REDIS_URL", raising=False)
 
     import importlib
+
     import app.core.limiter as limiter_mod
     importlib.reload(limiter_mod)
 
@@ -177,6 +176,7 @@ def test_limiter_uses_redis_when_configured(monkeypatch):
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
 
     import importlib
+
     import app.core.limiter as limiter_mod
     importlib.reload(limiter_mod)
 

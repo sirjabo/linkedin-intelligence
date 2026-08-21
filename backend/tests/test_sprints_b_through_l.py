@@ -11,18 +11,15 @@ Sprint I  - Orchestrator PAUSED state machine
 Sprint K  - AI Evaluation LLMEvaluationCriterion schema + evaluate_llm (no real LLM)
 Sprint L  - LearningLoop threshold updates + A/B experiment assignment
 """
-import math
 import os
 import tempfile
 import uuid
 
 import pytest
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Sprint B — skill_years deduplication
 # ──────────────────────────────────────────────────────────────────────────────
-
 from app.services.candidate_knowledge_resolver import DateRange, _deduplicate_periods
 
 
@@ -63,8 +60,8 @@ def test_deduplicate_empty():
 from app.services.claim_validator import (
     EvidenceBuilder,
     EvidenceRecord,
-    validate_claims,
     _check_contradiction,
+    validate_claims,
 )
 
 
@@ -276,11 +273,10 @@ def test_application_strategy_defaults_empty():
 # ──────────────────────────────────────────────────────────────────────────────
 
 from app.services.form_intelligence import (
+    FieldSpec,
     classify_field,
     extract_skill_target,
     map_candidate_to_form,
-    FieldSpec,
-    MappedField,
 )
 
 
@@ -342,10 +338,10 @@ def test_mapped_field_has_confidence():
 # Sprint G — ATS adapters
 # ──────────────────────────────────────────────────────────────────────────────
 
+from app.services.ats.adapter import retry_with_backoff
 from app.services.ats.greenhouse import GreenhouseAdapter
 from app.services.ats.lever import LeverAdapter
 from app.services.ats.workday import WorkdayAdapter
-from app.services.ats.adapter import retry_with_backoff
 
 
 def test_greenhouse_adapter_has_eeo_detection():
@@ -481,13 +477,12 @@ def test_validate_cv_file_too_large():
 # ──────────────────────────────────────────────────────────────────────────────
 
 from app.services.ai_evaluation import (
-    LLMEvaluationCriterion,
-    CVFactualityCriterion,
-    CVPersonalizationCriterion,
     CoverLetterClicheCriterion,
     CoverLetterCompanyHookCriterion,
-    EvalReport,
+    CVFactualityCriterion,
+    CVPersonalizationCriterion,
     EvalResult,
+    LLMEvaluationCriterion,
 )
 
 
@@ -531,13 +526,13 @@ async def test_llm_criterion_evaluate_async_error_graceful():
 # ──────────────────────────────────────────────────────────────────────────────
 
 from app.services.learning_loop import (
-    compute_calibration,
-    _update_thresholds,
+    _DEFAULT_THRESHOLDS,
+    APPLY_THRESHOLD_EXPERIMENT,
+    DET_WEIGHT_EXPERIMENT,
     ABExperiment,
     ABVariant,
-    DET_WEIGHT_EXPERIMENT,
-    APPLY_THRESHOLD_EXPERIMENT,
-    _DEFAULT_THRESHOLDS,
+    _update_thresholds,
+    compute_calibration,
 )
 
 
@@ -556,7 +551,7 @@ def test_update_thresholds_over_optimistic():
     # Add enough to meet minimum
     outcomes += _make_outcomes("excellent", positive=0, negative=1)
     cal = compute_calibration(outcomes)
-    new_thresholds, updates = _update_thresholds(cal)
+    _new_thresholds, updates = _update_thresholds(cal)
     excellent_updates = [u for u in updates if u.tier == "excellent"]
     if excellent_updates:
         u = excellent_updates[0]
@@ -603,7 +598,7 @@ def test_ab_experiment_distributes():
 
 
 def test_ab_experiment_invalid_split():
-    with pytest.raises(ValueError, match="sum to 1.0"):
+    with pytest.raises(ValueError, match=r"sum to 1\.0"):
         ABExperiment(
             experiment_id="bad",
             description="bad",
@@ -633,7 +628,6 @@ def test_ab_variant_config():
 
 def test_pause_validates_pausable_states():
     """AgentError raised when trying to pause from a non-pausable state."""
-    from app.services.application_agent_orchestrator import AgentError
     # We test only the set of valid states; no DB needed since we inspect constants.
     pausable = {"filling", "awaiting_human", "ready_to_fill", "awaiting_confirm"}
     non_pausable = {"initializing", "discovering", "mapping", "submitted", "failed"}
@@ -688,7 +682,7 @@ def test_fit_analysis_response_has_requirement_matches():
         importance="high",
         candidate_status="MATCHED",
         match_score=1.0,
-        evidence_ref=None,
+        evidence_refs=[],
     )]
     resp2 = FitAnalysisResponse(
         job_fit_score=0.8,
@@ -717,7 +711,7 @@ def test_requirement_match_item_fields():
         importance="medium",
         candidate_status="PARTIAL",
         match_score=0.5,
-        evidence_ref="exp:2",
+        evidence_refs=["exp:2"],
     )
-    assert item.evidence_ref == "exp:2"
+    assert item.evidence_refs == ["exp:2"]
     assert item.match_score == 0.5

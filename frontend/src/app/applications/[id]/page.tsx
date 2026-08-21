@@ -116,6 +116,7 @@ export default function ApplicationDetailPage() {
   const [fitAnalysis, setFitAnalysis] = useState<FitAnalysis | null>(null);
   const [cvDiffOpen, setCvDiffOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
+  const [preSubmitOpen, setPreSubmitOpen] = useState(true);
 
   // Notes editing
   const [notes, setNotes] = useState("");
@@ -421,6 +422,14 @@ export default function ApplicationDetailPage() {
             <FileTextIcon size={15} aria-hidden="true" />
             {genCV ? "Generando CV…" : app.cv_versions.length > 0 ? "Regenerar CV" : "Generar CV"}
           </button>
+          {genCV && (
+            <div className="w-full mt-1" role="status" aria-label="Generando CV personalizado">
+              <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-1 bg-blue-500 rounded-full animate-progress" style={{ width: "100%" }} />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Personalizando CV para esta posición…</p>
+            </div>
+          )}
 
           <button
             onClick={handleGenerateCoverLetter}
@@ -617,6 +626,44 @@ export default function ApplicationDetailPage() {
                     )}
                   </div>
 
+                  {/* Pre-submit field review */}
+                  {agentSession.fields && (agentSession.fields as AgentField[]).length > 0 && (
+                    <div className="border border-slate-700 rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setPreSubmitOpen((v) => !v)}
+                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        aria-expanded={preSubmitOpen}
+                      >
+                        <span>Revisá los datos a enviar ({(agentSession.fields as AgentField[]).length} campos)</span>
+                        {preSubmitOpen
+                          ? <ChevronUpIcon size={13} aria-hidden="true" />
+                          : <ChevronDownIcon size={13} aria-hidden="true" />}
+                      </button>
+                      {preSubmitOpen && (
+                        <ul className="divide-y divide-slate-800 max-h-64 overflow-y-auto" role="list">
+                          {(agentSession.fields as AgentField[]).map((field) => {
+                            const effectiveValue = field.human_answer ?? field.auto_fill_value ?? "";
+                            const isHuman = Boolean(field.human_answer);
+                            return (
+                              <li key={field.id} className="flex items-start gap-2 px-3 py-2 text-xs">
+                                <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${isHuman ? "bg-yellow-400" : "bg-emerald-500"}`} aria-hidden="true" />
+                                <div className="min-w-0">
+                                  <p className="text-slate-400 truncate">{field.label}</p>
+                                  <p className="text-slate-200 break-words">{effectiveValue || <span className="italic text-slate-600">vacío</span>}</p>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      <p className="text-xs text-slate-600 px-3 py-1.5 bg-slate-900">
+                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1" aria-hidden="true" />auto ·
+                        <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 mx-1" aria-hidden="true" />revisado por vos
+                      </p>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleConfirmSubmit}
                     disabled={confirming}
@@ -736,19 +783,19 @@ export default function ApplicationDetailPage() {
               const s = app.strategy as Record<string, unknown>;
               return (
                 <div className="mt-4 space-y-4 text-sm">
-                  {s.positioning && (
+                  {Boolean(s.positioning) && (
                     <div>
                       <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Posicionamiento</p>
                       <p className="text-slate-300 leading-relaxed">{String(s.positioning)}</p>
                     </div>
                   )}
-                  {s.target_narrative && (
+                  {Boolean(s.target_narrative) && (
                     <div>
                       <p className="text-xs font-semibold text-blue-400 mb-1 uppercase tracking-wider">Narrativa objetivo</p>
                       <p className="text-slate-300 leading-relaxed">{String(s.target_narrative)}</p>
                     </div>
                   )}
-                  {s.overall_approach && (
+                  {Boolean(s.overall_approach) && (
                     <div>
                       <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Enfoque general</p>
                       <p className="text-slate-400 leading-relaxed">{String(s.overall_approach)}</p>
@@ -792,7 +839,7 @@ export default function ApplicationDetailPage() {
                       </ul>
                     </div>
                   )}
-                  {s.company_specific_angle && (
+                  {Boolean(s.company_specific_angle) && (
                     <div>
                       <p className="text-xs font-semibold text-emerald-400 mb-1 uppercase tracking-wider">Ángulo empresa</p>
                       <p className="text-slate-300 leading-relaxed">{String(s.company_specific_angle)}</p>

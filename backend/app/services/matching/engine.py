@@ -1,7 +1,9 @@
 """Deterministic matching engine.
 
 Pure functions — no I/O, no async, no LLM. Testable in isolation.
+_parse_requirements() at the bottom is the sole async/LLM exception.
 """
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -56,7 +58,7 @@ class RequirementMatch:
     importance: RequirementImportance
     candidate_status: RequirementStatus
     match_score: float             # 0.0–1.0
-    evidence_ref: str | None = None
+    evidence_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -608,3 +610,59 @@ def compute_deterministic(
         requirement_matches=req_matches,
         domain_score=domain,
     )
+
+
+# ── Sprint D: LLM-powered JD parser ──────────────────────────────────────────
+# NOTE: this is the only async/LLM function in this otherwise pure module.
+
+async def _parse_requirements(jd_text: str) -> list[dict]:
+    """Extract structured requirements from free-form job description text.
+
+    Returns a list of dicts with keys: description, requirement_type, category.
+    requirement_type is "must_have" or "nice_to_have".
+    category is "technical", "experience", or "education".
+
+    Falls back to an empty list on any error so callers degrade gracefully.
+    """
+    if not jd_text or not jd_text.strip():
+        return []
+    try:
+        import json
+
+        import anthropic
+
+        from app.core.config import settings
+        from app.services.ai.model_router import route_model
+
+        client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        prompt = (
+            "Extract job requirements from the following job description. "
+            "Return a JSON array. Each item must have:\n"
+            '  "description": the requirement text (concise)\n'
+            '  "requirement_type": "must_have" or "nice_to_have"\n'
+            '  "category": "technical", "experience", or "education"\n\n'
+            "Return ONLY the JSON array, no commentary.\n\n"
+            f"Job description:\n{jd_text[:4000]}"
+        )
+        resp = await client.messages.create(
+            model=route_model("jd_parse"),
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        block = resp.content[0]
+        text = (getattr(block, "text", "") or "").strip()
+        # Strip markdown code fences if present
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-z]*\n?", "", text)
+            text = re.sub(r"\n?```$", "", text)
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [
+                r for r in parsed
+                if isinstance(r, dict)
+                and "description" in r
+                and r.get("requirement_type") in {"must_have", "nice_to_have"}
+            ]
+    except Exception:
+        pass
+    return []

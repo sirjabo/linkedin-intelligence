@@ -31,15 +31,19 @@ from app.services.agents.application_agent import generate_strategy
 from app.services.agents.communication_agent import generate_cover_letter
 from app.services.agents.cv_agent import personalize_cv
 from app.services.agents.match_agent import reason_about_match
+from app.services.ai.embeddings import default_embedding_provider
 from app.services.ai.provider import LLMProvider, default_provider
 from app.services.ats.registry import detect_ats
 from app.services.browser.adapter import RawFormField
 from app.services.browser.playwright_adapter import PlaywrightAdapter
 from app.services.candidate_knowledge_resolver import CandidateKnowledgeResolver
 from app.services.claim_validator import EvidenceBuilder, validate_claims
+from app.services.cost_tracker import check_budget_and_log, estimate_session_cost
 from app.services.cv_storage import cv_exists, generate_cv_file, get_cv_path
 from app.services.form_intelligence import classify_field, classify_field_llm
-from app.services.matching.engine import DET_WEIGHT, compute_deterministic, tier_from_score
+from app.services.matching.engine import compute_deterministic, tier_from_score
+from app.services.matching.semantic import compute_hybrid_score, compute_semantic
+from app.services.pre_submit_validator import PreSubmitValidationError, PreSubmitValidator
 
 logger = get_logger(__name__)
 
@@ -85,8 +89,16 @@ class ApplicationAgentOrchestrator:
         # Load application + candidate + profile
         app, candidate, profile = await _load_application_context(application_id, db)
 
-        # Detect ATS
+        # Detect ATS and log capabilities
         ats_adapter = detect_ats(form_url)
+        logger.info(
+            "ats.detected",
+            ats=ats_adapter.ats_name,
+            multi_page=ats_adapter.capabilities.multi_page,
+            requires_apply_click=ats_adapter.capabilities.requires_apply_click,
+            iframe_support=ats_adapter.capabilities.iframe_support,
+            confidence_penalty=ats_adapter.capabilities.confidence_penalty,
+        )
 
         # Create session
         session = ApplicationAgentSession(
@@ -191,11 +203,13 @@ class ApplicationAgentOrchestrator:
                     sort_order=i,
                 ))
 
-            # Update session counters
+            # Update session counters; apply adapter confidence penalty (e.g. generic ATS)
             n = len(raw_form.fields)
             session.fields_auto_filled = auto_count
             session.fields_human_pending = human_count
-            session.avg_confidence = total_confidence / n if n else None
+            raw_avg = total_confidence / n if n else 0.0
+            penalty = ats_adapter.capabilities.confidence_penalty
+            session.avg_confidence = max(0.0, round(raw_avg - penalty, 4)) if n else None
 
             form.human_fields_pending = human_count
             form.status = "ready" if human_count == 0 else "mapped"
@@ -248,10 +262,7 @@ class ApplicationAgentOrchestrator:
             )
         session.status = "paused"
         if resume_from_field:
-            # Store JSON-like metadata in error_message; a real impl would use a separate column
-            import json
-            pause_meta = {"resume_from_field": resume_from_field}
-            session.error_message = json.dumps(pause_meta)
+            session.pause_metadata = {"resume_from_field": resume_from_field}
         await db.commit()
         logger.info(
             "agent.paused",
@@ -283,11 +294,9 @@ class ApplicationAgentOrchestrator:
 
         # Determine effective resume field
         effective_label = field_label
-        if not effective_label and session.error_message:
-            import json
+        if not effective_label and session.pause_metadata:
             with contextlib.suppress(Exception):
-                meta = json.loads(session.error_message)
-                effective_label = meta.get("resume_from_field")
+                effective_label = session.pause_metadata.get("resume_from_field")
 
         # Mark fields before the resume point as skipped
         skipped = 0
@@ -312,7 +321,7 @@ class ApplicationAgentOrchestrator:
         ]
         session.fields_human_pending = len(unanswered)
         session.status = "awaiting_human" if unanswered else "ready_to_fill"
-        session.error_message = None  # clear pause metadata
+        session.pause_metadata = None  # clear pause metadata on resume
 
         form.status = "ready" if not unanswered else "mapped"
         await db.commit()
@@ -375,6 +384,30 @@ class ApplicationAgentOrchestrator:
         if session.status != "ready_to_fill":
             raise AgentError(f"Cannot submit from session status '{session.status}' — must be 'ready_to_fill'")
 
+        # Duplicate submit protection: reject if the application is already submitted
+        app_check = await db.get(Application, session.application_id)
+        if app_check and app_check.status == "applied":
+            raise AgentError(
+                f"Duplicate submit blocked: application {session.application_id} is already in status "
+                f"'{app_check.status}'. Check ApplicationSubmission records for the confirmation."
+            )
+
+        # Also reject if another session for this application is actively submitting
+        from sqlalchemy import select as sa_select
+        dup_q = await db.execute(
+            sa_select(ApplicationAgentSession).where(
+                ApplicationAgentSession.application_id == session.application_id,
+                ApplicationAgentSession.id != session.id,
+                ApplicationAgentSession.status.in_(["submitting", "submitted"]),
+            )
+        )
+        dup_session = dup_q.scalars().first()
+        if dup_session:
+            raise AgentError(
+                f"Duplicate submit blocked: session {dup_session.id} already has status '{dup_session.status}' "
+                f"for application {session.application_id}."
+            )
+
         form = await _load_form(session.application_id, db)
         app, candidate, profile = await _load_application_context(session.application_id, db)
 
@@ -426,16 +459,40 @@ class ApplicationAgentOrchestrator:
                     elif ftype == "number":
                         # Only fill if value is a valid numeric string
                         if value and value.replace(".", "", 1).lstrip("-").isdigit():
-                            await browser.fill_text(selector, value)
-                            filled += 1
+                            ok = await browser.fill_text(selector, value)
+                            if not ok:
+                                # Stale element recovery: re-discover form and retry once
+                                raw_form = await browser.discover_form()
+                                _field_map = {f.name: f for f in raw_form.fields}
+                                fresh = _find_matching_raw_field(db_field.label, db_field.field_type, raw_form.fields)
+                                if fresh:
+                                    ok = await browser.fill_text(fresh.css_selector, value)
+                                logger.warning(
+                                    "stale_element_recovery",
+                                    field=db_field.label, recovered=ok,
+                                )
+                            if ok:
+                                filled += 1
                     elif ftype == "url":
                         # Only fill if value is a well-formed URL; invalid URLs trigger browser validation
                         if value and value.startswith(("http://", "https://")):
                             await browser.fill_text(selector, value)
                             filled += 1
                     elif value:
-                        await browser.fill_text(selector, value)
-                        filled += 1
+                        ok = await browser.fill_text(selector, value)
+                        if not ok:
+                            # Stale element recovery: re-discover form and retry once
+                            raw_form = await browser.discover_form()
+                            _field_map = {f.name: f for f in raw_form.fields}
+                            fresh = _find_matching_raw_field(db_field.label, db_field.field_type, raw_form.fields)
+                            if fresh:
+                                ok = await browser.fill_text(fresh.css_selector, value)
+                            logger.warning(
+                                "stale_element_recovery",
+                                field=db_field.label, recovered=ok,
+                            )
+                        if ok:
+                            filled += 1
 
                 session.fields_confirmed = filled
                 session.filled_at = datetime.utcnow()
@@ -443,10 +500,22 @@ class ApplicationAgentOrchestrator:
                 # Screenshot after filling, before submit
                 _filled_bytes = await browser.capture_screenshot()
 
-                # Phase 6: pre-submit validation — warn on HTML5 invalid fields
+                # Phase 6: structured pre-submit validation
+                pre_submit_report = PreSubmitValidator().validate(form.fields)
+                logger.info(
+                    "pre_submit_validation",
+                    session_id=str(session.id),
+                    passed=pre_submit_report.passed,
+                    errors=len(pre_submit_report.errors),
+                    warnings=len(pre_submit_report.warnings),
+                )
+                if not pre_submit_report.passed:
+                    raise PreSubmitValidationError(pre_submit_report)
+
+                # Secondary: HTML5 browser-side invalid fields (best-effort)
                 try:
                     if await browser.has_element(":invalid"):
-                        logger.warning("form_has_invalid_fields", session_id=str(session.id))
+                        logger.warning("form_has_html5_invalid_fields", session_id=str(session.id))
                 except Exception:
                     pass
 
@@ -504,10 +573,21 @@ class ApplicationAgentOrchestrator:
                 app.status = "applied"
                 app.applied_at = datetime.utcnow()
 
+            # Budget tracking: estimate cost for this session's LLM operations
+            ops = ["cv_generation", "cover_letter", "match_reasoning", "claim_validation"]
+            ops.extend(["field_classify"] * max(session.fields_total, 1))
+            cost_estimate = estimate_session_cost(ops)
+            check_budget_and_log(
+                estimate=cost_estimate,
+                application_id=str(session.application_id),
+                session_id=str(session.id),
+            )
+
             await db.commit()
             logger.info(
                 "agent.submit.complete",
                 session_id=str(session.id),
+                application_id=str(session.application_id),
                 success=success,
                 confirmation_id=confirmation_id,
             )
@@ -601,7 +681,18 @@ async def _run_intelligence_phase(
             provider=provider,
         )
 
-        hybrid_score = det.overall_score * DET_WEIGHT + llm_match.score * (1 - DET_WEIGHT)
+        sem = await compute_semantic(
+            profile_skills=_profile_skills,
+            profile_experience=_experience,
+            profile_projects=_projects,
+            job_title=job.title,
+            job_company=job.company,
+            job_description=getattr(job, "description", None),
+            requirements=job.requirements,
+            evidence_records=EvidenceBuilder.build_from_profile(profile),
+            embedding_provider=default_embedding_provider(),
+        )
+        hybrid_score = compute_hybrid_score(det.overall_score, llm_match.score, sem)
         match_tier = tier_from_score(hybrid_score)
 
         # Application strategy

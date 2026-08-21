@@ -1,13 +1,13 @@
 """Tests for the /market/* endpoints (Phase: Skills Radar)."""
-import pytest
-from collections import Counter
-from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+import app.api.routes.market as market_module
+from app.api.routes.market import _categorize, _slugify
 from app.main import app
 from app.services.job_sources.base import JobRaw
-from app.api.routes.market import _slugify, _categorize, _aggregate_skills
-import app.api.routes.market as market_module
 
 
 @pytest.fixture(autouse=True)

@@ -6,16 +6,15 @@ Verifies:
   - classify_field_llm() falls back to "unknown" on LLM error
   - classify_field_llm() falls back to "unknown" if LLM returns garbage
 """
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.services.form_intelligence import (
+    _ALL_SEMANTIC_TYPES,
     classify_field,
     classify_field_llm,
-    SemanticType,
-    _ALL_SEMANTIC_TYPES,
 )
-
 
 # ── classify_field deterministic tests ───────────────────────────────────────
 

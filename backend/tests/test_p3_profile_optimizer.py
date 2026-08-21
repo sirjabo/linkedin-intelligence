@@ -9,11 +9,10 @@ Verifies:
 import pytest
 
 from app.services.profile_optimizer import (
-    generate_optimization_report,
     _aggregate_skill_gaps,
     _deterministic_tips,
+    generate_optimization_report,
 )
-
 
 SAMPLE_ANALYSES = [
     {"match_tier": "strong", "overall_score": 0.78, "missing_skills": ["Kafka", "Flink"], "matched_skills": ["Python"], "llm_gaps": ["Kafka"]},
@@ -67,7 +66,6 @@ def test_deterministic_tips_generates_skill_tips():
 
 
 def test_deterministic_tips_no_summary_tip():
-    from app.services.profile_optimizer import SkillGap
     gaps = []
     profile_missing_summary = {"summary": None, "skills": ["Python"], "experience": [{"title": "Eng"}], "education": []}
     tips = _deterministic_tips(gaps, profile_missing_summary)
@@ -75,7 +73,6 @@ def test_deterministic_tips_no_summary_tip():
 
 
 def test_deterministic_tips_no_skills_tip():
-    from app.services.profile_optimizer import SkillGap
     profile_no_skills = {"summary": "Great engineer", "skills": [], "experience": [], "education": []}
     tips = _deterministic_tips([], profile_no_skills)
     categories = {t.category for t in tips}

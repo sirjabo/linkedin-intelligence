@@ -5,32 +5,22 @@ Key design principles:
 - DB uses an in-memory SQLite via aiosqlite for fast, isolated tests.
 - Each test gets a fresh DB schema.
 """
-import asyncio
-import uuid
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.main import app
 from app.db.base import Base
 from app.db.session import get_db
-from app.services.ai.provider import LLMProvider
+from app.main import app
 from app.services.agents.profile_agent import ExtractedProfile
 
 # In-memory SQLite for tests (no Postgres needed)
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -112,8 +102,8 @@ def mock_match_agent():
 def mock_application_agents():
     """Mock all three application generation agents (strategy, CV, communication)."""
     from app.services.agents.application_agent import ApplicationStrategy, CVChangeGuidance
-    from app.services.agents.cv_agent import PersonalizedCV, CVChange
-    from app.services.agents.communication_agent import CoverLetterResult, AnswerResult
+    from app.services.agents.communication_agent import AnswerResult, CoverLetterResult
+    from app.services.agents.cv_agent import CVChange, PersonalizedCV
 
     strategy = ApplicationStrategy(
         overall_approach="Position as a strong Python data engineer with pipeline experience.",
@@ -141,8 +131,8 @@ def mock_application_agents():
                 section="summary",
                 original="Experienced data professional",
                 adapted="Experienced Senior Data Engineer with 5+ years building Python data pipelines.",
-                rationale="Aligns with JD seniority and Python requirements",
-                evidence_ref="5+ years Python experience",
+                reason="Aligns with JD seniority and Python requirements",
+                evidence_refs=["5+ years Python experience"],
             )
         ],
         evidence_refs=["Python experience", "SQL experience"],
@@ -218,7 +208,11 @@ def mock_job_agent():
 def mock_interview_agent():
     """Mock the interview prep agent."""
     from app.services.agents.interview_agent import (
-        InterviewPrepResult, TechnicalQuestion, BehavioralQuestion, STARStory, CompanyResearch
+        BehavioralQuestion,
+        CompanyResearch,
+        InterviewPrepResult,
+        STARStory,
+        TechnicalQuestion,
     )
     result = InterviewPrepResult(
         technical_questions=[

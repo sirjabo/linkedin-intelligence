@@ -3,6 +3,7 @@
 Uses the pre-installed Chromium at PLAYWRIGHT_BROWSERS_PATH.
 Never import this directly in domain logic — depend on the BrowserAutomationAdapter Protocol.
 """
+import asyncio
 import os
 
 from playwright.async_api import Browser, BrowserContext, Frame, Page, Playwright, async_playwright
@@ -78,6 +79,8 @@ class PlaywrightAdapter:
             ),
         )
         self._page = await self._context.new_page()
+        # Auto-dismiss dialogs (alerts, confirms, prompts) to prevent flow blockage
+        self._page.on("dialog", lambda d: asyncio.create_task(d.dismiss()))
         return self
 
     async def __aexit__(self, *args) -> None:
@@ -151,15 +154,57 @@ class PlaywrightAdapter:
 
     # ── Field interaction ──────────────────────────────────────────────────────
 
-    async def fill_text(self, css_selector: str, value: str) -> bool:
+    async def wait_for_element(self, selector: str, timeout: int = 10_000) -> bool:
+        """Wait for an element to appear in the DOM. Returns False on timeout."""
         assert self._page
         try:
             target = self._active_frame or self._page
-            await target.locator(css_selector).first.fill(value, timeout=5_000)
+            await target.wait_for_selector(selector, timeout=timeout)
             return True
-        except Exception as exc:
-            logger.warning("fill_text_failed", selector=css_selector, error=str(exc))
+        except Exception:
             return False
+
+    async def fill_text(self, css_selector: str, value: str, retries: int = 3) -> bool:
+        """Fill a text input, retrying on transient failures (stale element, timeout)."""
+        assert self._page
+        for attempt in range(retries):
+            try:
+                target = self._active_frame or self._page
+                await target.locator(css_selector).first.fill(value, timeout=5_000)
+                return True
+            except Exception as exc:
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    logger.warning(
+                        "fill_text_retry",
+                        selector=css_selector,
+                        attempt=attempt + 1,
+                        error=str(exc),
+                    )
+                else:
+                    logger.warning("fill_text_failed", selector=css_selector, error=str(exc))
+        return False
+
+    async def click(self, css_selector: str, retries: int = 3) -> bool:
+        """Click an element, retrying on transient failures."""
+        assert self._page
+        for attempt in range(retries):
+            try:
+                target = self._active_frame or self._page
+                await target.locator(css_selector).first.click(timeout=5_000)
+                return True
+            except Exception as exc:
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    logger.warning(
+                        "click_retry",
+                        selector=css_selector,
+                        attempt=attempt + 1,
+                        error=str(exc),
+                    )
+                else:
+                    logger.warning("click_failed", selector=css_selector, error=str(exc))
+        return False
 
     async def select_option(self, css_selector: str, value: str) -> bool:
         assert self._page
@@ -237,12 +282,12 @@ class PlaywrightAdapter:
         return await self._page.inner_text("body")
 
     async def is_confirmation_page(self) -> bool:
-        assert self._page  # noqa: S101
+        assert self._page
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return bool(result.get("is_confirmation", False))
 
     async def extract_confirmation_id(self) -> str | None:
-        assert self._page  # noqa: S101
+        assert self._page
         result = await self._page.evaluate(CONFIRMATION_DETECTOR_JS)
         return result.get("confirmation_id")
 

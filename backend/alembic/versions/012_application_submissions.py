@@ -4,8 +4,9 @@ Revision ID: 012_application_submissions
 Revises: 011_form_intelligence
 Create Date: 2026-08-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "012_application_submissions"
 down_revision = "011_form_intelligence"

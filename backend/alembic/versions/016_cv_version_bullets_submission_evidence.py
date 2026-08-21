@@ -5,8 +5,9 @@ Sprint I: form_data_submitted + screenshot_confirmation_path in application_subm
 
 Revision ID: 016
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "016"
 down_revision = "015"

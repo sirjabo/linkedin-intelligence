@@ -8,14 +8,14 @@ Verifies:
   - SmartRecruitersAdapter.before_discover() tries cookie banner + apply
   - AshbyAdapter.before_discover() navigates to /application URL
 """
-import pytest
 from unittest.mock import AsyncMock
 
-from app.services.ats.workday import WorkdayAdapter
-from app.services.ats.smart_recruiters import SmartRecruitersAdapter
-from app.services.ats.ashby import AshbyAdapter
-from app.services.browser.adapter import RawFormField
+import pytest
 
+from app.services.ats.ashby import AshbyAdapter
+from app.services.ats.smart_recruiters import SmartRecruitersAdapter
+from app.services.ats.workday import WorkdayAdapter
+from app.services.browser.adapter import RawFormField
 
 # ── WorkdayAdapter ────────────────────────────────────────────────────────────
 
@@ -39,9 +39,11 @@ async def test_workday_before_discover_clicks_apply():
         return "applyButton" in selector or "Apply Now" in selector
 
     browser.has_element.side_effect = _has
+    browser.click.return_value = True
 
     await adapter.before_discover(browser)
-    browser.click_next.assert_called_once()
+    browser.click.assert_called_once()
+    browser.click_next.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -127,6 +129,8 @@ async def test_ashby_before_discover_clicks_apply():
         return "Apply" in selector
 
     browser.has_element.side_effect = _has
+    browser.click.return_value = True
 
     await adapter.before_discover(browser)
-    browser.click_next.assert_called_once()
+    browser.click.assert_called_once()
+    browser.click_next.assert_not_called()
