@@ -8,7 +8,6 @@ Verifies:
 """
 import httpx
 import pytest
-import respx
 
 from app.services.job_recommender import rank_jobs
 from app.services.job_sources.arbeitnow import ArbeitnowSource
@@ -60,14 +59,29 @@ REMOTEOK_SAMPLE = [
 ]
 
 
+class _MockTransport(httpx.AsyncBaseTransport):
+    """Minimal async transport that returns a static response."""
+
+    def __init__(self, status: int, json_data) -> None:
+        self._status = status
+        self._json_data = json_data
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        return httpx.Response(self._status, json=self._json_data, request=request)
+
+
+def _arbeitnow_client(status: int = 200, json_data=None) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=_MockTransport(status, json_data or ARBEITNOW_SAMPLE))
+
+
+def _remoteok_client(status: int = 200, json_data=None) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=_MockTransport(status, json_data or REMOTEOK_SAMPLE))
+
+
 @pytest.mark.asyncio
 async def test_arbeitnow_fetch():
-    async with respx.mock as mock:
-        mock.get("https://www.arbeitnow.com/api/job-board-api").mock(
-            return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
-        )
-        src = ArbeitnowSource()
-        jobs = await src.fetch(query="python", limit=10, category=None)
+    src = ArbeitnowSource(client=_arbeitnow_client())
+    jobs = await src.fetch(query="python", limit=10, category=None)
     assert len(jobs) == 1  # only the Python job matches
     assert jobs[0].title == "Senior Data Engineer"
     assert jobs[0].remote_type == "remote"
@@ -76,23 +90,15 @@ async def test_arbeitnow_fetch():
 
 @pytest.mark.asyncio
 async def test_arbeitnow_fetch_no_filter():
-    async with respx.mock as mock:
-        mock.get("https://www.arbeitnow.com/api/job-board-api").mock(
-            return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
-        )
-        src = ArbeitnowSource()
-        jobs = await src.fetch(query="", limit=10, category=None)
+    src = ArbeitnowSource(client=_arbeitnow_client())
+    jobs = await src.fetch(query="", limit=10, category=None)
     assert len(jobs) == 2  # no query filter → both jobs returned
 
 
 @pytest.mark.asyncio
 async def test_remoteok_fetch():
-    async with respx.mock as mock:
-        mock.get("https://remoteok.com/api").mock(
-            return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
-        )
-        src = RemoteOKSource()
-        jobs = await src.fetch(query="ml", limit=10, category=None)
+    src = RemoteOKSource(client=_remoteok_client())
+    jobs = await src.fetch(query="ml", limit=10, category=None)
     assert len(jobs) == 1
     assert jobs[0].title == "ML Engineer"
     assert jobs[0].remote_type == "remote"
@@ -102,12 +108,8 @@ async def test_remoteok_fetch():
 @pytest.mark.asyncio
 async def test_remoteok_skips_legal_notice():
     """Legal notice (first element) must be skipped."""
-    async with respx.mock as mock:
-        mock.get("https://remoteok.com/api").mock(
-            return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
-        )
-        src = RemoteOKSource()
-        jobs = await src.fetch(query="", limit=10, category=None)
+    src = RemoteOKSource(client=_remoteok_client())
+    jobs = await src.fetch(query="", limit=10, category=None)
     assert all(j.title != "" for j in jobs)
 
 
@@ -136,10 +138,6 @@ def test_rank_jobs_deduplication():
 @pytest.mark.asyncio
 async def test_arbeitnow_handles_api_error():
     """fetch() should raise on HTTP error."""
-    async with respx.mock as mock:
-        mock.get("https://www.arbeitnow.com/api/job-board-api").mock(
-            return_value=httpx.Response(503)
-        )
-        src = ArbeitnowSource()
-        with pytest.raises(Exception):
-            await src.fetch(query="python", limit=10, category=None)
+    src = ArbeitnowSource(client=_arbeitnow_client(status=503, json_data={}))
+    with pytest.raises(Exception):
+        await src.fetch(query="python", limit=10, category=None)
