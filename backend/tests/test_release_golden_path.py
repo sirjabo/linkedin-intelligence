@@ -13,9 +13,7 @@ This file is the single authoritative test for declaring the system a v1 Release
 """
 from __future__ import annotations
 
-import os
-import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import pytest
 from httpx import AsyncClient
@@ -216,8 +214,8 @@ async def test_agent_submit_missing_human_confirmed_field(client: AsyncClient, m
 async def test_orchestrator_submit_raises_without_human_confirmed():
     """ApplicationAgentOrchestrator.submit() raises AgentError when human_confirmed=False."""
     from app.services.application_agent_orchestrator import (
-        ApplicationAgentOrchestrator,
         AgentError,
+        ApplicationAgentOrchestrator,
     )
 
     orch = ApplicationAgentOrchestrator()
@@ -310,10 +308,10 @@ def test_cv_differentiation_score_identical_cvs_returns_zero():
 def test_llm_eval_criteria_objects_are_importable():
     """All four LLM judge criteria can be imported and have required attributes."""
     from app.services.ai_evaluation import (
-        CVFactualityCriterion,
-        CVPersonalizationCriterion,
         CoverLetterClicheCriterion,
         CoverLetterCompanyHookCriterion,
+        CVFactualityCriterion,
+        CVPersonalizationCriterion,
     )
     for criterion in [
         CVFactualityCriterion,
