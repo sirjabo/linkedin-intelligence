@@ -51,7 +51,7 @@ jobs:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           SECRET_KEY: "ci-test-secret-key-not-for-prod"
           ENVIRONMENT: "test"
-          ANTHROPIC_API_KEY: "sk-ant-dummy-for-tests"
+          ANTHROPIC_API_KEY: ""
         run: |
           pytest tests/ -v --tb=short \
             --cov=app --cov-report=term-missing \

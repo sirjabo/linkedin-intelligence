@@ -5,7 +5,6 @@ Key design principles:
 - DB uses an in-memory SQLite via aiosqlite for fast, isolated tests.
 - Each test gets a fresh DB schema.
 """
-import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -22,13 +21,6 @@ from app.services.agents.profile_agent import ExtractedProfile
 
 # In-memory SQLite for tests (no Postgres needed)
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="function")
