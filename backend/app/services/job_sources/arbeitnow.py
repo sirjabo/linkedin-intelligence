@@ -55,6 +55,7 @@ class ArbeitnowSource:
                 if not any(tok in searchable for tok in query_tokens):
                     continue
 
+            raw_date = item.get("created_at")
             jobs.append(JobRaw(
                 external_id=str(item.get("slug", item.get("id", ""))),
                 title=title,
@@ -65,7 +66,7 @@ class ArbeitnowSource:
                 description=description,
                 tech_tags=tags,
                 salary_range=None,
-                published_at=item.get("created_at"),
+                published_at=str(raw_date) if raw_date is not None else None,
             ))
 
             if len(jobs) >= limit:

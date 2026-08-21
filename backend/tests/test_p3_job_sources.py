@@ -62,8 +62,8 @@ REMOTEOK_SAMPLE = [
 
 @pytest.mark.asyncio
 async def test_arbeitnow_fetch():
-    with respx.mock:
-        respx.get("https://www.arbeitnow.com/api/job-board-api", params={"page": 1}).mock(
+    async with respx.mock as mock:
+        mock.get("https://www.arbeitnow.com/api/job-board-api").mock(
             return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
         )
         src = ArbeitnowSource()
@@ -76,8 +76,8 @@ async def test_arbeitnow_fetch():
 
 @pytest.mark.asyncio
 async def test_arbeitnow_fetch_no_filter():
-    with respx.mock:
-        respx.get("https://www.arbeitnow.com/api/job-board-api", params={"page": 1}).mock(
+    async with respx.mock as mock:
+        mock.get("https://www.arbeitnow.com/api/job-board-api").mock(
             return_value=httpx.Response(200, json=ARBEITNOW_SAMPLE)
         )
         src = ArbeitnowSource()
@@ -87,8 +87,8 @@ async def test_arbeitnow_fetch_no_filter():
 
 @pytest.mark.asyncio
 async def test_remoteok_fetch():
-    with respx.mock:
-        respx.get("https://remoteok.com/api", params={"tag": "ml"}).mock(
+    async with respx.mock as mock:
+        mock.get("https://remoteok.com/api").mock(
             return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
         )
         src = RemoteOKSource()
@@ -102,8 +102,8 @@ async def test_remoteok_fetch():
 @pytest.mark.asyncio
 async def test_remoteok_skips_legal_notice():
     """Legal notice (first element) must be skipped."""
-    with respx.mock:
-        respx.get("https://remoteok.com/api").mock(
+    async with respx.mock as mock:
+        mock.get("https://remoteok.com/api").mock(
             return_value=httpx.Response(200, json=REMOTEOK_SAMPLE)
         )
         src = RemoteOKSource()
@@ -136,8 +136,8 @@ def test_rank_jobs_deduplication():
 @pytest.mark.asyncio
 async def test_arbeitnow_handles_api_error():
     """fetch() should raise on HTTP error."""
-    with respx.mock:
-        respx.get("https://www.arbeitnow.com/api/job-board-api", params={"page": 1}).mock(
+    async with respx.mock as mock:
+        mock.get("https://www.arbeitnow.com/api/job-board-api").mock(
             return_value=httpx.Response(503)
         )
         src = ArbeitnowSource()
