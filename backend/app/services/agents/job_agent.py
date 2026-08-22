@@ -1,9 +1,13 @@
 """JobAgent: parses job descriptions into structured requirements.
 
 Uses structured output (tool_use) — never XML tag parsing.
+Falls back to deterministic keyword extraction when LLM is unavailable.
 """
+import re
+
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.sanitize import sanitize_for_prompt
 from app.services.ai.cache import llm_cache
@@ -69,6 +73,49 @@ Extract every requirement, skill, and attribute mentioned. Follow these rules:
 Never hallucinate. Stick strictly to what the text says."""
 
 
+def _parse_job_deterministic(
+    raw_jd: str,
+    title: str | None = None,
+    company: str | None = None,
+) -> ParsedJob:
+    """Keyword/regex fallback when LLM call fails or API key is missing."""
+    known_skills = (
+        "Python", "FastAPI", "PostgreSQL", "SQL", "React", "JavaScript",
+        "TypeScript", "AWS", "Docker", "Kubernetes", "Redis", "Go", "Java",
+    )
+    tech_stack = [s for s in known_skills if re.search(rf"\b{re.escape(s)}\b", raw_jd, re.I)]
+    requirements: list[RequirementItem] = []
+    for sentence in re.split(r"[.\n]+", raw_jd):
+        sentence = sentence.strip()
+        if len(sentence) < 20:
+            continue
+        lower = sentence.lower()
+        if any(kw in lower for kw in ("must", "required", "need", "experience", "years")):
+            requirements.append(RequirementItem(
+                description=sentence[:240],
+                requirement_type="must_have",
+                category="technical",
+                classification="MANDATORY",
+            ))
+    if not requirements and tech_stack:
+        requirements = [
+            RequirementItem(
+                description=f"Experience with {skill}",
+                requirement_type="must_have",
+                category="technical",
+                classification="INFERRED",
+            )
+            for skill in tech_stack[:5]
+        ]
+    return ParsedJob(
+        title=title,
+        company=company,
+        tech_stack=tech_stack,
+        requirements=requirements[:12],
+        parsing_confidence=0.35,
+    )
+
+
 # ── Agent function ─────────────────────────────────────────────────────────────
 
 async def parse_job_description(
@@ -85,15 +132,25 @@ async def parse_job_description(
     if injection_detected:
         logger.warning("job_agent.injection_detected", jd_length=len(raw_jd))
     logger.info("job_agent.parse_start", jd_length=len(raw_jd))
-    result = await provider.structured_output(
-        system=PARSE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"Parse this job description and extract all structured information:\n\n{clean_jd}"
-        }],
-        schema=ParsedJob,
-        model=MODEL_PARSE,
-    )
+
+    if not settings.ANTHROPIC_API_KEY and not settings.OPENROUTER_API_KEY:
+        logger.warning("job_agent.parse_no_api_key", fallback="deterministic")
+        return _parse_job_deterministic(clean_jd)
+
+    try:
+        result = await provider.structured_output(
+            system=PARSE_SYSTEM,
+            messages=[{
+                "role": "user",
+                "content": f"Parse this job description and extract all structured information:\n\n{clean_jd}"
+            }],
+            schema=ParsedJob,
+            model=MODEL_PARSE,
+        )
+    except Exception as exc:
+        logger.warning("job_agent.parse_llm_failed", error=str(exc), fallback="deterministic")
+        result = _parse_job_deterministic(clean_jd)
+
     llm_cache.set("jd_parse", raw_jd, result.model_dump())
     logger.info(
         "job_agent.parse_done",

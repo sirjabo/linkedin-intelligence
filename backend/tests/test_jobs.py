@@ -192,3 +192,21 @@ async def test_job_user_isolation(client: AsyncClient, mock_job_agent):
     list_resp = await client.get("/api/v2/jobs", headers={"Authorization": f"Bearer {token_b}"})
     assert list_resp.status_code == 200
     assert list_resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_parse_job_deterministic_fallback(monkeypatch):
+    from app.services.agents.job_agent import _parse_job_deterministic
+
+    monkeypatch.setattr("app.services.agents.job_agent.settings.ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr("app.services.agents.job_agent.settings.OPENROUTER_API_KEY", "")
+
+    jd = (
+        "We need a Python expert with 5+ years experience in FastAPI and PostgreSQL. "
+        "Must have strong SQL skills."
+    )
+    parsed = _parse_job_deterministic(jd, title="Backend Engineer", company="Acme")
+    assert parsed.title == "Backend Engineer"
+    assert "Python" in parsed.tech_stack
+    assert len(parsed.requirements) >= 1
+    assert parsed.parsing_confidence <= 0.5

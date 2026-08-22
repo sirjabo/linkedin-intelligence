@@ -4,7 +4,6 @@ AC-02 / AC-07 / AC-10 / AC-12: orchestrator.start() → resume() → submit()
 Uses real SQLite in-memory DB + real Playwright + mock ATS server.
 """
 # ── Skip if no Chromium ───────────────────────────────────────────────────────
-import os
 import uuid
 
 import pytest
@@ -24,22 +23,18 @@ from app.db.models import (
 from app.db.models.agent_session import ApplicationAgentSession
 from app.db.models.job import Job
 from app.services.application_agent_orchestrator import AgentError, ApplicationAgentOrchestrator
+from app.services.browser.playwright_adapter import chromium_available
 from tests.mock_ats.conftest_ats import mock_ats_url  # noqa: F401
 
-_CHROMIUM_CANDIDATES = [
-    "/opt/pw-browsers/chromium/chrome",
-    "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
-]
 pytestmark = pytest.mark.skipif(
-    not any(os.path.isfile(p) for p in _CHROMIUM_CANDIDATES),
-    reason="No pre-installed Chromium",
+    not chromium_available(),
+    reason="No Chromium available",
 )
 
 
 # ── DB fixtures ───────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 async def engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:

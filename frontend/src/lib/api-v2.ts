@@ -1,4 +1,15 @@
-const BASE = "/api/v2";
+/** API root without trailing slash or /api/v* suffix (e.g. https://api.example.com). */
+function apiRoot(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL?.trim() ?? "";
+  if (!raw) return "";
+  return raw.replace(/\/$/, "").replace(/\/api\/v[12]$/, "");
+}
+
+/** Absolute URL in production; relative /api/v2 in dev (proxied via next.config rewrites). */
+const BASE = (() => {
+  const root = apiRoot();
+  return root ? `${root}/api/v2` : "/api/v2";
+})();
 
 function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };

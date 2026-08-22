@@ -5,6 +5,7 @@ Never import this directly in domain logic — depend on the BrowserAutomationAd
 """
 import asyncio
 import os
+from pathlib import Path
 
 from playwright.async_api import Browser, BrowserContext, Frame, Page, Playwright, async_playwright
 
@@ -35,16 +36,38 @@ _CHROMIUM_CANDIDATES = [
 ]
 
 
-def _find_chromium() -> str:
-    """Return the first valid Chromium executable path."""
-    # env override wins
+def _find_chromium() -> str | None:
+    """Return the first valid Chromium executable path, or None to use Playwright default."""
     env = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE")
     if env and os.path.isfile(env):
         return env
     for candidate in _CHROMIUM_CANDIDATES:
         if os.path.isfile(candidate):
             return candidate
-    return _CHROMIUM_PATH  # let Playwright resolve it
+    browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    cache = Path(browsers_path) if browsers_path else Path.home() / ".cache" / "ms-playwright"
+    if cache.is_dir():
+        for pattern in (
+            "chromium-*/chrome-linux/chrome",
+            "chromium_headless_shell-*/chrome-linux/headless_shell",
+        ):
+            for match in sorted(cache.glob(pattern), reverse=True):
+                if match.is_file():
+                    return str(match)
+    return None
+
+
+def chromium_available() -> bool:
+    """True when Playwright is importable and a Chromium binary can be resolved."""
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        return False
+    if _find_chromium():
+        return True
+    browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    cache = Path(browsers_path) if browsers_path else Path.home() / ".cache" / "ms-playwright"
+    return cache.is_dir() and any(cache.iterdir())
 
 
 class PlaywrightAdapter:
@@ -64,13 +87,15 @@ class PlaywrightAdapter:
     async def __aenter__(self) -> "PlaywrightAdapter":
         self._playwright = await async_playwright().start()
         chromium_path = _find_chromium()
-        logger.info("browser_launch", chromium=chromium_path)
-        self._browser = await self._playwright.chromium.launch(
-            executable_path=chromium_path,
-            headless=self._headless,
-            slow_mo=self._slow_mo,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
+        launch_kwargs: dict = {
+            "headless": self._headless,
+            "slow_mo": self._slow_mo,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+        }
+        if chromium_path:
+            launch_kwargs["executable_path"] = chromium_path
+        logger.info("browser_launch", chromium=chromium_path or "playwright-default")
+        self._browser = await self._playwright.chromium.launch(**launch_kwargs)
         self._context = await self._browser.new_context(
             viewport={"width": 1280, "height": 900},
             user_agent=(
