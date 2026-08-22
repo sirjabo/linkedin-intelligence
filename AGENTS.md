@@ -4,9 +4,14 @@
 >
 > **Repo**: `sirjabo/linkedin-intelligence`  
 > **Branch activo**: `main`  
-> **Tests**: 748 passing · 50 skipped (AI evals — need API key) · 0 failing  
+> **Tests**: 785 passing · 17 skipped (AI evals — need API key) · 0 failing  
 > **Última actualización**: 2026-08-22  
-> **Estado release**: ✅ v1.0 MERGEADO A MAIN — Railway auto-deploy en curso
+> **Estado release**: ✅ v1.0 EN PRODUCCIÓN
+>
+> **Railway**: Los 4 servicios (api, frontend-v2, celery-worker, celery-beat) tienen `source.branch = claude/ai-chat-cv-improvement-rzqxd5` en Railway config — ese campo NO se puede cambiar via MCP. La solución: `.github/workflows/mirror-to-railway.yml` fuerza-pushea `main` → esa rama en cada push a main. Ambas ramas son idénticas. CD desde main funciona y fue verificado en producción (deploys faefcfd3 y 80a49ccb se dispararon automáticamente). Para cambiar el nombre de la branch en Railway a `main`: Settings → Source en cada servicio en el dashboard de Railway.
+>
+> **DB**: alembic current = alembic heads = `021` (verificado en deploy 144eb620)  
+> **Smoke test**: `/health` = 200 ✅ · auth/profile/job/match/application = pendiente verificación manual (CCR proxy bloquea HTTPS saliente)
 
 ---
 
