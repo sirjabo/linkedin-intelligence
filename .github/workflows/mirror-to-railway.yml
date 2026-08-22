@@ -1,0 +1,16 @@
+name: Mirror main → Railway branch
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push main to Railway-tracked branch
+        run: git push origin main:claude/ai-chat-cv-improvement-rzqxd5 --force
