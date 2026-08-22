@@ -16,7 +16,7 @@ from app.db.models.match import MatchAnalysis
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.match import MatchFeedback, MatchResponse
-from app.services.agents.match_agent import reason_about_match
+from app.services.agents.match_agent import LLMMatchResult, reason_about_match
 from app.services.ai.embeddings import default_embedding_provider
 from app.services.claim_validator import EvidenceBuilder
 from app.services.matching.engine import (
@@ -139,40 +139,54 @@ async def run_match(
         else ""
     )
 
-    llm_result = await reason_about_match(
-        candidate_summary=candidate_summary,
-        candidate_skills=skill_names,
-        candidate_career_level=profile_career_level,
-        candidate_location=candidate_location,
-        job_title=job.title,
-        job_company=job.company,
-        job_seniority=job.seniority,
-        job_location=job.location,
-        job_remote_type=job.remote_type,
-        job_tech_stack=job.tech_stack or [],
-        requirements_must_have=must_have,
-        requirements_nice_to_have=nice_to_have,
-        deterministic_score=det_result.overall_score,
-        matched_skills=det_result.matched_skills,
-        missing_skills=det_result.missing_skills,
-    )
+    try:
+        llm_result = await reason_about_match(
+            candidate_summary=candidate_summary,
+            candidate_skills=skill_names,
+            candidate_career_level=profile_career_level,
+            candidate_location=candidate_location,
+            job_title=job.title,
+            job_company=job.company,
+            job_seniority=job.seniority,
+            job_location=job.location,
+            job_remote_type=job.remote_type,
+            job_tech_stack=job.tech_stack or [],
+            requirements_must_have=must_have,
+            requirements_nice_to_have=nice_to_have,
+            deterministic_score=det_result.overall_score,
+            matched_skills=det_result.matched_skills,
+            missing_skills=det_result.missing_skills,
+        )
+    except Exception as exc:
+        logger.warning("match.llm_fallback", error=str(exc))
+        llm_result = LLMMatchResult(
+            score=det_result.overall_score,
+            reasoning="Deterministic match only (LLM unavailable).",
+            strengths=det_result.matched_skills[:5],
+            gaps=det_result.missing_skills[:5],
+            recommendation="apply_with_tailoring" if det_result.overall_score >= 0.55 else "stretch",
+        )
 
     # ── Semantic scoring ───────────────────────────────────────────────────────
     profile_experience: list = (profile.experience or []) if profile else []
     profile_projects: list = (profile.projects or []) if profile else []
     evidence_records = EvidenceBuilder.build_from_profile(profile)
 
-    sem_result = await compute_semantic(
-        profile_skills=profile_skills,
-        profile_experience=profile_experience,
-        profile_projects=profile_projects,
-        job_title=job.title,
-        job_company=job.company,
-        job_description=getattr(job, "description", None),
-        requirements=job.requirements,
-        evidence_records=evidence_records,
-        embedding_provider=default_embedding_provider(),
-    )
+    sem_result = None
+    try:
+        sem_result = await compute_semantic(
+            profile_skills=profile_skills,
+            profile_experience=profile_experience,
+            profile_projects=profile_projects,
+            job_title=job.title,
+            job_company=job.company,
+            job_description=getattr(job, "description", None),
+            requirements=job.requirements,
+            evidence_records=evidence_records,
+            embedding_provider=default_embedding_provider(),
+        )
+    except Exception as exc:
+        logger.warning("match.semantic_fallback", error=str(exc))
 
     # ── Hybrid score ──────────────────────────────────────────────────────────
     hybrid_score = compute_hybrid_score(det_result.overall_score, llm_result.score, sem_result)
