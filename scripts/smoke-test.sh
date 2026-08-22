@@ -19,7 +19,13 @@ REGISTER=$(curl -s -o /tmp/register.json -w "%{http_code}" -X POST "$BASE/api/v2
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 echo "  HTTP $REGISTER  $(cat /tmp/register.json)"
-[[ "$REGISTER" == "201" || "$REGISTER" == "200" ]] && pass "register" || fail "register (HTTP $REGISTER)"
+[[ "$REGISTER" == "201" || "$REGISTER" == "200" ]] && pass "register" || {
+  if [[ "$REGISTER" == "409" ]]; then
+    pass "register (already exists — continuing)"
+  else
+    fail "register (HTTP $REGISTER)"
+  fi
+}
 
 section "3. Login"
 LOGIN=$(curl -s -o /tmp/login.json -w "%{http_code}" -X POST "$BASE/api/v2/auth/login" \
@@ -61,10 +67,9 @@ echo "  HTTP $JOB  job_id=$JOB_ID"
 
 section "6. Match"
 if [[ -n "$JOB_ID" ]]; then
-  MATCH=$(curl -s -o /tmp/match.json -w "%{http_code}" -X POST "$BASE/api/v2/match" \
+  MATCH=$(curl -s -o /tmp/match.json -w "%{http_code}" -X POST "$BASE/api/v2/jobs/$JOB_ID/match" \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "{\"job_id\":\"$JOB_ID\"}")
+    -H "Authorization: Bearer $TOKEN")
   SCORE=$(cat /tmp/match.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('overall_score', d.get('score','?')))" 2>/dev/null || echo "?")
   echo "  HTTP $MATCH  score=$SCORE"
   [[ "$MATCH" == "200" || "$MATCH" == "201" ]] && pass "match (score=$SCORE)" || fail "match (HTTP $MATCH)"
