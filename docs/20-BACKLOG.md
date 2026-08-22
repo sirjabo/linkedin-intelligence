@@ -4,15 +4,44 @@ Backlog priorizado. Los items están ordenados de mayor a menor prioridad dentro
 
 **Leyenda**: 🔴 Crítico · 🟠 Alto · 🟡 Medio · 🟢 Bajo · 🔵 Idea futura
 
+> **Nota v1.0 (2026-08-22)**: El MVP original (CV Analyzer, Skills Radar) fue reemplazado por el **Application Agent** (Sprints A–L). Los items B-001–B-019 están completados o superseded. Ver `AGENTS.md` para estado actual.
+
+---
+
+## Completado en v1.0 ✅
+
+| ID | Título | Estado |
+|----|--------|--------|
+| V1-001 | Application Agent (CV personalize + match + submit) | ✅ |
+| V1-002 | 6 ATS adapters + mock ATS lab | ✅ |
+| V1-003 | Application Control Center (frontend) | ✅ |
+| V1-004 | Evidence system + claim validation | ✅ |
+| V1-005 | CI/CD + Railway deploy + smoke test | ✅ |
+| V1-006 | Frontend↔API routing (`NEXT_PUBLIC_API_URL`) | ✅ |
+| V1-007 | Production hardening PR-1→PR-8 | ✅ |
+
 ---
 
 ## En progreso
 
-*(vacío — ver sprint activo en tasks/)*
+*(vacío — ver sprint activo en tasks/ o AGENTS.md)*
 
 ---
 
-## Listo para desarrollo (sprint 1)
+## v1.1 — Próximo (priorizado)
+
+| ID | Título | Prioridad | Tamaño | Descripción |
+|----|--------|-----------|--------|-------------|
+| N-001 | Live ATS pilot (1 submission real por adapter) | 🟠 | M | Validar mock vs real forms |
+| N-002 | LLM eval suite en staging | 🟠 | S | Correr 14 tests con ANTHROPIC_API_KEY |
+| N-003 | Renombrar Railway branch a `main` | 🟡 | S | Eliminar mirror workflow |
+| N-004 | Custom domain + SSL | 🟡 | S | Dominio propio en Railway |
+| N-005 | Skills Radar MVP | 🟡 | L | Retomar roadmap Fase 2 |
+| N-006 | Profile Benchmark | 🟡 | L | Comparación contra perfiles top |
+
+---
+
+## Listo para desarrollo (sprint 1) — SUPERSEDED
 
 | ID | Título | Prioridad | Tamaño | Descripción |
 |----|--------|-----------|--------|-------------|

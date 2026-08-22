@@ -1,5 +1,29 @@
 # 14 · Deployment
 
+## Producción v1.0 (Railway) — activo
+
+| Servicio | URL | Config en repo |
+|----------|-----|----------------|
+| API | `https://api-production-fd73.up.railway.app` | `backend/railway.toml`, `backend/Dockerfile` |
+| Frontend | `https://frontend-v2-production-a1c0.up.railway.app` | `frontend/railway.toml`, `frontend/Dockerfile` |
+| Worker | Railway dashboard | `celery -A app.worker.celery_app worker --loglevel=info` |
+| Beat | Railway dashboard | `celery -A app.worker.celery_app beat --loglevel=info` |
+
+**CD**: push a `main` → `.github/workflows/mirror-to-railway.yml` → force-push a rama Railway → auto-deploy + smoke test.
+
+**Frontend → API**: setear `NEXT_PUBLIC_API_URL=https://api-production-fd73.up.railway.app` en Railway (build arg). El cliente `api-v2.ts` construye `{URL}/api/v2`. Fallback same-origin via rewrites en `next.config.mjs`.
+
+**Checklist pre-prod**:
+- [x] `ENVIRONMENT=production`, `SECRET_KEY` fuerte
+- [x] `CORS_ORIGINS` incluye dominio frontend (default en código si no seteado)
+- [x] `alembic upgrade head` en startup (migration 022)
+- [x] Smoke test automatizado post-deploy
+- [ ] DB backup verificado manualmente en Railway
+- [ ] `SENTRY_DSN` configurado (opcional — wired en `main.py`)
+- [ ] Custom domain
+
+---
+
 ## Estrategia por fase
 
 | Fase | Plataforma | Justificación |

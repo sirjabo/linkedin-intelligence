@@ -37,6 +37,18 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     if settings.SECRET_KEY == "dev-secret-change-in-production" and settings.ENVIRONMENT != "development":
         logger.warning("insecure_secret_key", message="SECRET_KEY is still the default value — set a strong key in production")
+    if settings.SENTRY_DSN:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            environment=settings.ENVIRONMENT,
+            integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+            traces_sample_rate=0.1 if settings.ENVIRONMENT == "production" else 0.0,
+        )
+        logger.info("sentry_initialized", environment=settings.ENVIRONMENT)
     logger.info("startup", environment=settings.ENVIRONMENT)
     yield
     logger.info("shutdown")
@@ -47,7 +59,11 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 _cors_origins_env = os.environ.get("CORS_ORIGINS", "")
-_default_origins = ["http://localhost:3000", "http://frontend:3000"]
+_default_origins = [
+    "http://localhost:3000",
+    "http://frontend:3000",
+    "https://frontend-v2-production-a1c0.up.railway.app",
+]
 cors_origins = (
     [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
     if _cors_origins_env

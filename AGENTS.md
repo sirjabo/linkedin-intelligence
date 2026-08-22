@@ -4,14 +4,15 @@
 >
 > **Repo**: `sirjabo/linkedin-intelligence`  
 > **Branch activo**: `main`  
-> **Tests**: 785 passing · 17 skipped (AI evals — need API key) · 0 failing  
+> **Tests**: 802 collected · ~785+ passing · ~17 skipped (LLM evals) · 0 failing  
 > **Última actualización**: 2026-08-22  
-> **Estado release**: ✅ v1.0 EN PRODUCCIÓN
+> **Estado release**: ✅ v1.0 EN PRODUCCIÓN — frontend↔API routing corregido
 >
-> **Railway**: Los 4 servicios (api, frontend-v2, celery-worker, celery-beat) tienen `source.branch = claude/ai-chat-cv-improvement-rzqxd5` en Railway config — ese campo NO se puede cambiar via MCP. La solución: `.github/workflows/mirror-to-railway.yml` fuerza-pushea `main` → esa rama en cada push a main. Ambas ramas son idénticas. CD desde main funciona y fue verificado en producción (deploys faefcfd3 y 80a49ccb se dispararon automáticamente). Para cambiar el nombre de la branch en Railway a `main`: Settings → Source en cada servicio en el dashboard de Railway.
+> **Railway**: Los 4 servicios (api, frontend-v2, celery-worker, celery-beat) tienen `source.branch = claude/ai-chat-cv-improvement-rzqxd5` en Railway config — ese campo NO se puede cambiar via MCP. La solución: `.github/workflows/mirror-to-railway.yml` fuerza-pushea `main` → esa rama en cada push a main y corre smoke test post-deploy. Ambas ramas son idénticas. CD desde main funciona y fue verificado en producción.
 >
-> **DB**: alembic current = alembic heads = `021` (verificado en deploy 144eb620)  
-> **Smoke test**: `/health` = 200 ✅ · auth/profile/job/match/application = pendiente verificación manual (CCR proxy bloquea HTTPS saliente)
+> **DB**: alembic current = alembic heads = `022_fix_production_schema`  
+> **Smoke test**: API health + register→application + frontend shell — automatizado en mirror workflow  
+> **Frontend API**: `api-v2.ts` usa `NEXT_PUBLIC_API_URL` + rewrites en `next.config.mjs` como fallback same-origin
 
 ---
 
@@ -375,3 +376,4 @@ cat docs/REAL_ATS_VALIDATION_REPORT.md
 | 2026-08-22 | Claude | DB: alembic stamp --purge → 021 confirmed from deploy logs; alembic current = alembic heads = 021 |
 | 2026-08-22 | Claude | BLOCKER resolved: mirror-to-railway.yml workflow keeps main = Railway-tracked branch; auto-deploy verified |
 | 2026-08-22 | Claude | CD from main works: push to main → GH Action mirrors to claude/ai-chat-cv-improvement-rzqxd5 → Railway deploys |
+| 2026-08-22 | Cursor | Productivización: api-v2.ts → NEXT_PUBLIC_API_URL, CORS prod, rewrites, smoke auto, railway.toml, Sentry wired, docs sync, alembic 022 |

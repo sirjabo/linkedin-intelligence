@@ -1,41 +1,58 @@
 # LinkedIn Intelligence
 
-> **AI-powered LinkedIn profile optimizer** — Análisis de millones de ofertas laborales, perfiles públicos y tendencias de mercado para ayudarte a conseguir el trabajo que querés.
+> **AI-powered job application agent** — Personaliza tu CV por oferta, analiza el match req-by-req, completa formularios ATS con evidencia verificable y te deja revisar antes de enviar.
+
+**Producción**: [Frontend](https://frontend-v2-production-a1c0.up.railway.app) · [API](https://api-production-fd73.up.railway.app/health)
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Status: In Development](https://img.shields.io/badge/status-in%20development-orange.svg)]()
+[![Status: v1.0 Production](https://img.shields.io/badge/status-v1.0%20production-brightgreen.svg)]()
 
 ---
 
 ## ¿Qué es LinkedIn Intelligence?
 
-LinkedIn Intelligence es una plataforma que analiza el mercado laboral en tiempo real para responder preguntas concretas:
+LinkedIn Intelligence es una plataforma de aplicación inteligente a empleos que:
 
-- **¿Qué skills necesito para ser AI Engineer en 2025?**
-- **¿Cómo está redactado el "About" de quienes trabajan en Anthropic, OpenAI o Mercado Libre?**
-- **¿Qué tecnologías crecieron más en los últimos 3 meses en las ofertas de Data Engineer?**
-- **¿Qué le falta a mi perfil para aparecer en las búsquedas de recruiters?**
+- **Personaliza tu CV** por oferta con bullets adaptados y trazabilidad de evidencia
+- **Analiza el match** req-by-req (MATCHED / PARTIAL / MISSING / BLOCKER)
+- **Completa formularios ATS** (Greenhouse, Lever, Workday y más) con revisión humana obligatoria
+- **Genera estrategia de aplicación** (keywords, narrativa, claims a evitar)
+- **Aprende de outcomes** con calibración y experimentos A/B
 
-El sistema ingesta miles de ofertas de trabajo, analiza perfiles públicos, detecta tendencias y genera recomendaciones personalizadas accionables.
+El roadmap original (Skills Radar, Benchmark, AI About Writer) queda planificado para v1.1+.
 
 ---
 
-## Características principales
+## Características v1.0 (disponibles)
+
+| Feature | Descripción | Estado |
+|---------|-------------|--------|
+| **CV Engine** | Bullets personalizados por JD con evidence refs | ✅ |
+| **Matching 3.0** | Score ponderado + hard constraints + BLOCKER | ✅ |
+| **Application Agent** | Form fill + state machine + human confirm gate | ✅ |
+| **ATS Adapters** | Greenhouse, Lever, Workday, Ashby, SmartRecruiters | ✅ |
+| **Application Control Center** | Diff CV, strategy panel, pre-submit review | ✅ |
+| **Evidence System** | Validación SUPPORTED / PLAUSIBLE / CONTRADICTED | ✅ |
+
+## Roadmap futuro (v1.1+)
 
 | Feature | Descripción | Fase |
 |---------|-------------|------|
+| **Skills Radar** | Top skills por rol en tiempo real | 2 |
+| **Profile Benchmark** | Comparación contra perfiles top | 2 |
+| **AI About Writer** | Reescritura automática del About | 3 |
+| **Content Calendar** | Generador de publicaciones LinkedIn | 3 |
+| **Job Tracker** | Seguimiento de ofertas y fit | 4 |
+| **AI Radar** | Tendencias nocturnas de mercado | 5 |
+
+<!--
+Legacy feature table (pre-v1 pivot):
 | **CV Analyzer** | Puntaje ATS + keywords faltantes | 1 |
 | **Profile Optimizer** | Recomendaciones para título, About y skills | 1 |
-| **Skills Radar** | Top 50 skills por rol en tiempo real | 1 |
-| **Profile Benchmark** | Comparación contra perfiles top | 2 |
-| **Keyword Gap** | Palabras clave que faltan vs. las mejores ofertas | 2 |
-| **AI About Writer** | Reescritura automática del About con LLM | 3 |
-| **Content Calendar** | Generador de publicaciones para LinkedIn | 3 |
-| **Job Tracker** | Seguimiento de ofertas y fit del perfil | 4 |
-| **AI Radar** | Tendencias nocturnas: tecnologías que crecen | 5 |
+-->
 
 ---
 
@@ -95,10 +112,8 @@ graph TB
 | Cache | Redis |
 | AI/LLM | LangChain · LangGraph · Claude · OpenAI |
 | Embeddings | sentence-transformers · OpenAI Ada |
-| Frontend | Next.js 14 · TypeScript · Tailwind CSS |
-| Crawlers | Python · Playwright · BeautifulSoup |
-| Orquestación | n8n |
-| Infraestructura | Docker · Docker Compose · AWS |
+| Frontend | Next.js 15 · TypeScript · Tailwind CSS |
+| Infraestructura | Docker · Railway (prod) · GitHub Actions |
 | CI/CD | GitHub Actions |
 
 ---
@@ -133,6 +148,8 @@ npm install && npm run dev
 ```
 
 La API queda disponible en `http://localhost:8000` y el dashboard en `http://localhost:3000`.
+
+Asegurate de setear `NEXT_PUBLIC_API_URL=http://localhost:8000` en `.env` (sin sufijo `/api/v*`).
 
 ---
 
@@ -197,4 +214,4 @@ MIT — ver [LICENSE](./LICENSE)
 
 ---
 
-*Proyecto en desarrollo activo. Parte del portfolio de AI Engineering de [@sirjabo](https://github.com/sirjabo).*
+* v1.0 en producción — ver [RELEASE_V1_VALIDATION](./docs/RELEASE_V1_VALIDATION.md) y [AGENTS.md](./AGENTS.md).

@@ -16,3 +16,18 @@ jobs:
 
       - name: Push main to Railway-tracked branch
         run: git push origin main:claude/ai-chat-cv-improvement-rzqxd5 --force
+
+  smoke:
+    needs: mirror
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for Railway deploy
+        run: sleep 120
+
+      - name: Run production smoke test
+        env:
+          BASE: https://api-production-fd73.up.railway.app
+          FRONTEND: https://frontend-v2-production-a1c0.up.railway.app
+        run: bash scripts/smoke-test.sh

@@ -52,9 +52,8 @@ JOB=$(curl -s -o /tmp/job.json -w "%{http_code}" -X POST "$BASE/api/v2/jobs" \
   -d '{
     "title": "Senior Backend Engineer",
     "company": "Acme Corp",
-    "description": "We need a Python expert with 5+ years experience in FastAPI and PostgreSQL. Must have strong SQL skills.",
-    "location": "Remote",
-    "url": "https://example.com/jobs/1"
+    "raw_jd": "We need a Python expert with 5+ years experience in FastAPI and PostgreSQL. Must have strong SQL skills. Remote-friendly team building scalable APIs.",
+    "job_url": "https://example.com/jobs/1"
   }')
 JOB_ID=$(cat /tmp/job.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || echo "")
 echo "  HTTP $JOB  job_id=$JOB_ID"
@@ -85,6 +84,18 @@ if [[ -n "$JOB_ID" ]]; then
 else
   fail "application — skipped (no job_id)"
 fi
+
+section "8. Frontend shell"
+FRONTEND="${FRONTEND:-https://frontend-v2-production-a1c0.up.railway.app}"
+FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND/")
+echo "  HTTP $FE_STATUS  $FRONTEND/"
+[[ "$FE_STATUS" == "200" ]] && pass "frontend loads" || fail "frontend (HTTP $FE_STATUS)"
+
+section "9. Frontend API rewrite (same-origin fallback)"
+FE_API=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND/api/v2/auth/login" \
+  -X POST -H "Content-Type: application/json" -d '{"email":"x","password":"y"}')
+echo "  HTTP $FE_API  (expect 401/422 — proxy reachable, not 404)"
+[[ "$FE_API" != "404" ]] && pass "frontend /api/v2 proxy reachable" || fail "frontend /api/v2 returns 404"
 
 echo
 echo "══════════════════════════════════════"

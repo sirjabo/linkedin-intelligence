@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
     ENVIRONMENT: str = "development"
+    SENTRY_DSN: str = ""
+    CORS_ORIGINS: str = ""
     UPLOAD_DIR: str = "/tmp/cv_uploads"
 
     # JWT settings

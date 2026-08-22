@@ -13,8 +13,6 @@ Revision ID: 022_fix_production_schema
 Revises: 021
 Create Date: 2026-08-22
 """
-import sqlalchemy as sa
-
 from alembic import op
 
 revision = "022_fix_production_schema"
