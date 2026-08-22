@@ -11,7 +11,7 @@
 
 > **LinkedIn Intelligence v1.0: PRODUCTION READY** ✅
 
-All deployments SUCCESS. CD from `main` works via mirror workflow. Database at head. Workers healthy. Smoke test unverifiable from CCR environment — requires manual browser check against live endpoint.
+All deployments SUCCESS. CD from `main` works via mirror workflow. Database at head. Workers healthy. **Production smoke test: 9/9 CONFIRMED** (GitHub Actions run 11, 2026-08-22) — all auth, API, and frontend checks passing in live production.
 
 ---
 
@@ -23,8 +23,8 @@ All deployments SUCCESS. CD from `main` works via mirror workflow. Database at h
 | Default branch | `main` |
 | PR #7 (obsolete) | Closed — superseded by #8 |
 | Release commit (pre-merge head) | `f24cdcc` |
-| Post-release fixes | `c992dc2` (alembic.ini), `66a9770` (migration chain), `95be4e3`/`cb51715`/`e5cc1e8` (Dockerfile alembic CMD) |
-| HEAD on main | `e5cc1e8` |
+| Post-release fixes | `c992dc2` (alembic.ini), `66a9770` (migration chain), `95be4e3`/`cb51715`/`e5cc1e8` (Dockerfile alembic CMD), `537e561` (migration 022 + Dockerfile fix), `52c5498` (mirror workflow permissions), `1698142` (smoke-test.yml), `0b88996`/`028d85b` (Cursor PR #9 — match/profile fallbacks + frontend smoke checks), `9352eff`/`971fcfc`/`93d0bfc` (Cursor follow-up fixes) |
+| HEAD on main | `93d0bfc` |
 
 ---
 
@@ -61,7 +61,7 @@ All deployments SUCCESS. CD from `main` works via mirror workflow. Database at h
 
 | Service | Tracked branch | Latest deploy | Deploy status |
 |---------|---------------|---------------|---------------|
-| api | `claude/ai-chat-cv-improvement-rzqxd5` = `main` | `144eb620` | ✅ SUCCESS |
+| api | `claude/ai-chat-cv-improvement-rzqxd5` = `main` | `4d69120c` | ✅ SUCCESS |
 | celery-worker | `claude/ai-chat-cv-improvement-rzqxd5` = `main` | `faefcfd3` | ✅ SUCCESS |
 | celery-beat | `claude/ai-chat-cv-improvement-rzqxd5` = `main` | `80a49ccb` | ✅ SUCCESS |
 | frontend-v2 | `claude/ai-chat-cv-improvement-rzqxd5` = `main` | `29929db1` | ✅ SUCCESS |
@@ -96,24 +96,25 @@ Note: Railway's stored `source.branch` config still reads `claude/ai-chat-cv-imp
 | Check | Status | Notes |
 |-------|--------|-------|
 | Migration chain valid | ✅ | Fixed `006` and `016` down_revision pointers |
-| `alembic stamp --purge head` | ✅ CONFIRMED | Clears stale `20250730_user_profile_cv` revision, stamps to `021` |
-| `alembic upgrade head` | ✅ CONFIRMED | No-op (already at head after stamp) |
-| `alembic current` | **021** | Verified from deploy `144eb620` logs |
-| `alembic heads` | **021** | Matches current |
+| ~~`alembic stamp --purge head`~~ | ❌ REMOVED | Was bypassing all migrations — root cause of DB schema gap |
+| `alembic upgrade head` | ✅ CONFIRMED | Runs all pending migrations on startup |
+| `alembic current` | **022_fix_production_schema** | Verified from deploy `4d69120c` logs |
+| `alembic heads` | **022_fix_production_schema** | Matches current |
+| Migration 022 ran on deploy | ✅ CONFIRMED | `Running upgrade 021 -> 022_fix_production_schema` in deploy logs |
 
-**Migration chain (021 revisions):**
+**Migration chain (022 revisions):**
 ```
 001 → 002 → 003 → 004 → 005 → 006_match_outcome → 007_career_fit → 008_candidate_kb
 → 009_job_intelligence → 010_evidence_v2 → 011_form_intelligence → 012_application_submissions
 → 013_application_agent_session → 014_session_screenshot_after → 015_skill_snapshots
-→ 016 → 017 → 018 → 019 → 020 → 021 (HEAD)
+→ 016 → 017 → 018 → 019 → 020 → 021 → 022_fix_production_schema (HEAD)
 ```
 
 **Startup CMD (Dockerfile)**:
 ```sh
-alembic stamp --purge head && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000
+alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-The `--purge` flag clears `alembic_version` before stamping — required because production DB had an old date-based revision (`20250730_user_profile_cv`) not in the current numeric scheme.
+`alembic stamp --purge` was removed — it was silently bypassing all migration SQL, causing the production DB schema gap (`users.is_active` missing, HTTP 500 on login). Migration 022 repairs this defensively using `IF NOT EXISTS` on all tables and columns.
 
 ---
 
@@ -125,7 +126,7 @@ The `--purge` flag clears `alembic_version` before stamping — required because
 | `npx next lint` | ✅ (continue-on-error in CI) |
 | `npm ci` | ✅ (package-lock.json synced) |
 | Railway deploy `29929db1` | ✅ SUCCESS |
-| Live URL verification | ⚠️ UNVERIFIABLE (CCR proxy blocks outbound HTTPS) |
+| Live URL verification | ✅ CONFIRMED (smoke test section 8 — HTTP 200) |
 
 ---
 
@@ -188,8 +189,8 @@ The `--purge` flag clears `alembic_version` before stamping — required because
 | Submit → applied status | ✅ PASS (test) |
 | Duplicate submit → 409 | ✅ PASS (test) |
 | Stats integrity (funnel["applied"]==1) | ✅ PASS (test) |
-| API `/health` → 200 | ✅ CONFIRMED (Railway healthcheck logs) |
-| Production smoke test (live) | ⚠️ UNVERIFIABLE (CCR proxy blocks outbound HTTPS) |
+| API `/health` → 200 | ✅ CONFIRMED (Railway healthcheck logs + smoke test section 1) |
+| Production smoke test (live) | ✅ CONFIRMED (GH Actions run 11, 2026-08-22 — 9/9 checks passed) |
 
 ---
 
@@ -209,10 +210,6 @@ The `--purge` flag clears `alembic_version` before stamping — required because
 ---
 
 ## Pendientes
-
-### HIGH
-- **Production smoke test**: CCR proxy blocks outbound HTTPS — cannot test auth → profile → job → match → application flows from this environment. Requires direct browser access to `api-production-fd73.up.railway.app`.
-- **Frontend live verification**: Cannot curl `frontend-v2-production-a1c0.up.railway.app:3000` from CCR. Requires manual browser check.
 
 ### MEDIUM
 - **Real-web ATS dry-run**: needs staging environment with browser + outbound network
@@ -240,15 +237,15 @@ The `--purge` flag clears `alembic_version` before stamping — required because
 - [x] ATS adapters: 6/6 validated, 136 tests pass
 - [x] AI Evaluation deterministic: 3/3 pass
 - [x] PR #7 closed (superseded)
-- [x] All 4 Railway deploys: SUCCESS (api `144eb620`, frontend `29929db1`, worker `29cc474c`, beat `9e3c1c2b`)
-- [x] `alembic current = 021 = alembic heads` — confirmed from deploy logs
+- [x] All 4 Railway deploys: SUCCESS (api `4d69120c`, frontend `29929db1`, worker `29cc474c`, beat `9e3c1c2b`)
+- [x] `alembic current = 022_fix_production_schema = alembic heads` — confirmed from deploy `4d69120c` logs
 - [x] API `/health` → 200 — confirmed from Railway healthcheck logs
 - [x] Workers healthy (celery-worker ready, celery-beat starting)
 - [x] `AGENTS.md` updated
 - [x] `PRODUCTION_RELEASE_V1.md` corrected with verified data
-- [ ] Production smoke test (live) — UNVERIFIABLE from CCR environment
+- [x] Production smoke test (live) — ✅ 9/9 CONFIRMED (GH Actions run 11, 2026-08-22)
 - [x] `PRODUCTION_RELEASE_V1.md` corrected with verified data and accurate deployment IDs
 
 ---
 
-*Generated: 2026-08-22 | Branch: main | HEAD: e5cc1e8*
+*Generated: 2026-08-22 | Branch: main | HEAD: 93d0bfc | Smoke test: ✅ 9/9 CONFIRMED*
