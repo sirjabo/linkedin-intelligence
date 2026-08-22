@@ -365,3 +365,7 @@ cat docs/REAL_ATS_VALIDATION_REPORT.md
 | 2026-08-22 | Claude | PR #8 mergeado a main (SHA 98d891be) — CI 100% verde (748 passed, 50 skipped) |
 | 2026-08-22 | Claude | P3 Phase 14 job sources: respx → httpx.AsyncBaseTransport injection fix |
 | 2026-08-22 | Claude | arbeitnow.py + remoteok.py: Unix timestamp coercion a str para Pydantic compat |
+| 2026-08-22 | Claude | Cierre operativo v1.0: alembic.ini duplicate fix, migration chain fix (006+016), Dockerfile stamp --purge |
+| 2026-08-22 | Claude | Railway: 4 deploys SUCCESS (api 144eb620, fe 29929db1, worker 29cc474c, beat 9e3c1c2b) |
+| 2026-08-22 | Claude | DB: alembic stamp --purge → 021 confirmed from deploy logs; alembic current = alembic heads = 021 |
+| 2026-08-22 | Claude | BLOCKER: Railway source branch cannot be changed via MCP — must use Railway dashboard |
