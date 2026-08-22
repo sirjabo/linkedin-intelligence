@@ -1,9 +1,13 @@
 """ProfileAgent: extracts and consolidates candidate profile from raw sources.
 
-Uses structured output (tool_use) — never XML tag parsing.
+Uses structured output (tool_use) when available and falls back to a
+deterministic extractor when the LLM is unavailable in production.
 """
+import re
+
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.sanitize import sanitize_for_prompt
 from app.services.ai.model_router import route_model
@@ -151,6 +155,181 @@ For the consolidated profile:
 - career_level should reflect the most senior role across all sources."""
 
 
+KNOWN_SKILLS = (
+    "Python", "FastAPI", "PostgreSQL", "SQL", "Redis", "Celery", "Docker",
+    "Kubernetes", "AWS", "GCP", "Azure", "TypeScript", "JavaScript", "React",
+    "Node.js", "Django", "Flask", "Git", "Linux",
+)
+
+SKILL_CATEGORIES = {
+    "python": "language",
+    "typescript": "language",
+    "javascript": "language",
+    "sql": "database",
+    "postgresql": "database",
+    "redis": "database",
+    "fastapi": "framework",
+    "django": "framework",
+    "flask": "framework",
+    "react": "framework",
+    "celery": "tool",
+    "docker": "tool",
+    "git": "tool",
+    "linux": "tool",
+    "aws": "cloud",
+    "gcp": "cloud",
+    "azure": "cloud",
+    "kubernetes": "cloud",
+    "node.js": "framework",
+}
+
+SENIORITY_PATTERNS = (
+    (r"\b(10\+|1[0-9])\s+years?\b", "staff"),
+    (r"\b([6-9]|\d{2,})\s+years?\b", "senior"),
+    (r"\b([3-5])\s+years?\b", "mid"),
+    (r"\b([1-2])\s+years?\b", "junior"),
+)
+
+
+def _dedupe_preserve(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        key = value.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(value.strip())
+    return result
+
+
+def _extract_email(text: str) -> str | None:
+    match = re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", text, re.I)
+    return match.group(0) if match else None
+
+
+def _extract_location(text: str) -> str | None:
+    lines = [line.strip(" -") for line in text.splitlines() if line.strip()]
+    known_locations = (
+        "Buenos Aires", "Argentina", "Remote", "Latam", "LATAM",
+        "Mexico", "Colombia", "Chile", "Uruguay", "Brazil", "Brasil",
+        "Spain", "Madrid", "Barcelona", "London", "New York", "San Francisco",
+    )
+    for line in lines[:12]:
+        if any(loc.lower() in line.lower() for loc in known_locations):
+            return line[:120]
+    match = re.search(r"\bbased in ([A-Za-zÀ-ÿ ,.-]{3,80})", text, re.I)
+    if match:
+        return match.group(1).strip(" .")
+    return None
+
+
+def _extract_name(text: str) -> str | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    first = lines[0]
+    if len(first) > 80 or "@" in first or any(ch.isdigit() for ch in first):
+        return None
+    if re.fullmatch(r"[A-ZÁÉÍÓÚÑ][\w'ÁÉÍÓÚÑáéíóúñ.-]+(?:\s+[A-ZÁÉÍÓÚÑ][\w'ÁÉÍÓÚÑáéíóúñ.-]+){1,3}", first):
+        return first
+    return None
+
+
+def _extract_career_level(text: str) -> str | None:
+    lowered = text.lower()
+    for pattern, level in SENIORITY_PATTERNS:
+        if re.search(pattern, lowered):
+            return level
+    if "staff" in lowered:
+        return "staff"
+    if "senior" in lowered:
+        return "senior"
+    if "lead" in lowered:
+        return "lead"
+    if "principal" in lowered:
+        return "principal"
+    if "junior" in lowered:
+        return "junior"
+    return None
+
+
+def _extract_target_role(text: str) -> str | None:
+    match = re.search(
+        r"\b((?:senior\s+)?(?:backend|frontend|full[- ]stack|data|ml|ai|devops)\s+engineer)\b",
+        text,
+        re.I,
+    )
+    return match.group(1).strip() if match else None
+
+
+def _extract_skills(text: str) -> list[SkillExtracted]:
+    found: list[SkillExtracted] = []
+    for skill in KNOWN_SKILLS:
+        if re.search(rf"\b{re.escape(skill)}\b", text, re.I):
+            found.append(
+                SkillExtracted(
+                    canonical_name=skill,
+                    category=SKILL_CATEGORIES.get(skill.lower(), "tool"),
+                    proficiency="intermediate",
+                    confidence=0.55,
+                )
+            )
+    return found
+
+
+def _extract_summary(text: str) -> str | None:
+    compact = " ".join(text.split())
+    if not compact:
+        return None
+    return compact[:300]
+
+
+def _extract_experience(text: str) -> list[ExperienceExtracted]:
+    role = _extract_target_role(text) or "Professional Experience"
+    years_match = re.search(r"\b(\d+)\+?\s+years?\b", text, re.I)
+    responsibilities = []
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        clean = sentence.strip(" -")
+        if len(clean) >= 24:
+            responsibilities.append(clean[:200])
+        if len(responsibilities) == 4:
+            break
+    if not responsibilities:
+        responsibilities.append("Professional experience extracted from provided source text.")
+    return [
+        ExperienceExtracted(
+            company="Unknown",
+            title=role,
+            start_date=years_match.group(1) + "+ years" if years_match else "unknown",
+            end_date="present",
+            responsibilities=responsibilities,
+            technologies=[skill.canonical_name for skill in _extract_skills(text)[:8]],
+            seniority=_extract_career_level(text),
+        )
+    ]
+
+
+def _extract_profile_deterministic(raw_text: str) -> ExtractedProfile:
+    skills = _extract_skills(raw_text)
+    target_role = _extract_target_role(raw_text)
+    return ExtractedProfile(
+        name=_extract_name(raw_text),
+        email=_extract_email(raw_text),
+        location=_extract_location(raw_text),
+        summary=_extract_summary(raw_text),
+        career_level=_extract_career_level(raw_text),
+        target_role=target_role,
+        industries=_dedupe_preserve([
+            "software" if re.search(r"\bsoftware|saas|platform|api\b", raw_text, re.I) else "",
+            "ai" if re.search(r"\bai|ml|llm\b", raw_text, re.I) else "",
+        ]),
+        skills=skills,
+        experience=_extract_experience(raw_text),
+        extraction_confidence=0.35,
+    )
+
+
 # ── Agent functions ───────────────────────────────────────────────────────────
 
 async def extract_from_source(
@@ -163,15 +342,23 @@ async def extract_from_source(
     if injection_detected:
         logger.warning("profile_agent.injection_detected", source_type=source_type, text_length=len(raw_text))
     logger.info("profile_agent.extract_start", source_type=source_type, text_length=len(raw_text))
-    result = await provider.structured_output(
-        system=EXTRACT_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"Extract profile data from this {source_type}:\n\n{clean_text}"
-        }],
-        schema=ExtractedProfile,
-        model=MODEL_EXTRACT,
-    )
+    if not settings.ANTHROPIC_API_KEY and not settings.OPENROUTER_API_KEY:
+        logger.warning("profile_agent.extract_no_api_key", source_type=source_type, fallback="deterministic")
+        result = _extract_profile_deterministic(clean_text)
+    else:
+        try:
+            result = await provider.structured_output(
+                system=EXTRACT_SYSTEM,
+                messages=[{
+                    "role": "user",
+                    "content": f"Extract profile data from this {source_type}:\n\n{clean_text}"
+                }],
+                schema=ExtractedProfile,
+                model=MODEL_EXTRACT,
+            )
+        except Exception as exc:
+            logger.warning("profile_agent.extract_llm_failed", source_type=source_type, error=str(exc), fallback="deterministic")
+            result = _extract_profile_deterministic(clean_text)
     logger.info(
         "profile_agent.extract_done",
         source_type=source_type,

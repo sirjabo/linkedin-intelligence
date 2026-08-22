@@ -2,6 +2,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.services.agents.profile_agent import extract_from_source
+
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
     reg = await client.post("/api/v2/auth/register", json={"email": email, "password": "Secure1234"})
@@ -144,3 +146,39 @@ async def test_update_candidate_kb_fields(client: AsyncClient):
     assert data["salary_min_usd"] == 120_000
     assert len(data["languages"]) == 2
     assert data["career_goals"] == "Become a Staff Engineer in AI infrastructure"
+
+
+@pytest.mark.asyncio
+async def test_extract_from_source_falls_back_without_llm_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("app.services.agents.profile_agent.settings.ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr("app.services.agents.profile_agent.settings.OPENROUTER_API_KEY", "")
+
+    result = await extract_from_source(
+        "Lucia Test\nBuenos Aires, Argentina\nBackend engineer with 5 years of experience in Python, FastAPI, PostgreSQL, Docker and AWS.",
+        source_type="cv",
+    )
+
+    assert result.location == "Buenos Aires, Argentina"
+    assert result.career_level == "mid"
+    assert {skill.canonical_name for skill in result.skills} >= {"Python", "FastAPI", "PostgreSQL", "Docker", "AWS"}
+    assert result.extraction_confidence == 0.35
+
+
+@pytest.mark.asyncio
+async def test_extract_from_source_falls_back_when_provider_errors(monkeypatch: pytest.MonkeyPatch):
+    class BrokenProvider:
+        async def structured_output(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.services.agents.profile_agent.settings.ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("app.services.agents.profile_agent.settings.OPENROUTER_API_KEY", "")
+
+    result = await extract_from_source(
+        "Senior backend engineer based in Remote LATAM with Python and Redis experience.",
+        source_type="linkedin",
+        provider=BrokenProvider(),
+    )
+
+    assert result.career_level == "senior"
+    assert result.location is not None
+    assert any(skill.canonical_name == "Redis" for skill in result.skills)

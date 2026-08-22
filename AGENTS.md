@@ -13,6 +13,8 @@
 > **DB**: alembic current = alembic heads = `022_fix_production_schema`  
 > **Smoke test**: API health + register→application + frontend shell — automatizado en mirror workflow  
 > **Frontend API**: `api-v2.ts` usa `NEXT_PUBLIC_API_URL` + rewrites en `next.config.mjs` como fallback same-origin
+>
+> **Hotfix 2026-08-22**: `POST /api/v2/candidates/me/sources/text` fallaba en producción cuando faltaba `ANTHROPIC_API_KEY`, rompiendo onboarding en "Analizar con IA". `profile_agent.py` ahora hace fallback determinístico y el onboarding vuelve a ser usable aun sin credencial LLM.
 
 ---
 
@@ -377,3 +379,4 @@ cat docs/REAL_ATS_VALIDATION_REPORT.md
 | 2026-08-22 | Claude | BLOCKER resolved: mirror-to-railway.yml workflow keeps main = Railway-tracked branch; auto-deploy verified |
 | 2026-08-22 | Claude | CD from main works: push to main → GH Action mirrors to claude/ai-chat-cv-improvement-rzqxd5 → Railway deploys |
 | 2026-08-22 | Cursor | Productivización: api-v2.ts → NEXT_PUBLIC_API_URL, CORS prod, rewrites, smoke auto, railway.toml, Sentry wired, docs sync, alembic 022 |
+| 2026-08-22 | Codex | Hotfix producción: fallback determinístico en `profile_agent.extract_from_source()` cuando falta LLM key; onboarding deja de romper en `/candidates/me/sources/text` |

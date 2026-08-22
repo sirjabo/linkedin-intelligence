@@ -30,6 +30,8 @@ Backlog priorizado. Los items están ordenados de mayor a menor prioridad dentro
 
 ## v1.1 — Próximo (priorizado)
 
+> **Nota 2026-08-22**: hotfix productivo aplicado para que el onboarding no dependa de una API key LLM en `POST /api/v2/candidates/me/sources/text`. El flujo vuelve a degradar con extracción determinística cuando falta Anthropic/OpenRouter.
+
 | ID | Título | Prioridad | Tamaño | Descripción |
 |----|--------|-----------|--------|-------------|
 | N-001 | Live ATS pilot (1 submission real por adapter) | 🟠 | M | Validar mock vs real forms |
