@@ -3,10 +3,10 @@
 > Léelo antes de tocar cualquier sprint. Actualizalo cuando cambie el estado.
 >
 > **Repo**: `sirjabo/linkedin-intelligence`  
-> **Branch activo**: `claude/new-session-ce0sct`  
-> **Tests**: 785 passing · 17 skipped (AI evals — need API key) · 0 failing  
-> **Última actualización**: 2026-08-21  
-> **Estado release**: ✅ RELEASE CANDIDATE — pendiente merge + deploy humano
+> **Branch activo**: `main`  
+> **Tests**: 748 passing · 50 skipped (AI evals — need API key) · 0 failing  
+> **Última actualización**: 2026-08-22  
+> **Estado release**: ✅ v1.0 MERGEADO A MAIN — Railway auto-deploy en curso
 
 ---
 
@@ -362,3 +362,6 @@ cat docs/REAL_ATS_VALIDATION_REPORT.md
 | 2026-08-21 | Claude | `test_release_golden_path.py`: 11 tests — golden path + safety gates |
 | 2026-08-21 | Claude | `docs/RELEASE_V1_VALIDATION.md`: validation report completo |
 | 2026-08-21 | Claude | `docs/REAL_ATS_VALIDATION_REPORT.md`: 136 ATS tests, 6/6 adapters ✅ |
+| 2026-08-22 | Claude | PR #8 mergeado a main (SHA 98d891be) — CI 100% verde (748 passed, 50 skipped) |
+| 2026-08-22 | Claude | P3 Phase 14 job sources: respx → httpx.AsyncBaseTransport injection fix |
+| 2026-08-22 | Claude | arbeitnow.py + remoteok.py: Unix timestamp coercion a str para Pydantic compat |
