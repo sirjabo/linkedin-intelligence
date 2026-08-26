@@ -81,6 +81,42 @@ def test_classify_unknown():
     assert classify_field("Captcha") == "unknown"
 
 
+def test_classify_phone_country_code():
+    assert classify_field("Country Code") == "phone_country_code"
+    assert classify_field("Dialing Code") == "phone_country_code"
+    assert classify_field("Phone Code") == "phone_country_code"
+    assert classify_field("Calling Code") == "phone_country_code"
+
+
+def test_classify_notice_period():
+    assert classify_field("Notice Period") == "notice_period"
+    assert classify_field("How many weeks notice do you need to give?") == "notice_period"
+    assert classify_field("Notice Required") == "notice_period"
+
+
+def test_classify_highest_education():
+    assert classify_field("Highest Level of Education") == "highest_education"
+    assert classify_field("Level of Qualification") == "highest_education"
+    assert classify_field("Bachelor") == "highest_education"
+    assert classify_field("Do you have a Master degree?") == "highest_education"
+    assert classify_field("PhD required?") == "highest_education"
+
+
+def test_classify_reference_contact():
+    assert classify_field("Reference") == "reference_contact"
+    assert classify_field("Referral") == "reference_contact"
+    assert classify_field("How did you hear about us?") == "reference_contact"
+    assert classify_field("Referred by") == "reference_contact"
+
+
+def test_new_types_are_human_required():
+    from app.services.form_intelligence import _ALWAYS_HUMAN
+    assert "phone_country_code" in _ALWAYS_HUMAN
+    assert "notice_period" in _ALWAYS_HUMAN
+    assert "highest_education" in _ALWAYS_HUMAN
+    assert "reference_contact" in _ALWAYS_HUMAN
+
+
 # ── Candidate Mapping unit tests ───────────────────────────────────────────────
 
 def test_map_full_name_autofill():

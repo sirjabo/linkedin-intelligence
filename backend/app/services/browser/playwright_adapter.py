@@ -11,6 +11,8 @@ from playwright.async_api import Browser, BrowserContext, Frame, Page, Playwrigh
 
 from app.core.logging import get_logger
 from app.services.browser.adapter import (
+    PageBlocker,
+    PageBlockerType,
     PageState,
     RawForm,
     RawFormField,
@@ -155,6 +157,7 @@ class PlaywrightAdapter:
                 css_selector=f.get("css_selector", ""),
                 section_title=f.get("section_title"),
                 aria_label=f.get("aria_label"),
+                is_hidden=bool(f.get("is_hidden", False)),
             ))
 
         # Group by section_title
@@ -350,3 +353,257 @@ class PlaywrightAdapter:
         if self._page:
             return self._page.url
         return None
+
+    # ── Page-blocker detection ─────────────────────────────────────────────────
+
+    async def detect_page_blocker(self) -> PageBlocker | None:
+        """Detect CAPTCHA, auth walls, anti-bot challenges, MFA, or consent gates.
+
+        Returns a PageBlocker if the agent should pause, None if the page looks safe.
+        """
+        assert self._page
+        try:
+            text = (await self._page.inner_text("body")).lower()
+        except Exception:
+            return None
+
+        # CAPTCHA markers (hCaptcha, reCAPTCHA, Cloudflare Turnstile)
+        if any(kw in text for kw in ("captcha", "i am not a robot", "verify you are human",
+                                     "complete the security check")):
+            return PageBlocker(PageBlockerType.CAPTCHA, "CAPTCHA challenge detected on page")
+
+        # Cloudflare / anti-bot challenges
+        if any(kw in text for kw in ("checking your browser", "ddos-guard", "just a moment",
+                                     "enable javascript and cookies")):
+            return PageBlocker(PageBlockerType.ANTI_BOT, "Anti-bot challenge detected (Cloudflare/DDoS-Guard)")
+
+        # Auth walls (login/sign-in required before form access)
+        if any(kw in text for kw in ("sign in to apply", "log in to apply", "create an account to apply",
+                                     "please login", "please sign in")):
+            return PageBlocker(PageBlockerType.AUTH_WALL, "Authentication required before form access")
+
+        # MFA prompts
+        if any(kw in text for kw in ("two-factor", "2fa", "verification code", "enter the code sent",
+                                     "authenticator app")):
+            return PageBlocker(PageBlockerType.MFA, "Multi-factor authentication prompt detected")
+
+        # Cookie consent gates that block interaction
+        try:
+            selectors = [
+                "#cookie-consent-overlay", "[id*='cookie-banner']",
+                "[class*='cookie-consent-overlay']", "#onetrust-pc-sdk",
+            ]
+            for sel in selectors:
+                count = await self._page.locator(sel).count()
+                if count > 0:
+                    return PageBlocker(
+                        PageBlockerType.COOKIE_CONSENT,
+                        f"Cookie consent gate blocking form ({sel})",
+                        requires_human=False,
+                    )
+        except Exception:
+            pass
+
+        return None
+
+    # ── SPA hydration wait ─────────────────────────────────────────────────────
+
+    async def wait_for_spa_ready(self, wait_ms: int = 10_000) -> bool:
+        """Wait for a React/Vue/Angular SPA to finish hydrating.
+
+        Waits for: network idle, no active spinners, and at least one input present.
+        Returns True when the form is ready, False on timeout.
+        """
+        assert self._page
+        try:
+            # networkidle is too slow for most SPAs; domcontentloaded + small wait is safer
+            await self._page.wait_for_load_state("domcontentloaded", timeout=wait_ms)
+            # Wait for at least one form input to appear
+            await self._page.wait_for_selector(
+                "input:not([type='hidden']), select, textarea",
+                timeout=wait_ms,
+            )
+            # Try to dismiss loading spinners (heuristic)
+            spinner_selectors = [
+                "[class*='spinner']", "[class*='loading']", "[aria-label*='loading']",
+            ]
+            import contextlib
+            for sel in spinner_selectors:
+                with contextlib.suppress(Exception):
+                    await self._page.wait_for_selector(
+                        f"{sel}:not([style*='display: none'])",
+                        state="hidden",
+                        timeout=5_000,
+                    )
+            return True
+        except Exception as exc:
+            logger.warning("wait_for_spa_ready_timeout", error=str(exc))
+            return False
+
+    # ── Generic iframe form discovery ─────────────────────────────────────────
+
+    async def discover_form_in_iframes(self) -> RawForm | None:
+        """Try each iframe on the page; return the first RawForm that contains fields.
+
+        Falls back gracefully — if no iframe has a form, returns None so the caller
+        can discover the main frame instead.
+        """
+        assert self._page
+        try:
+            frames = self._page.frames
+            for frame in frames:
+                if frame == self._page.main_frame:
+                    continue
+                try:
+                    result = await frame.evaluate(FORM_EXTRACTOR_JS)
+                    raw_fields = result.get("fields", [])
+                    if not raw_fields:
+                        continue
+                    # Found a frame with fields — switch into it and return
+                    self._active_frame = frame
+                    fields = [
+                        RawFormField(
+                            field_id=f.get("field_id", ""),
+                            name=f.get("name", ""),
+                            label=f.get("label", ""),
+                            field_type=f.get("field_type", "text"),
+                            is_required=bool(f.get("is_required", False)),
+                            options=f.get("options"),
+                            placeholder=f.get("placeholder"),
+                            css_selector=f.get("css_selector", ""),
+                            section_title=f.get("section_title"),
+                            aria_label=f.get("aria_label"),
+                        )
+                        for f in raw_fields
+                    ]
+                    section_map: dict[str | None, list[RawFormField]] = {}
+                    for field in fields:
+                        section_map.setdefault(field.section_title, []).append(field)
+                    sections = [
+                        RawFormSection(title=t, fields=sf)
+                        for t, sf in section_map.items()
+                    ]
+                    logger.info("iframe_form_found", fields=len(fields), frame_url=frame.url)
+                    return RawForm(
+                        sections=sections,
+                        fields=fields,
+                        page_title=result.get("page_title"),
+                        submit_button_selector=result.get("submit_button_selector"),
+                        form_action=result.get("form_action"),
+                    )
+                except Exception as exc:
+                    logger.debug("iframe_probe_failed", frame_url=frame.url, error=str(exc))
+        except Exception as exc:
+            logger.warning("discover_form_in_iframes_error", error=str(exc))
+        return None
+
+    # ── Custom select / combobox ───────────────────────────────────────────────
+
+    async def handle_custom_select(self, container_selector: str, value: str) -> bool:
+        """Handle non-native dropdowns (aria combobox, custom select lists).
+
+        Strategy:
+        1. Click the trigger element to open the dropdown
+        2. Look for an option matching `value` by text (case-insensitive)
+        3. Click the matching option
+        """
+        assert self._page
+        target = self._active_frame or self._page
+        try:
+            # Click to open
+            await target.locator(container_selector).first.click(timeout=5_000)
+            await asyncio.sleep(0.3)
+            # Look for listbox / option elements
+            option_selectors = [
+                f"[role='option']:has-text('{value}')",
+                f"[role='listbox'] li:has-text('{value}')",
+                f"ul[role='listbox'] li:has-text('{value}')",
+                f".dropdown-option:has-text('{value}')",
+                f"[class*='option']:has-text('{value}')",
+            ]
+            for opt_sel in option_selectors:
+                try:
+                    count = await target.locator(opt_sel).count()
+                    if count > 0:
+                        await target.locator(opt_sel).first.click(timeout=3_000)
+                        logger.info("custom_select_option_selected", value=value, selector=opt_sel)
+                        return True
+                except Exception:
+                    continue
+            # Fallback: type the value into the input inside the combobox (search select)
+            input_sel = f"{container_selector} input"
+            try:
+                await target.locator(input_sel).first.fill(value, timeout=3_000)
+                await asyncio.sleep(0.3)
+                for opt_sel in option_selectors:
+                    try:
+                        count = await target.locator(opt_sel).count()
+                        if count > 0:
+                            await target.locator(opt_sel).first.click(timeout=3_000)
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            logger.warning("custom_select_option_not_found", container=container_selector, value=value)
+            return False
+        except Exception as exc:
+            logger.warning("handle_custom_select_failed", selector=container_selector, error=str(exc))
+            return False
+
+    # ── Location autocomplete ──────────────────────────────────────────────────
+
+    async def fill_location_autocomplete(self, selector: str, value: str) -> bool:
+        """Fill a location autocomplete field and dismiss the suggestion dropdown.
+
+        Many location fields show a dropdown after typing — we type the value,
+        wait for suggestions, then select the first one or press Escape if none match.
+        """
+        assert self._page
+        target = self._active_frame or self._page
+        try:
+            locator = target.locator(selector).first
+            await locator.fill(value, timeout=5_000)
+            await asyncio.sleep(0.5)  # wait for autocomplete dropdown to appear
+            # Try to click the first suggestion
+            suggestion_selectors = [
+                "[role='option']", ".pac-item", ".autocomplete-item",
+                "[class*='suggestion']", "[class*='autocomplete'] li",
+            ]
+            for sug_sel in suggestion_selectors:
+                try:
+                    count = await target.locator(sug_sel).count()
+                    if count > 0:
+                        await target.locator(sug_sel).first.click(timeout=3_000)
+                        logger.info("location_autocomplete_selected", value=value, selector=sug_sel)
+                        return True
+                except Exception:
+                    continue
+            # No suggestion — press Escape to dismiss any dropdown, value stays
+            await locator.press("Escape")
+            logger.info("location_autocomplete_no_suggestion_escaped", value=value)
+            return True
+        except Exception as exc:
+            logger.warning("fill_location_autocomplete_failed", selector=selector, error=str(exc))
+            return False
+
+    # ── Hidden file input (via label click + file chooser) ────────────────────
+
+    async def upload_file_hidden(self, label_selector: str, file_path: str) -> bool:
+        """Upload a file through a hidden <input type='file'> triggered by a label click.
+
+        Some ATS forms hide the native file input and use a styled label/button as trigger.
+        We intercept the file chooser dialog that the browser opens on click.
+        """
+        assert self._page
+        target = self._active_frame or self._page
+        try:
+            async with self._page.expect_file_chooser(timeout=5_000) as fc_info:
+                await target.locator(label_selector).first.click(timeout=3_000)
+            file_chooser = await fc_info.value
+            await file_chooser.set_files(file_path)
+            logger.info("hidden_file_input_uploaded", label=label_selector, path=file_path)
+            return True
+        except Exception as exc:
+            logger.warning("upload_file_hidden_failed", label=label_selector, error=str(exc))
+            return False

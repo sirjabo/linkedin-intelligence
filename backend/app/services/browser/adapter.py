@@ -4,7 +4,26 @@ Domain logic never imports Playwright directly — it only uses this protocol.
 The PlaywrightAdapter (playwright_adapter.py) is the concrete implementation.
 """
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Protocol, runtime_checkable
+
+
+class PageBlockerType(Enum):
+    """Kind of page-level blocker the agent has detected."""
+    CAPTCHA = "captcha"
+    AUTH_WALL = "auth_wall"
+    ANTI_BOT = "anti_bot"
+    MFA = "mfa"
+    COOKIE_CONSENT = "cookie_consent"
+
+
+@dataclass
+class PageBlocker:
+    """Detected condition that prevents form automation from proceeding safely."""
+    blocker_type: PageBlockerType
+    description: str
+    # If True the agent should pause and wait for human resolution
+    requires_human: bool = True
 
 # ── RawForm data model ────────────────────────────────────────────────────────
 
@@ -14,13 +33,16 @@ class RawFormField:
     field_id: str           # HTML id or generated from name/index
     name: str               # HTML name attribute
     label: str              # visible label text (from label[for], aria-label, placeholder)
-    field_type: str         # text | email | tel | file | select | textarea | checkbox | radio | url | number | hidden
+    # text | email | tel | file | select | textarea | checkbox | radio | url | number |
+    # hidden | custom_select (aria combobox/listbox)
+    field_type: str
     is_required: bool
-    options: list[str] | None = None       # values for select / radio
+    options: list[str] | None = None       # values for select / radio / custom_select
     placeholder: str | None = None
     css_selector: str = ""                  # selector for browser interaction
     section_title: str | None = None        # nearest fieldset legend / section heading
     aria_label: str | None = None
+    is_hidden: bool = False                 # True for hidden file inputs triggered by labels
 
 
 @dataclass
@@ -99,3 +121,15 @@ class BrowserAutomationAdapter(Protocol):
     async def get_current_url(self) -> str | None: ...
 
     async def close(self) -> None: ...
+
+    async def detect_page_blocker(self) -> "PageBlocker | None": ...
+
+    async def wait_for_spa_ready(self, wait_ms: int = 10_000) -> bool: ...
+
+    async def discover_form_in_iframes(self) -> "RawForm | None": ...
+
+    async def handle_custom_select(self, container_selector: str, value: str) -> bool: ...
+
+    async def fill_location_autocomplete(self, selector: str, value: str) -> bool: ...
+
+    async def upload_file_hidden(self, label_selector: str, file_path: str) -> bool: ...

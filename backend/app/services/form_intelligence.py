@@ -11,7 +11,7 @@ from app.services.ai.model_router import route_model
 
 SemanticType = Literal[
     "full_name", "first_name", "last_name",
-    "email", "phone",
+    "email", "phone", "phone_country_code",
     "linkedin_url", "portfolio_url", "github_url",
     "location", "city", "country",
     "years_experience",
@@ -22,6 +22,9 @@ SemanticType = Literal[
     "cover_letter_file",
     "cv_file",
     "start_date", "availability",
+    "notice_period",       # "How many weeks notice do you need to give?"
+    "highest_education",   # "What is your highest level of education?"
+    "reference_contact",   # References / referral fields
     "custom_essay",
     "experience_essay",    # Sprint F: open-ended "Tell us about your experience with X"
     # Sensitive/EEO fields — always require human confirmation
@@ -42,6 +45,7 @@ _LABEL_RULES: list[tuple[re.Pattern, SemanticType]] = [
     (re.compile(r"\bfirst[\s_-]?name\b", re.IGNORECASE), "first_name"),
     (re.compile(r"\blast[\s_-]?name\b|surname\b|family[\s_-]?name\b", re.IGNORECASE), "last_name"),
     (re.compile(r"\bemail\b|e-mail\b", re.IGNORECASE), "email"),
+    (re.compile(r"\b(country[\s_-]?code|dialing[\s_-]?code|phone[\s_-]?code|calling[\s_-]?code)\b", re.IGNORECASE), "phone_country_code"),
     (re.compile(r"\bphone\b|mobile\b|telephone\b", re.IGNORECASE), "phone"),
     (re.compile(r"\blinkedin\b", re.IGNORECASE), "linkedin_url"),
     (re.compile(r"\bportfolio\b|personal[\s_-]?site\b|website\b", re.IGNORECASE), "portfolio_url"),
@@ -69,6 +73,9 @@ _LABEL_RULES: list[tuple[re.Pattern, SemanticType]] = [
     (re.compile(r"\bresume\b|curriculum\b|cv\b", re.IGNORECASE), "cv_file"),
     (re.compile(r"\bstart[\s_-]?date\b|earliest\b.*start\b", re.IGNORECASE), "start_date"),
     (re.compile(r"\bavailability\b|available[\s_-]?to[\s_-]?start\b", re.IGNORECASE), "availability"),
+    (re.compile(r"\bnotice[\s_-]?period\b|weeks?[\s_-]?notice\b|notice[\s_-]?required\b", re.IGNORECASE), "notice_period"),
+    (re.compile(r"\b(highest|level[\s_-]?of)[\s_-]?(education|degree|qualification)\b|bachelor|master|phd|diploma\b", re.IGNORECASE), "highest_education"),
+    (re.compile(r"\breference\b|referral(?![\s_-]?code)\b|referred[\s_-]?by\b|how[\s_-]did[\s_-]you[\s_-]hear\b", re.IGNORECASE), "reference_contact"),
     # Sprint F: experience_essay matches open-ended "tell us about your X experience" prompts
     (re.compile(r"\b(tell|describe|share|explain)\b.*(experience|background|journey|work)\b", re.IGNORECASE), "experience_essay"),
     (re.compile(r"\bwhy\b.*(company|role|interest|join|work|here|us|this)\b|(describe|tell|explain)\b", re.IGNORECASE), "custom_essay"),
@@ -85,9 +92,11 @@ _SKILL_YEARS_EXTRACT = re.compile(
 # Semantic types that can never be auto-filled — always require human input.
 # Sensitive legal/EEO types are included so the candidate confirms them per-submission.
 _ALWAYS_HUMAN = {
-    "phone", "cv_file", "cover_letter_file", "custom_essay", "experience_essay", "unknown",
+    "phone", "phone_country_code", "cv_file", "cover_letter_file",
+    "custom_essay", "experience_essay", "reference_contact", "unknown",
     # Sensitive: require explicit human confirmation each submission
     "salary_expectation", "work_authorization", "sponsorship", "relocation",
+    "notice_period", "highest_education",
     "demographic", "race", "ethnicity", "gender", "disability", "veteran_status",
 }
 

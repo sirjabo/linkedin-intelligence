@@ -100,6 +100,24 @@ class _FakeBrowser:
     async def close(self) -> None:
         pass
 
+    async def detect_page_blocker(self):
+        return None
+
+    async def wait_for_spa_ready(self, wait_ms: int = 10_000) -> bool:
+        return True
+
+    async def discover_form_in_iframes(self):
+        return None
+
+    async def handle_custom_select(self, container_selector: str, value: str) -> bool:
+        return True
+
+    async def fill_location_autocomplete(self, selector: str, value: str) -> bool:
+        return True
+
+    async def upload_file_hidden(self, label_selector: str, file_path: str) -> bool:
+        return True
+
 
 # ── ATSCapabilities dataclass ─────────────────────────────────────────────────
 
