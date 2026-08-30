@@ -1,7 +1,16 @@
 import { CVData } from "@/types/cv";
 import { getAccessToken } from "./supabase";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Use relative path so Next.js rewrites proxy to the backend — avoids build-time
+// NEXT_PUBLIC_API_URL baking issues. Falls back to window.__ENV__ if set.
+function getBase(): string {
+  if (typeof window !== "undefined" && window.__ENV__?.API_URL) {
+    const raw = window.__ENV__.API_URL.trim().replace(/\/$/, "").replace(/\/api\/v[12]$/, "");
+    if (raw) return raw;
+  }
+  return "";  // empty → relative /api/v1/... caught by next.config rewrites
+}
+const BASE = getBase();
 
 async function authHeader(): Promise<Record<string, string>> {
   const token = await getAccessToken();
