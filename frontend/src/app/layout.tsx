@@ -11,8 +11,23 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Inject runtime env into window so the client bundle can read them even
+  // when NEXT_PUBLIC_* vars were not available at Docker build time.
+  const runtimeEnv = {
+    SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+    SUPABASE_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    API_URL: process.env.NEXT_PUBLIC_API_URL ?? "",
+  };
+
   return (
     <html lang="es">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__ENV__=${JSON.stringify(runtimeEnv)};`,
+          }}
+        />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
           <main id="main-content">{children}</main>

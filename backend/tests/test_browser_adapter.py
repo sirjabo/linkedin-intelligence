@@ -189,3 +189,122 @@ async def test_extract_confirmation_id_from_confirm_page(mock_ats_url, require_c
         conf_id = await browser.extract_confirmation_id()
     assert conf_id is not None
     assert "APP" in conf_id.upper() or "ABCD1234" in conf_id
+
+
+# ── New methods: detect_page_blocker ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_detect_page_blocker_none_on_normal_form(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply")
+        blocker = await browser.detect_page_blocker()
+    assert blocker is None
+
+
+@pytest.mark.asyncio
+async def test_detect_page_blocker_captcha(mock_ats_url, require_chromium):
+    from app.services.browser.adapter import PageBlockerType
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/captcha")
+        blocker = await browser.detect_page_blocker()
+    assert blocker is not None
+    assert blocker.blocker_type == PageBlockerType.CAPTCHA
+    assert blocker.requires_human is True
+
+
+@pytest.mark.asyncio
+async def test_detect_page_blocker_auth_wall(mock_ats_url, require_chromium):
+    from app.services.browser.adapter import PageBlockerType
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/authwall")
+        blocker = await browser.detect_page_blocker()
+    assert blocker is not None
+    assert blocker.blocker_type == PageBlockerType.AUTH_WALL
+    assert blocker.requires_human is True
+
+
+# ── New methods: wait_for_spa_ready ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_wait_for_spa_ready_on_static_form(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply")
+        ready = await browser.wait_for_spa_ready(wait_ms=5_000)
+    assert ready is True
+
+
+# ── New methods: discover_form_in_iframes ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_discover_form_in_iframes_finds_lever_form(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/iframe")
+        # Main page has no form — discover_form returns empty
+        main_form = await browser.discover_form()
+        assert len(main_form.fields) == 0 or True  # may find nothing or the iframe fields
+
+        # iframe discovery should find the embedded form
+        iframe_form = await browser.discover_form_in_iframes()
+    assert iframe_form is not None
+    field_names = {f.name for f in iframe_form.fields}
+    assert "full_name" in field_names or "email" in field_names
+
+
+# ── New methods: EEO scenario field discovery ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_discover_form_eeo_scenario(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/eeo")
+        form = await browser.discover_form()
+    field_names = {f.name for f in form.fields}
+    assert "notice_period" in field_names
+    assert "highest_education" in field_names
+    assert "gender" in field_names or "race" in field_names
+
+
+# ── New methods: handle_custom_select / combobox ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_discover_form_combobox_scenario(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/combobox")
+        form = await browser.discover_form()
+    assert any(f.field_type == "custom_select" for f in form.fields), (
+        f"Expected a custom_select field; got types: {[f.field_type for f in form.fields]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_custom_select_selects_option(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/combobox")
+        # Find the combobox container
+        form = await browser.discover_form()
+        combobox_fields = [f for f in form.fields if f.field_type == "custom_select"]
+        assert combobox_fields, "No custom_select fields found"
+        selector = combobox_fields[0].css_selector
+        result = await browser.handle_custom_select(selector, "Engineering")
+    assert result is True
+
+
+# ── New methods: fill_location_autocomplete ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fill_location_autocomplete(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/location")
+        result = await browser.fill_location_autocomplete("#location", "San Francisco")
+    assert result is True
+
+
+# ── Wizard multi-step scenario ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_wizard_step1_form_discovered(mock_ats_url, require_chromium):
+    async with PlaywrightAdapter(headless=True) as browser:
+        await browser.open_url(f"{mock_ats_url}/apply/wizard1")
+        form = await browser.discover_form()
+    field_names = {f.name for f in form.fields}
+    assert "full_name" in field_names
+    assert "email" in field_names

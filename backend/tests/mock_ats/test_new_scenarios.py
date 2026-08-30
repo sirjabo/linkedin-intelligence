@@ -328,3 +328,183 @@ class TestScenarioFileUpload:
         assert r.status_code == 200
         body = r.json()
         assert body["cover_letter_filename"] is None
+
+
+# ── Scenario 34: iframe-embedded form ─────────────────────────────────────────
+
+class TestScenarioIframe:
+    def test_outer_page_has_iframe(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/iframe")
+        assert r.status_code == 200
+        assert "<iframe" in r.text
+        assert "/apply/iframe/inner" in r.text
+
+    def test_inner_page_has_form(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/iframe/inner")
+        assert r.status_code == 200
+        assert "<form" in r.text
+        assert 'name="full_name"' in r.text
+        assert 'name="email"' in r.text
+
+    def test_submit_returns_ref(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/iframe/submit",
+            data={"full_name": "Alice", "email": "alice@example.com"},
+            files={"resume": ("cv.pdf", b"content", "application/pdf")},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "submitted"
+        assert body["ref"].startswith("APP-")
+
+
+# ── Scenario 35: EEO fields + notice period ───────────────────────────────────
+
+class TestScenarioEEO:
+    def test_get_returns_eeo_form(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/eeo")
+        assert r.status_code == 200
+        assert "notice_period" in r.text
+        assert "highest_education" in r.text
+        assert "gender" in r.text
+        assert "race" in r.text
+        assert "veteran_status" in r.text
+        assert "disability" in r.text
+
+    def test_submit_with_eeo_data(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/eeo/submit",
+            data={
+                "full_name": "Bob", "email": "bob@example.com",
+                "notice_period": "4", "highest_education": "bachelor",
+                "gender": "male", "race": "white",
+                "veteran_status": "not_veteran", "disability": "no",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["notice_period"] == "4"
+        assert body["highest_education"] == "bachelor"
+
+    def test_submit_minimal_required_only(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/eeo/submit",
+            data={"full_name": "Min", "email": "min@example.com", "notice_period": "0"},
+        )
+        assert r.status_code == 200
+
+
+# ── Scenario 36: Custom combobox ──────────────────────────────────────────────
+
+class TestScenarioCombobox:
+    def test_get_returns_combobox_page(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/combobox")
+        assert r.status_code == 200
+        assert 'role="combobox"' in r.text
+        assert 'role="listbox"' in r.text
+        assert 'role="option"' in r.text
+
+    def test_page_has_hidden_value_input(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/combobox")
+        assert 'name="department"' in r.text
+
+    def test_submit_department_value(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/combobox/submit",
+            data={"full_name": "Carol", "email": "carol@example.com", "department": "engineering"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["department"] == "engineering"
+
+
+# ── Scenario 37: Location autocomplete ───────────────────────────────────────
+
+class TestScenarioLocation:
+    def test_get_returns_location_form(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/location")
+        assert r.status_code == 200
+        assert 'name="location"' in r.text
+        assert "autocomplete" in r.text.lower() or "oninput" in r.text
+
+    def test_submit_with_location(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/location/submit",
+            data={"full_name": "Dave", "email": "dave@example.com", "location": "San Francisco, CA"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["location"] == "San Francisco, CA"
+
+
+# ── Scenario 38: CAPTCHA detection ───────────────────────────────────────────
+
+class TestScenarioCaptcha:
+    def test_get_shows_captcha_challenge(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/captcha")
+        assert r.status_code == 200
+        text = r.text.lower()
+        assert "captcha" in text or "robot" in text or "verify" in text
+
+
+# ── Scenario 39: Auth wall ───────────────────────────────────────────────────
+
+class TestScenarioAuthWall:
+    def test_get_shows_sign_in_prompt(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/authwall")
+        assert r.status_code == 200
+        text = r.text.lower()
+        assert "sign in" in text or "login" in text or "log in" in text
+
+    def test_page_has_email_and_password(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/authwall")
+        assert 'type="email"' in r.text
+        assert 'type="password"' in r.text
+
+
+# ── Scenario 40: Three-step wizard ───────────────────────────────────────────
+
+class TestScenarioWizard:
+    def test_step1_shows_personal_info(self, mock_ats_url):
+        r = httpx.get(f"{mock_ats_url}/apply/wizard1")
+        assert r.status_code == 200
+        assert "Step 1" in r.text
+        assert 'name="full_name"' in r.text
+        assert 'name="email"' in r.text
+
+    def test_step1_to_step2_transition(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/wizard/step2",
+            data={"full_name": "Eve", "email": "eve@example.com"},
+        )
+        assert r.status_code == 200
+        assert "Step 2" in r.text
+        assert "years_experience" in r.text
+        assert "notice_period" in r.text
+
+    def test_step2_to_step3_transition(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/wizard/step3",
+            data={
+                "full_name": "Eve", "email": "eve@example.com",
+                "years_experience": "5", "current_title": "Engineer",
+                "notice_period": "2",
+            },
+        )
+        assert r.status_code == 200
+        assert "Step 3" in r.text or "Review" in r.text
+
+    def test_final_submit_returns_ref(self, mock_ats_url):
+        r = httpx.post(
+            f"{mock_ats_url}/apply/wizard/submit",
+            data={
+                "full_name": "Eve", "email": "eve@example.com",
+                "years_experience": "5", "current_title": "Engineer",
+                "notice_period": "2",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "submitted"
+        assert body["ref"].startswith("APP-")
+        assert body["years_experience"] == "5"

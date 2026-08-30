@@ -29,7 +29,8 @@ def test_classify_field_known_labels():
 def test_classify_field_returns_unknown_for_unrecognized():
     assert classify_field("Hobbies and Interests") == "unknown"
     assert classify_field("Referral Code") == "unknown"
-    assert classify_field("How did you hear about us") == "unknown"
+    # "How did you hear about us" is now classified as reference_contact (Sprint F)
+    assert classify_field("How did you hear about us") == "reference_contact"
 
 
 # ── classify_field_llm tests ─────────────────────────────────────────────────
