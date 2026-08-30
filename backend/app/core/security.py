@@ -79,3 +79,16 @@ def create_refresh_token(subject: str) -> str:
 def decode_token(token: str) -> dict[str, Any]:
     """Raises ValueError on invalid or expired tokens."""
     return _verify_token(token)
+
+
+def create_password_reset_token(email: str) -> str:
+    expire = int(time.time()) + 15 * 60  # 15 minutes
+    return _make_token({"sub": email, "exp": expire, "type": "password_reset"})
+
+
+def decode_password_reset_token(token: str) -> str:
+    """Returns the email. Raises ValueError on invalid/expired tokens."""
+    payload = _verify_token(token)
+    if payload.get("type") != "password_reset":
+        raise ValueError("Not a password reset token")
+    return payload["sub"]
