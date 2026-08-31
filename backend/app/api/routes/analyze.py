@@ -9,6 +9,8 @@ from app.core.logging import get_logger
 from app.db.models.user import User
 from app.services.about_writer import write_about_section
 from app.services.linkedin_analyzer import ROLE_LABELS, analyze_linkedin_profile
+from app.services.linkedin_fetcher import fetch_linkedin_profile
+from app.services.linkedin_rewriter import rewrite_linkedin_sections
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/analyze", tags=["analyze"])
@@ -20,6 +22,38 @@ class LinkedInAnalyzeRequest(BaseModel):
     profile_text: str
     target_role: str = "ai_engineer"
     linkedin_url: str | None = None
+
+    @field_validator("profile_text")
+    @classmethod
+    def text_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("profile_text must not be empty")
+        return v
+
+    @field_validator("target_role")
+    @classmethod
+    def role_must_be_valid(cls, v: str) -> str:
+        if v not in ROLE_LABELS:
+            raise ValueError(f"target_role must be one of: {', '.join(sorted(ROLE_LABELS))}")
+        return v
+
+
+class LinkedInURLRequest(BaseModel):
+    linkedin_url: str
+    target_role: str = "ai_engineer"
+
+    @field_validator("target_role")
+    @classmethod
+    def role_must_be_valid(cls, v: str) -> str:
+        if v not in ROLE_LABELS:
+            raise ValueError(f"target_role must be one of: {', '.join(sorted(ROLE_LABELS))}")
+        return v
+
+
+class LinkedInRewriteRequest(BaseModel):
+    profile_text: str
+    target_role: str = "ai_engineer"
+    analysis: dict
 
     @field_validator("profile_text")
     @classmethod
@@ -87,6 +121,53 @@ async def analyze_linkedin(
 async def list_analyze_roles() -> dict:
     """Return role slugs supported by the LinkedIn analyzer."""
     return {"roles": _VALID_ROLES}
+
+
+@router.post("/linkedin-url")
+@limiter.limit("5/minute")
+async def analyze_linkedin_from_url(
+    request: Request,
+    payload: LinkedInURLRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Fetch a public LinkedIn profile by URL, extract its text, and analyze it."""
+    try:
+        profile_text = await fetch_linkedin_profile(payload.linkedin_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    try:
+        result = await analyze_linkedin_profile(
+            profile_text=profile_text,
+            target_role=payload.target_role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    result["profile_text"] = profile_text
+    logger.info("linkedin_url_analyzed", user_id=str(current_user.id), role=payload.target_role)
+    return result
+
+
+@router.post("/linkedin/rewrite")
+@limiter.limit("5/minute")
+async def rewrite_linkedin(
+    request: Request,
+    payload: LinkedInRewriteRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate ready-to-copy rewrites for each LinkedIn section based on analysis."""
+    try:
+        result = await rewrite_linkedin_sections(
+            profile_text=payload.profile_text,
+            target_role=payload.target_role,
+            analysis=payload.analysis,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    logger.info("linkedin_rewritten", user_id=str(current_user.id), role=payload.target_role)
+    return result
 
 
 @router.post("/about-writer")

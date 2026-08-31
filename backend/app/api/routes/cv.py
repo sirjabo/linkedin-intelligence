@@ -1,5 +1,6 @@
 import os
 import uuid
+from typing import List
 import aiofiles
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi.responses import Response
@@ -22,32 +23,43 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 @router.post("/upload", response_model=CVSessionResponse)
 async def upload_cv(
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one PDF file is required")
 
-    tmp_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4()}.pdf")
+    all_texts: list[str] = []
+    first_filename = files[0].filename or "cv.pdf"
+    tmp_paths: list[str] = []
+
     try:
-        async with aiofiles.open(tmp_path, "wb") as f:
-            content = await file.read()
-            await f.write(content)
-
-        raw_text = await extract_pdf_text(tmp_path)
-        if not raw_text.strip():
-            raise HTTPException(status_code=422, detail="Could not extract text from PDF")
-
-        cv_dict = await parse_cv_text(raw_text)
-
+        for file in files:
+            if not file.filename or not file.filename.lower().endswith(".pdf"):
+                raise HTTPException(status_code=400, detail=f"Only PDF files are accepted: {file.filename}")
+            tmp_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4()}.pdf")
+            tmp_paths.append(tmp_path)
+            async with aiofiles.open(tmp_path, "wb") as f:
+                content = await file.read()
+                await f.write(content)
+            text = await extract_pdf_text(tmp_path)
+            if text.strip():
+                all_texts.append(text)
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        for p in tmp_paths:
+            if os.path.exists(p):
+                os.remove(p)
+
+    if not all_texts:
+        raise HTTPException(status_code=422, detail="Could not extract text from any PDF")
+
+    raw_text = "\n\n---\n\n".join(all_texts)
+    cv_dict = await parse_cv_text(raw_text)
 
     session = CVSession(
         user_id=user_id,
-        original_filename=file.filename,
+        original_filename=first_filename,
         original_text=raw_text,
         cv_data=cv_dict,
     )
