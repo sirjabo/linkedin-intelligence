@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import {
   analyzeLinkedIn,
   analyzeLinkedInFromUrl,
+  analyzeLinkedInFromPdf,
   rewriteLinkedIn,
   getAnalyzeRoles,
   type LinkedInAnalysis,
@@ -26,6 +27,9 @@ import {
   ClipboardCopyIcon,
   SparklesIcon,
   Loader2Icon,
+  UploadIcon,
+  FileTextIcon,
+  XIcon,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -110,7 +114,7 @@ function RecommendationCard({ rec }: { rec: LinkedInRecommendation }) {
   );
 }
 
-type InputMode = "paste" | "url";
+type InputMode = "paste" | "url" | "pdf";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -139,6 +143,9 @@ export default function AnalyzePage() {
   const [inputMode, setInputMode] = useState<InputMode>("paste");
   const [profileText, setProfileText] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfDragging, setPdfDragging] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<LinkedInAnalysis | null>(null);
@@ -168,6 +175,11 @@ export default function AnalyzePage() {
       if (inputMode === "url") {
         if (!linkedinUrl.trim()) return;
         const data = await analyzeLinkedInFromUrl(token, linkedinUrl.trim(), selectedRole);
+        setFetchedProfileText(data.profile_text ?? "");
+        setResult(data);
+      } else if (inputMode === "pdf") {
+        if (!pdfFile) return;
+        const data = await analyzeLinkedInFromPdf(token, pdfFile, selectedRole);
         setFetchedProfileText(data.profile_text ?? "");
         setResult(data);
       } else {
@@ -283,6 +295,15 @@ export default function AnalyzePage() {
                 >
                   <LinkIcon className="w-3.5 h-3.5" /> Importar por URL
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode("pdf")}
+                  className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg transition-colors ${
+                    inputMode === "pdf" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <UploadIcon className="w-3.5 h-3.5" /> Subir PDF de LinkedIn
+                </button>
               </div>
 
               {inputMode === "paste" ? (
@@ -303,7 +324,7 @@ export default function AnalyzePage() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-              ) : (
+              ) : inputMode === "url" ? (
                 <div>
                   <label htmlFor="linkedin-url" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                     URL de tu perfil de LinkedIn
@@ -322,6 +343,66 @@ export default function AnalyzePage() {
                     />
                   </div>
                 </div>
+              ) : (
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                    PDF export de LinkedIn
+                  </p>
+                  <p className="text-xs text-slate-500 mb-4">
+                    En LinkedIn: <strong className="text-slate-400">Yo → Recursos → Guardar en PDF</strong>. Subí ese archivo para analizarlo.
+                  </p>
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setPdfFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  {!pdfFile ? (
+                    <div
+                      onClick={() => !loading && pdfInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setPdfDragging(true); }}
+                      onDragLeave={() => setPdfDragging(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setPdfDragging(false);
+                        const f = e.dataTransfer.files[0];
+                        if (f && f.name.toLowerCase().endsWith(".pdf")) setPdfFile(f);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Zona para soltar o seleccionar PDF de LinkedIn"
+                      onKeyDown={(e) => e.key === "Enter" && pdfInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
+                        pdfDragging
+                          ? "border-blue-400 bg-blue-600/10"
+                          : "border-slate-700 hover:border-blue-500/60 hover:bg-slate-900/60"
+                      }`}
+                    >
+                      <UploadIcon className="w-8 h-8 mx-auto text-slate-500 mb-2" aria-hidden="true" />
+                      <p className="text-sm text-slate-300 font-medium">Arrastrá el PDF de LinkedIn aquí</p>
+                      <p className="text-xs text-slate-500 mt-1">o hacé click para seleccionar</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3">
+                      <FileTextIcon className="w-5 h-5 text-blue-400 shrink-0" aria-hidden="true" />
+                      <span className="text-sm text-slate-200 flex-1 truncate">{pdfFile.name}</span>
+                      <span className="text-xs text-slate-500 shrink-0">{(pdfFile.size / 1024).toFixed(0)} KB</span>
+                      <button
+                        type="button"
+                        onClick={() => setPdfFile(null)}
+                        aria-label="Quitar archivo"
+                        className="text-slate-500 hover:text-red-400 transition-colors"
+                      >
+                        <XIcon className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -333,19 +414,24 @@ export default function AnalyzePage() {
 
             <button
               type="submit"
-              disabled={loading || (inputMode === "paste" ? !profileText.trim() : !linkedinUrl.trim())}
+              disabled={
+                loading ||
+                (inputMode === "paste" ? !profileText.trim() :
+                 inputMode === "url" ? !linkedinUrl.trim() :
+                 !pdfFile)
+              }
               aria-busy={loading}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               {loading ? (
                 <>
                   <RefreshCwIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
-                  {inputMode === "url" ? "Importando y analizando…" : "Analizando con IA…"}
+                  {inputMode === "url" ? "Importando y analizando…" : inputMode === "pdf" ? "Procesando PDF…" : "Analizando con IA…"}
                 </>
               ) : (
                 <>
                   <ZapIcon className="w-4 h-4" aria-hidden="true" />
-                  {inputMode === "url" ? "Importar y analizar perfil" : "Analizar perfil"}
+                  {inputMode === "url" ? "Importar y analizar perfil" : inputMode === "pdf" ? "Analizar PDF de LinkedIn" : "Analizar perfil"}
                 </>
               )}
             </button>

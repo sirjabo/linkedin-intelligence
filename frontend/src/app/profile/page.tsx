@@ -100,6 +100,7 @@ export default function ProfilePage() {
   const [ingestSuccess, setIngestSuccess] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfDragging, setPdfDragging] = useState(false);
+  const [pdfSourceType, setPdfSourceType] = useState<"cv" | "linkedin">("cv");
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
   // Rebuild state
@@ -192,7 +193,7 @@ export default function ProfilePage() {
     setIngestSuccess(false);
     setError("");
     try {
-      const src = await uploadPdfSource(token, pdfFile);
+      const src = await uploadPdfSource(token, pdfFile, pdfSourceType);
       setSources((prev) => [src, ...prev]);
       setPdfFile(null);
       setIngestSuccess(true);
@@ -745,6 +746,34 @@ export default function ProfilePage() {
               </>
             ) : (
               <>
+                {/* PDF source type toggle */}
+                <div className="flex bg-slate-800/60 rounded-lg p-0.5 mb-1 gap-0.5 w-fit">
+                  <button
+                    onClick={() => setPdfSourceType("cv")}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      pdfSourceType === "cv"
+                        ? "bg-blue-600 text-white shadow"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    CV / Currículum
+                  </button>
+                  <button
+                    onClick={() => setPdfSourceType("linkedin")}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      pdfSourceType === "linkedin"
+                        ? "bg-blue-600 text-white shadow"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    Export de LinkedIn
+                  </button>
+                </div>
+                {pdfSourceType === "linkedin" && (
+                  <p className="text-xs text-slate-500 mb-2">
+                    En LinkedIn: Yo → Recursos → Guardar en PDF. Subí ese archivo.
+                  </p>
+                )}
                 <input
                   ref={pdfInputRef}
                   type="file"
@@ -778,7 +807,9 @@ export default function ProfilePage() {
                     }`}
                   >
                     <UploadIcon size={28} className="mx-auto text-slate-500 mb-2" aria-hidden="true" />
-                    <p className="text-sm text-slate-300 font-medium">Arrastrá tu CV aquí</p>
+                    <p className="text-sm text-slate-300 font-medium">
+                      {pdfSourceType === "linkedin" ? "Arrastrá el PDF de LinkedIn aquí" : "Arrastrá tu CV aquí"}
+                    </p>
                     <p className="text-xs text-slate-500 mt-1">o hacé click para seleccionar un PDF</p>
                   </div>
                 ) : (

@@ -3,7 +3,7 @@ import os
 import uuid
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,10 +79,14 @@ async def update_my_candidate(
 @router.post("/me/sources/upload", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
 async def upload_cv_source(
     file: UploadFile = File(...),
+    source_type: str = Form("cv"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> CandidateSource:
-    """Upload a CV PDF and extract structured profile data."""
+    """Upload a CV or LinkedIn PDF export and extract structured profile data."""
+    _valid_upload_types = {"cv", "linkedin"}
+    if source_type not in _valid_upload_types:
+        raise HTTPException(status_code=400, detail=f"source_type must be one of {_valid_upload_types}")
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
     if file.size and file.size > 10 * 1024 * 1024:
@@ -103,11 +107,11 @@ async def upload_cv_source(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="Could not extract text from PDF")
 
-    extracted = await extract_from_source(raw_text, source_type="cv")
+    extracted = await extract_from_source(raw_text, source_type=source_type)
 
     source = CandidateSource(
         candidate_id=candidate.id,
-        source_type="cv",
+        source_type=source_type,
         raw_content=raw_text,
         extracted_content=extracted.model_dump(),
         extraction_confidence=extracted.extraction_confidence,
