@@ -1,4 +1,6 @@
+import smtplib
 import uuid
+from email.mime.text import MIMEText
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer
@@ -9,11 +11,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import get_logger
-from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    create_password_reset_token,
+    create_refresh_token,
+    decode_password_reset_token,
+    decode_token,
+    hash_password,
+    verify_password,
+)
 from app.db.models.candidate import Candidate
 from app.db.models.user import User
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = get_logger(__name__)
@@ -88,3 +105,67 @@ async def refresh(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),
     )
+
+
+def _send_reset_email(to_email: str, reset_url: str) -> None:
+    if not settings.SMTP_HOST:
+        logger.info("smtp_not_configured_reset_url", url=reset_url)
+        return
+    msg = MIMEText(
+        f"Usá este link para resetear tu contraseña (expira en 15 minutos):\n\n{reset_url}\n\n"
+        "Si no lo pediste vos, ignorá este email.",
+        "plain",
+        "utf-8",
+    )
+    msg["Subject"] = "Resetear contraseña — LinkedIn Intelligence"
+    msg["From"] = settings.SMTP_FROM or settings.SMTP_USER
+    msg["To"] = to_email
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as s:
+            if settings.SMTP_USER:
+                s.starttls()
+                s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            s.send_message(msg)
+    except Exception as exc:
+        logger.warning("smtp_send_failed", error=str(exc))
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("3/minute")
+async def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    result = await db.execute(select(User).where(User.email == payload.email, User.is_active.is_(True)))
+    user = result.scalar_one_or_none()
+    # Always return 204 to avoid leaking which emails are registered
+    if not user:
+        return
+    token = create_password_reset_token(payload.email)
+    frontend_url = settings.CORS_ORIGINS.split(",")[0].strip().rstrip("/") if settings.CORS_ORIGINS else ""
+    reset_url = f"{frontend_url}/reset-password?token={token}"
+    _send_reset_email(payload.email, reset_url)
+    logger.info("password_reset_requested", user_id=str(user.id))
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/minute")
+async def reset_password(
+    request: Request,
+    payload: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    try:
+        email = decode_password_reset_token(payload.token)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+    result = await db.execute(select(User).where(User.email == email, User.is_active.is_(True)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+    user.hashed_password = hash_password(payload.password)
+    await db.commit()
+    logger.info("password_reset_completed", user_id=str(user.id))

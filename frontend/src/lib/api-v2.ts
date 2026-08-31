@@ -57,6 +57,14 @@ export function refreshTokens(refresh_token: string) {
   );
 }
 
+export function forgotPassword(email: string) {
+  return req<void>("POST", "/auth/forgot-password", undefined, { email });
+}
+
+export function resetPassword(token: string, password: string) {
+  return req<void>("POST", "/auth/reset-password", undefined, { token, password });
+}
+
 // Jobs
 export interface Job {
   id: string;
