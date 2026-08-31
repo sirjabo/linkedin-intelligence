@@ -143,7 +143,12 @@ async def forgot_password(
     if not user:
         return
     token = create_password_reset_token(payload.email)
-    frontend_url = settings.CORS_ORIGINS.split(",")[0].strip().rstrip("/") if settings.CORS_ORIGINS else ""
+    if settings.FRONTEND_URL:
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
+    elif settings.CORS_ORIGINS:
+        frontend_url = settings.CORS_ORIGINS.split(",")[0].strip().rstrip("/")
+    else:
+        frontend_url = ""
     reset_url = f"{frontend_url}/reset-password?token={token}"
     _send_reset_email(payload.email, reset_url)
     logger.info("password_reset_requested", user_id=str(user.id))

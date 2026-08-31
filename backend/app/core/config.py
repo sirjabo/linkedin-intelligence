@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
     CORS_ORIGINS: str = ""
+    FRONTEND_URL: str = ""
     UPLOAD_DIR: str = "/tmp/cv_uploads"
 
     # JWT settings
