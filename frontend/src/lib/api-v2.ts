@@ -617,6 +617,24 @@ export function analyzeLinkedIn(token: string, profile_text: string, target_role
   return req<LinkedInAnalysis>("POST", "/analyze/linkedin", token, { profile_text, target_role });
 }
 
+export function analyzeLinkedInFromUrl(token: string, linkedin_url: string, target_role: string) {
+  return req<LinkedInAnalysis & { profile_text: string }>(
+    "POST", "/analyze/linkedin-url", token, { linkedin_url, target_role }
+  );
+}
+
+export interface LinkedInRewrite {
+  title: { rewrite: string; rationale: string };
+  about: { rewrite: string; rationale: string };
+  experience: Array<{ company: string; bullets: string[] }>;
+  skills: { rewrite: string[]; rationale: string };
+  summary_of_changes: string;
+}
+
+export function rewriteLinkedIn(token: string, profile_text: string, target_role: string, analysis: LinkedInAnalysis) {
+  return req<LinkedInRewrite>("POST", "/analyze/linkedin/rewrite", token, { profile_text, target_role, analysis });
+}
+
 export function getAnalyzeRoles() {
   return req<{ roles: string[] }>("GET", "/analyze/linkedin/roles", undefined);
 }

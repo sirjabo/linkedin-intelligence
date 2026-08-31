@@ -17,9 +17,10 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function uploadCV(file: File): Promise<{ id: string; cv_data: CVData }> {
+export async function uploadCV(files: File | File[]): Promise<{ id: string; cv_data: CVData }> {
   const form = new FormData();
-  form.append("file", file);
+  const arr = Array.isArray(files) ? files : [files];
+  for (const f of arr) form.append("files", f);
   const res = await fetch(`${BASE}/api/v1/cv/upload`, {
     method: "POST",
     headers: await authHeader(),

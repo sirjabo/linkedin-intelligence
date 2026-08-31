@@ -6,9 +6,12 @@ import Navbar from "@/components/Navbar";
 import { useAuth } from "@/lib/auth";
 import {
   analyzeLinkedIn,
+  analyzeLinkedInFromUrl,
+  rewriteLinkedIn,
   getAnalyzeRoles,
   type LinkedInAnalysis,
   type LinkedInRecommendation,
+  type LinkedInRewrite,
 } from "@/lib/api-v2";
 import {
   LinkedinIcon,
@@ -19,6 +22,10 @@ import {
   AlertTriangleIcon,
   ChevronRightIcon,
   DownloadIcon,
+  LinkIcon,
+  ClipboardCopyIcon,
+  SparklesIcon,
+  Loader2Icon,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -103,16 +110,42 @@ function RecommendationCard({ rec }: { rec: LinkedInRecommendation }) {
   );
 }
 
+type InputMode = "paste" | "url";
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={copy}
+      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+    >
+      <ClipboardCopyIcon className="w-3.5 h-3.5" />
+      {copied ? "Copiado!" : "Copiar"}
+    </button>
+  );
+}
+
 export default function AnalyzePage() {
   const { token, isLoading } = useAuth();
   const router = useRouter();
 
   const [roles, setRoles] = useState<string[]>([]);
   const [selectedRole, setSelectedRole] = useState("ai_engineer");
+  const [inputMode, setInputMode] = useState<InputMode>("paste");
   const [profileText, setProfileText] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<LinkedInAnalysis | null>(null);
+  const [fetchedProfileText, setFetchedProfileText] = useState("");
+  const [rewrite, setRewrite] = useState<LinkedInRewrite | null>(null);
+  const [rewriteLoading, setRewriteLoading] = useState(false);
+  const [rewriteError, setRewriteError] = useState("");
 
   useEffect(() => {
     if (!isLoading && !token) router.replace("/login");
@@ -126,17 +159,41 @@ export default function AnalyzePage() {
 
   async function handleAnalyze(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !profileText.trim()) return;
+    if (!token) return;
     setLoading(true);
     setError("");
     setResult(null);
+    setRewrite(null);
     try {
-      const data = await analyzeLinkedIn(token, profileText.trim(), selectedRole);
-      setResult(data);
+      if (inputMode === "url") {
+        if (!linkedinUrl.trim()) return;
+        const data = await analyzeLinkedInFromUrl(token, linkedinUrl.trim(), selectedRole);
+        setFetchedProfileText(data.profile_text ?? "");
+        setResult(data);
+      } else {
+        if (!profileText.trim()) return;
+        const data = await analyzeLinkedIn(token, profileText.trim(), selectedRole);
+        setFetchedProfileText(profileText.trim());
+        setResult(data);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al analizar el perfil");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRewrite() {
+    if (!token || !result || !fetchedProfileText) return;
+    setRewriteLoading(true);
+    setRewriteError("");
+    try {
+      const data = await rewriteLinkedIn(token, fetchedProfileText, selectedRole, result);
+      setRewrite(data);
+    } catch (err: unknown) {
+      setRewriteError(err instanceof Error ? err.message : "Error al generar reescrituras");
+    } finally {
+      setRewriteLoading(false);
     }
   }
 
@@ -205,24 +262,67 @@ export default function AnalyzePage() {
               </div>
             </fieldset>
 
-            {/* Text area */}
+            {/* Input mode tabs */}
             <div>
-              <label htmlFor="profile-text" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                Texto del perfil de LinkedIn
-              </label>
-              <p id="profile-text-hint" className="text-xs text-slate-500 mb-3">
-                Copiá todo el texto visible de tu perfil (título, extracto, experiencia, skills).
-                No necesitás la URL — solo el contenido.
-              </p>
-              <textarea
-                id="profile-text"
-                value={profileText}
-                onChange={(e) => setProfileText(e.target.value)}
-                aria-describedby="profile-text-hint"
-                placeholder="Juan Pérez&#10;AI Engineer | Python · LangChain · FastAPI&#10;Buenos Aires, Argentina&#10;&#10;Sobre mí:&#10;..."
-                rows={14}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500 transition-colors"
-              />
+              <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 mb-4 w-fit gap-1">
+                <button
+                  type="button"
+                  onClick={() => setInputMode("paste")}
+                  className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg transition-colors ${
+                    inputMode === "paste" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <ZapIcon className="w-3.5 h-3.5" /> Pegar texto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode("url")}
+                  className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg transition-colors ${
+                    inputMode === "url" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <LinkIcon className="w-3.5 h-3.5" /> Importar por URL
+                </button>
+              </div>
+
+              {inputMode === "paste" ? (
+                <div>
+                  <label htmlFor="profile-text" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                    Texto del perfil de LinkedIn
+                  </label>
+                  <p id="profile-text-hint" className="text-xs text-slate-500 mb-3">
+                    Copiá todo el texto visible de tu perfil (título, extracto, experiencia, skills).
+                  </p>
+                  <textarea
+                    id="profile-text"
+                    value={profileText}
+                    onChange={(e) => setProfileText(e.target.value)}
+                    aria-describedby="profile-text-hint"
+                    placeholder={"Juan Pérez\nAI Engineer | Python · LangChain · FastAPI\nBuenos Aires, Argentina\n\nSobre mí:\n..."}
+                    rows={14}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="linkedin-url" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                    URL de tu perfil de LinkedIn
+                  </label>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Tu perfil debe ser público. Si es privado, usá el modo "Pegar texto".
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      id="linkedin-url"
+                      type="url"
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      placeholder="https://linkedin.com/in/tu-usuario"
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {error && (
@@ -233,19 +333,19 @@ export default function AnalyzePage() {
 
             <button
               type="submit"
-              disabled={loading || !profileText.trim()}
+              disabled={loading || (inputMode === "paste" ? !profileText.trim() : !linkedinUrl.trim())}
               aria-busy={loading}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               {loading ? (
                 <>
                   <RefreshCwIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
-                  Analizando con IA…
+                  {inputMode === "url" ? "Importando y analizando…" : "Analizando con IA…"}
                 </>
               ) : (
                 <>
                   <ZapIcon className="w-4 h-4" aria-hidden="true" />
-                  Analizar perfil
+                  {inputMode === "url" ? "Importar y analizar perfil" : "Analizar perfil"}
                 </>
               )}
             </button>
@@ -336,10 +436,124 @@ export default function AnalyzePage() {
               </section>
             )}
 
+            {/* Rewrite CTA */}
+            {!rewrite && (
+              <div className="rounded-2xl border border-blue-800/40 bg-blue-950/20 p-6">
+                <div className="flex items-start gap-4">
+                  <SparklesIcon className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h2 className="text-sm font-semibold text-white mb-1">
+                      Generar modificaciones listas para copiar
+                    </h2>
+                    <p className="text-xs text-slate-400 mb-4">
+                      La IA reescribe cada sección de tu perfil — título, about, experiencia y skills —
+                      optimizadas para el rol de {ROLE_LABELS[result.target_role] ?? result.target_role}.
+                      Cada texto viene listo para pegar directamente en LinkedIn.
+                    </p>
+                    {rewriteError && (
+                      <p className="text-xs text-red-400 mb-3">{rewriteError}</p>
+                    )}
+                    <button
+                      onClick={handleRewrite}
+                      disabled={rewriteLoading}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium text-white transition-colors"
+                    >
+                      {rewriteLoading ? (
+                        <><Loader2Icon className="w-4 h-4 animate-spin" /> Generando...</>
+                      ) : (
+                        <><SparklesIcon className="w-4 h-4" /> Generar modificaciones por sección</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Rewrite results */}
+            {rewrite && (
+              <section className="space-y-6">
+                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                  Modificaciones por sección — listas para copiar
+                </h2>
+
+                {rewrite.summary_of_changes && (
+                  <div className="rounded-xl border border-blue-800/30 bg-blue-950/10 px-5 py-4">
+                    <p className="text-xs text-blue-400 font-medium mb-1">Resumen de cambios</p>
+                    <p className="text-sm text-slate-300">{rewrite.summary_of_changes}</p>
+                  </div>
+                )}
+
+                {/* Title */}
+                {rewrite.title && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Título / Headline</p>
+                      <CopyButton text={rewrite.title.rewrite} />
+                    </div>
+                    <p className="text-sm text-white font-medium">{rewrite.title.rewrite}</p>
+                    <p className="text-xs text-slate-500">{rewrite.title.rationale}</p>
+                  </div>
+                )}
+
+                {/* About */}
+                {rewrite.about && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Extracto (About)</p>
+                      <CopyButton text={rewrite.about.rewrite} />
+                    </div>
+                    <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">{rewrite.about.rewrite}</p>
+                    <p className="text-xs text-slate-500">{rewrite.about.rationale}</p>
+                  </div>
+                )}
+
+                {/* Experience */}
+                {rewrite.experience && rewrite.experience.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Experiencia — bullets optimizados</p>
+                    {rewrite.experience.map((exp, i) => (
+                      <div key={i} className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-slate-200">{exp.company}</p>
+                          <CopyButton text={exp.bullets.map((b) => `• ${b}`).join("\n")} />
+                        </div>
+                        <ul className="space-y-2">
+                          {exp.bullets.map((bullet, j) => (
+                            <li key={j} className="flex gap-2 text-sm text-slate-300">
+                              <span className="text-blue-500 shrink-0 mt-0.5">•</span>
+                              <span>{bullet}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Skills */}
+                {rewrite.skills && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Skills</p>
+                      <CopyButton text={rewrite.skills.rewrite.join(", ")} />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {rewrite.skills.rewrite.map((skill) => (
+                        <span key={skill} className="text-xs px-3 py-1.5 rounded-full border border-blue-800/40 bg-blue-950/20 text-blue-300">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-500">{rewrite.skills.rationale}</p>
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Actions */}
             <div className="flex gap-3">
               <button
-                onClick={() => setResult(null)}
+                onClick={() => { setResult(null); setRewrite(null); setFetchedProfileText(""); }}
                 className="flex-1 py-2.5 border border-slate-700 hover:border-slate-500 rounded-xl text-sm text-slate-400 hover:text-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 Analizar otro perfil

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef } from "react";
-import { Upload, FileText, Loader2 } from "lucide-react";
+import { Upload, FileText, Loader2, X } from "lucide-react";
 import { uploadCV, createCVFromText } from "@/lib/api";
 import { CVData } from "@/types/cv";
 
@@ -14,20 +14,31 @@ export default function CVUpload({ onReady }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pasteText, setPasteText] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = async (file: File) => {
-    if (!file.name.endsWith(".pdf")) {
-      setError("Solo se aceptan archivos PDF.");
-      return;
-    }
+  const addFiles = (incoming: FileList | File[]) => {
+    const pdfs = Array.from(incoming).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+    if (pdfs.length === 0) { setError("Solo se aceptan archivos PDF."); return; }
+    setError("");
+    setSelectedFiles((prev) => {
+      const names = new Set(prev.map((f) => f.name));
+      return [...prev, ...pdfs.filter((f) => !names.has(f.name))];
+    });
+  };
+
+  const removeFile = (name: string) =>
+    setSelectedFiles((prev) => prev.filter((f) => f.name !== name));
+
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) return;
     setLoading(true);
     setError("");
     try {
-      const res = await uploadCV(file);
+      const res = await uploadCV(selectedFiles);
       onReady(res.id, res.cv_data);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error al subir el archivo");
+      setError(e instanceof Error ? e.message : "Error al subir los archivos");
     } finally {
       setLoading(false);
     }
@@ -80,47 +91,66 @@ export default function CVUpload({ onReady }: Props) {
 
         {/* Upload zone */}
         {mode === "upload" ? (
-          <div
-            onClick={() => !loading && fileRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              const f = e.dataTransfer.files[0];
-              if (f) handleFile(f);
-            }}
-            className={`
-              relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer
-              transition-all duration-200
-              ${dragging
-                ? "border-blue-400 bg-blue-600/10 scale-[1.02]"
-                : "border-white/20 bg-white/5 hover:border-blue-500/50 hover:bg-white/[0.07]"
-              }
-            `}
-          >
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf"
-              className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-            />
-            {loading ? (
-              <div className="flex flex-col items-center gap-3 text-blue-300">
-                <Loader2 className="w-10 h-10 animate-spin" />
-                <p className="text-base">Analizando tu CV con IA...</p>
-              </div>
-            ) : (
+          <div className="space-y-3">
+            <div
+              onClick={() => !loading && fileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+              }}
+              className={`
+                relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer
+                transition-all duration-200
+                ${dragging
+                  ? "border-blue-400 bg-blue-600/10 scale-[1.02]"
+                  : "border-white/20 bg-white/5 hover:border-blue-500/50 hover:bg-white/[0.07]"
+                }
+              `}
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf"
+                multiple
+                className="hidden"
+                onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }}
+              />
               <div className="flex flex-col items-center gap-3 text-blue-200/70">
                 <Upload className="w-10 h-10" />
                 <div>
-                  <p className="text-base font-medium text-white/80">
-                    Arrastrá tu CV aquí
-                  </p>
-                  <p className="text-sm mt-1">o hacé click para seleccionar</p>
+                  <p className="text-base font-medium text-white/80">Arrastrá tus CVs aquí</p>
+                  <p className="text-sm mt-1">o hacé click para seleccionar — podés subir varios PDFs</p>
                 </div>
                 <p className="text-xs text-blue-300/50 mt-1">Solo archivos PDF</p>
+              </div>
+            </div>
+
+            {selectedFiles.length > 0 && (
+              <div className="space-y-2">
+                {selectedFiles.map((f) => (
+                  <div key={f.name} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5">
+                    <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span className="text-sm text-white/80 flex-1 truncate">{f.name}</span>
+                    <span className="text-xs text-blue-300/50 shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+                    <button onClick={() => removeFile(f.name)} className="text-slate-500 hover:text-red-400 transition-colors ml-1">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={handleUpload}
+                  disabled={loading}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Analizando con IA...</>
+                  ) : (
+                    `Analizar ${selectedFiles.length > 1 ? `${selectedFiles.length} PDFs` : "PDF"} con IA`
+                  )}
+                </button>
               </div>
             )}
           </div>
