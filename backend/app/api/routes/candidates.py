@@ -42,12 +42,24 @@ async def _get_candidate_or_404(user: User, db: AsyncSession) -> Candidate:
     return candidate
 
 
+async def _get_or_create_candidate(user: User, db: AsyncSession) -> Candidate:
+    result = await db.execute(select(Candidate).where(Candidate.user_id == user.id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        candidate = Candidate(user_id=user.id, email=user.email)
+        db.add(candidate)
+        await db.commit()
+        await db.refresh(candidate)
+        logger.info("candidate_auto_created", user_id=str(user.id))
+    return candidate
+
+
 @router.get("/me", response_model=CandidateResponse)
 async def get_my_candidate(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Candidate:
-    return await _get_candidate_or_404(current_user, db)
+    return await _get_or_create_candidate(current_user, db)
 
 
 @router.put("/me", response_model=CandidateResponse)
@@ -76,7 +88,7 @@ async def upload_cv_source(
     if file.size and file.size > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File size exceeds 10MB limit")
 
-    candidate = await _get_candidate_or_404(current_user, db)
+    candidate = await _get_or_create_candidate(current_user, db)
 
     tmp_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4()}.pdf")
     try:
@@ -129,7 +141,7 @@ async def ingest_text_source(
     if not payload.raw_text or not payload.raw_text.strip():
         raise HTTPException(status_code=400, detail="raw_text is required")
 
-    candidate = await _get_candidate_or_404(current_user, db)
+    candidate = await _get_or_create_candidate(current_user, db)
 
     if payload.source_url:
         validate_url_not_private(payload.source_url)
