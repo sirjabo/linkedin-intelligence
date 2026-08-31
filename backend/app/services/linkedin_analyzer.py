@@ -2,13 +2,12 @@
 import json
 import uuid
 
-import anthropic
+import httpx
 
 from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 ROLE_LABELS = {
     "ai_engineer": "AI Engineer",
@@ -97,15 +96,28 @@ async def analyze_linkedin_profile(
     """Analyze a LinkedIn profile text and return scores + recommendations."""
     role_label = ROLE_LABELS.get(target_role, target_role.replace("_", " ").title())
 
-    response = await _client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1500,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": _user_prompt(profile_text, role_label)}],
-    )
+    if not settings.OPENROUTER_API_KEY:
+        raise ValueError("OpenRouter no configurado. Configurá OPENROUTER_API_KEY.")
 
-    _block = response.content[0]
-    raw = _block.text if hasattr(_block, "text") else ""  # type: ignore[union-attr]
+    payload = {
+        "model": "openai/gpt-4o-mini",
+        "max_tokens": 1500,
+        "messages": [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": _user_prompt(profile_text, role_label)},
+        ],
+    }
+    async with httpx.AsyncClient(timeout=60) as http:
+        resp = await http.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+    resp.raise_for_status()
+    raw = resp.json()["choices"][0]["message"]["content"].strip()
     try:
         parsed = _parse_llm_json(raw)
     except Exception as exc:

@@ -2,13 +2,12 @@
 import json
 import uuid
 
-import anthropic
+import httpx
 
 from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 _SYSTEM = """\
 Sos un experto en copywriting para LinkedIn orientado al mercado tech latinoamericano.
@@ -79,17 +78,28 @@ async def write_about_section(
 
     user_prompt = "\n\n".join(context_parts)
 
-    msg = await _client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2048,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
+    if not settings.OPENROUTER_API_KEY:
+        raise ValueError("OpenRouter no configurado. Configurá OPENROUTER_API_KEY.")
 
-    block = msg.content[0]
-    if not hasattr(block, "text"):
-        raise ValueError("Unexpected response type from LLM")
-    raw = block.text  # type: ignore[union-attr]
+    payload = {
+        "model": "openai/gpt-4o-mini",
+        "max_tokens": 2048,
+        "messages": [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+    async with httpx.AsyncClient(timeout=60) as http:
+        resp = await http.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+    resp.raise_for_status()
+    raw = resp.json()["choices"][0]["message"]["content"].strip()
     data = _parse_json(raw)
 
     return {
