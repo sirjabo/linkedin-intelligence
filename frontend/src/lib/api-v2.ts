@@ -351,6 +351,24 @@ export function ingestTextSource(token: string, source_type: string, raw_text: s
   return req<CandidateSource>("POST", "/candidates/me/sources/text", token, { source_type, raw_text });
 }
 
+export async function uploadPdfSource(token: string, file: File): Promise<CandidateSource> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/candidates/me/sources/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:token-expired"));
+    }
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 export function listSources(token: string) {
   return req<CandidateSource[]>("GET", "/candidates/me/sources", token);
 }
