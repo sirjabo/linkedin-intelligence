@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
@@ -7,6 +7,7 @@ import {
   getCandidate,
   updateCandidate,
   ingestTextSource,
+  uploadPdfSource,
   listSources,
   rebuildProfile,
   getProfile,
@@ -23,7 +24,7 @@ import {
 import {
   ArrowLeftIcon, UserIcon, PlusIcon, RefreshCwIcon,
   ZapIcon, CheckCircleIcon, AlertCircleIcon, TrendingUpIcon,
-  BarChart2Icon, ChevronDownIcon,
+  BarChart2Icon, ChevronDownIcon, UploadIcon, FileTextIcon, XIcon,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -92,10 +93,14 @@ export default function ProfilePage() {
   const [optimizerError, setOptimizerError] = useState("");
 
   // Source ingestion state
+  const [sourceInputMode, setSourceInputMode] = useState<"paste" | "upload">("paste");
   const [sourceType, setSourceType] = useState("cv");
   const [rawText, setRawText] = useState("");
   const [ingesting, setIngesting] = useState(false);
   const [ingestSuccess, setIngestSuccess] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfDragging, setPdfDragging] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   // Rebuild state
   const [rebuilding, setRebuilding] = useState(false);
@@ -176,6 +181,24 @@ export default function ProfilePage() {
       setTimeout(() => setIngestSuccess(false), 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al ingresar fuente");
+    } finally {
+      setIngesting(false);
+    }
+  }
+
+  async function handleUploadPdf() {
+    if (!token || !pdfFile) return;
+    setIngesting(true);
+    setIngestSuccess(false);
+    setError("");
+    try {
+      const src = await uploadPdfSource(token, pdfFile);
+      setSources((prev) => [src, ...prev]);
+      setPdfFile(null);
+      setIngestSuccess(true);
+      setTimeout(() => setIngestSuccess(false), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al subir el PDF");
     } finally {
       setIngesting(false);
     }
@@ -644,52 +667,157 @@ export default function ProfilePage() {
             <PlusIcon size={16} className="text-blue-400" />
             Agregar fuente
           </h3>
+
+          {/* Mode tabs */}
+          <div className="flex bg-slate-800/60 rounded-lg p-0.5 mb-4 gap-0.5">
+            <button
+              onClick={() => setSourceInputMode("paste")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ${
+                sourceInputMode === "paste"
+                  ? "bg-blue-600 text-white shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <FileTextIcon size={12} aria-hidden="true" />
+              Pegar texto
+            </button>
+            <button
+              onClick={() => setSourceInputMode("upload")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ${
+                sourceInputMode === "upload"
+                  ? "bg-blue-600 text-white shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <UploadIcon size={12} aria-hidden="true" />
+              Subir PDF
+            </button>
+          </div>
+
           <div className="space-y-3">
-            <div>
-              <label htmlFor="source-type" className="text-xs text-slate-500 block mb-1">Tipo de fuente</label>
-              <select
-                id="source-type"
-                value={sourceType}
-                onChange={(e) => setSourceType(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
-              >
-                {SOURCE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="source-content" className="text-xs text-slate-500 block mb-1">Pegá el contenido</label>
-              <textarea
-                id="source-content"
-                value={rawText}
-                onChange={(e) => setRawText(e.target.value)}
-                rows={6}
-                placeholder="Pegá tu CV, perfil de LinkedIn, bio de GitHub, etc."
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleIngest}
-                disabled={ingesting || !rawText.trim()}
-                aria-busy={ingesting}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              >
-                {ingesting ? (
-                  <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
+            {sourceInputMode === "paste" ? (
+              <>
+                <div>
+                  <label htmlFor="source-type" className="text-xs text-slate-500 block mb-1">Tipo de fuente</label>
+                  <select
+                    id="source-type"
+                    value={sourceType}
+                    onChange={(e) => setSourceType(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {SOURCE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="source-content" className="text-xs text-slate-500 block mb-1">Pegá el contenido</label>
+                  <textarea
+                    id="source-content"
+                    value={rawText}
+                    onChange={(e) => setRawText(e.target.value)}
+                    rows={6}
+                    placeholder="Pegá tu CV, perfil de LinkedIn, bio de GitHub, etc."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 resize-none"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleIngest}
+                    disabled={ingesting || !rawText.trim()}
+                    aria-busy={ingesting}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {ingesting ? (
+                      <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <PlusIcon size={14} aria-hidden="true" />
+                    )}
+                    {ingesting ? "Procesando…" : "Agregar fuente"}
+                  </button>
+                  {ingestSuccess && (
+                    <span role="status" className="flex items-center gap-1.5 text-sm text-emerald-400">
+                      <CheckCircleIcon size={15} aria-hidden="true" />
+                      Fuente agregada
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <input
+                  ref={pdfInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setPdfFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                {!pdfFile ? (
+                  <div
+                    onClick={() => !ingesting && pdfInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setPdfDragging(true); }}
+                    onDragLeave={() => setPdfDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setPdfDragging(false);
+                      const f = e.dataTransfer.files[0];
+                      if (f && f.name.toLowerCase().endsWith(".pdf")) setPdfFile(f);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Zona para soltar o seleccionar PDF"
+                    onKeyDown={(e) => e.key === "Enter" && pdfInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                      pdfDragging
+                        ? "border-blue-400 bg-blue-600/10"
+                        : "border-slate-700 hover:border-blue-500/60 hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <UploadIcon size={28} className="mx-auto text-slate-500 mb-2" aria-hidden="true" />
+                    <p className="text-sm text-slate-300 font-medium">Arrastrá tu CV aquí</p>
+                    <p className="text-xs text-slate-500 mt-1">o hacé click para seleccionar un PDF</p>
+                  </div>
                 ) : (
-                  <PlusIcon size={14} aria-hidden="true" />
+                  <div className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+                    <FileTextIcon size={18} className="text-blue-400 shrink-0" aria-hidden="true" />
+                    <span className="text-sm text-slate-200 flex-1 truncate">{pdfFile.name}</span>
+                    <span className="text-xs text-slate-500 shrink-0">{(pdfFile.size / 1024).toFixed(0)} KB</span>
+                    <button
+                      onClick={() => setPdfFile(null)}
+                      aria-label="Quitar archivo"
+                      className="text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                      <XIcon size={14} aria-hidden="true" />
+                    </button>
+                  </div>
                 )}
-                {ingesting ? "Procesando…" : "Agregar fuente"}
-              </button>
-              {ingestSuccess && (
-                <span role="status" className="flex items-center gap-1.5 text-sm text-emerald-400">
-                  <CheckCircleIcon size={15} aria-hidden="true" />
-                  Fuente agregada
-                </span>
-              )}
-            </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleUploadPdf}
+                    disabled={ingesting || !pdfFile}
+                    aria-busy={ingesting}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {ingesting ? (
+                      <RefreshCwIcon size={14} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <UploadIcon size={14} aria-hidden="true" />
+                    )}
+                    {ingesting ? "Procesando…" : "Subir PDF"}
+                  </button>
+                  {ingestSuccess && (
+                    <span role="status" className="flex items-center gap-1.5 text-sm text-emerald-400">
+                      <CheckCircleIcon size={15} aria-hidden="true" />
+                      Fuente agregada
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
